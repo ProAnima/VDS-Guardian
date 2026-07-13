@@ -1,0 +1,65 @@
+:root {
+  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sidebar-width: 244px;
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius-md: 15px;
+  --radius-lg: 22px;
+  --ease: 160ms ease;
+}
+:root[data-theme="dark"] {
+  --bg: #07100f;
+  --bg-elevated: #0a1513;
+  --surface: #0d1a18;
+  --surface-raised: #11211e;
+  --surface-muted: #0a1614;
+  --surface-hover: #152824;
+  --border: #203b35;
+  --border-soft: #172d28;
+  --border-strong: #315b50;
+  --text: #edf6f2;
+  --text-secondary: #a2b8b1;
+  --text-muted: #718c84;
+  --accent: #71d9b6;
+  --accent-strong: #8ae8c8;
+  --accent-soft: rgba(113, 217, 182, 0.11);
+  --amber: #e1ad58;
+  --amber-soft: rgba(225, 173, 88, 0.12);
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="light"] {
+  --bg: #eef3f0;
+  --bg-elevated: #f7faf8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f2f6f4;
+  --surface-hover: #e8f1ed;
+  --border: #cbdad4;
+  --border-soft: #dce7e2;
+  --border-strong: #9dbcb1;
+  --text: #12201c;
+  --text-secondary: #526b63;
+  --text-muted: #789087;
+  --accent: #167a5b;
+  --accent-strong: #0d684c;
+  --accent-soft: rgba(22, 122, 91, 0.09);
+  --amber: #a56b12;
+  --amber-soft: rgba(165, 107, 18, 0.1);
+  --shadow: 0 22px 60px rgba(28, 62, 51, 0.09);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; color: var(--text); background: var(--bg); }
+button, select, input { color: inherit; font: inherit; }
+button, select { outline: none; }
+button:focus-visible, select:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); }
+button:disabled { cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
