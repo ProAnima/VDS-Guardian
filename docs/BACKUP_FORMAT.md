@@ -1,7 +1,10 @@
 # Backup Format Contract
 
-Status: draft for Iteration 0. The first implementation must add golden fixtures
-before this contract is declared stable.
+Status: Milestone 1 draft. The initial local repository slice implements the
+directory boundary, validated payload paths, SHA-256 verification, manifest
+signature metadata, quarantine, and atomic seal. Golden fixtures and a
+persistent OS-backed signing identity are still required before this contract
+is declared stable.
 
 ## Directory layout
 
@@ -62,4 +65,3 @@ A backup is restorable only when:
 
 Any ambiguity fails closed. Warning-only backups need an explicit plan policy
 and are visibly distinct from fully consistent backups.
-

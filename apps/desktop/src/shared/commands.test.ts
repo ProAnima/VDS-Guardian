@@ -5,7 +5,6 @@ describe("foundation bridge", () => {
   it("keeps live operations disabled in browser preview", async () => {
     const status = await getFoundationStatus();
     expect(status.liveOperationsEnabled).toBe(false);
-    expect(status.iteration).toContain("Iteration 0");
+    expect(status.iteration).toContain("Milestone 1");
   });
 });
-

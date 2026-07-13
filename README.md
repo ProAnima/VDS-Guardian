@@ -6,7 +6,7 @@
   <a href="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml"><img src="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-70ddb7.svg" alt="Apache-2.0 license" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-102a25.svg" alt="Windows and Linux" />
-  <img src="https://img.shields.io/badge/status-Iteration%200-e2b35d.svg" alt="Iteration 0" />
+  <img src="https://img.shields.io/badge/status-Milestone%201-e2b35d.svg" alt="Milestone 1" />
 </p>
 
 VDS Guardian is an open-source desktop and headless disaster-recovery manager
@@ -18,10 +18,11 @@ The project focuses on Docker-based workloads, database-consistent capture,
 cryptographically verified manifests, and dry-run-first restoration without a
 mandatory cloud service.
 
-> **Project status:** production foundation / Iteration 0. The repository is
-> buildable, but live backup and restore operations are intentionally not yet
-> enabled. Do not use it as a disaster-recovery system until the restore drill
-> gate in the roadmap is complete.
+> **Project status:** Milestone 1 / local repository foundation. The first
+> fail-closed staging, verification, signing-port, quarantine, and atomic-seal
+> slice is implemented and tested with simulated sources. Live backup and
+> restore operations remain disabled. Do not use it as a disaster-recovery
+> system until the restore-drill gate in the roadmap is complete.
 
 ## Design goals
 
@@ -61,6 +62,7 @@ The architecture decision and rejected alternatives are documented in
 ```text
 apps/desktop/          Tauri desktop shell and React UI
 crates/guardian-core/  Domain model and use cases; no UI or Tauri dependency
+crates/guardian-local-repository/  Cross-platform staging and seal adapter
 crates/guardian-cli/   Headless Linux/Windows entrypoint
 docs/                  Architecture, security, backup format, and roadmap
 scripts/               Canonical doctor and verification entrypoints

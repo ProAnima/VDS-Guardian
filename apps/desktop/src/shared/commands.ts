@@ -10,7 +10,7 @@ export interface FoundationStatus {
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
-  iteration: "Iteration 0 — production foundation",
+  iteration: "Milestone 1 — local repository foundation",
   liveOperationsEnabled: false,
 };
 

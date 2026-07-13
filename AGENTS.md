@@ -6,9 +6,10 @@ this repository. Read this file, `CODEX.md`, and the relevant document under
 
 ## Current status
 
-Iteration 0: production foundation. The project builds and validates its domain
-foundation, but live SSH backup and restore operations are not implemented and
-must not be represented as production-ready.
+Milestone 1: domain and local repository. A simulated-source repository slice
+implements isolated staging, SHA-256 verification, a signing port, quarantine,
+and atomic seal. Live SSH backup, production signing-key storage, retention, and
+restore are not implemented and must not be represented as production-ready.
 
 ## Source of truth
 
@@ -98,4 +99,3 @@ or work around the finding silently.
 Distinguish clearly between scaffolded, implemented, locally tested,
 integration-tested, restore-drilled, and production-ready. Compilation alone is
 not proof that backups can be restored.
-

@@ -3,7 +3,7 @@
 The order is safety-driven: format, state machines, and hostile-input tests land
 before real remote mutation. Each milestone ends with a demonstrable gate.
 
-## Iteration 0 — production foundation (current)
+## Iteration 0 — production foundation (completed)
 
 Deliverables:
 
@@ -16,7 +16,7 @@ Deliverables:
 Exit gate: a clean clone can install dependencies and pass `npm run verify` on
 Windows and Linux. No claim of functional backup capability.
 
-## Milestone 1 — domain and local repository (P0)
+## Milestone 1 — domain and local repository (P0, current)
 
 - Versioned profile, plan, manifest, job, policy, and audit schemas.
 - Explicit backup/restore state machines with property tests.
@@ -27,6 +27,13 @@ Windows and Linux. No claim of functional backup capability.
 
 Exit gate: simulated byte sources create sealed independent backups; corruption,
 interruption, traversal, and concurrent writers fail safely.
+
+Implemented slice: validated identifiers and manifest fields, exhaustive state
+transition tests, a separate local repository adapter, cross-process locking,
+safe payload paths, streaming SHA-256 verification, an Ed25519 signing port,
+quarantine, abandoned-staging recovery, and atomic directory seal. Golden
+fixtures, persistent OS-backed signing identity, full schemas, retention, and
+the restore-drill gate remain open.
 
 ## Milestone 2 — secure SSH capture (P0)
 
@@ -105,4 +112,3 @@ The label is allowed only after all P0 milestones, encrypted payloads, signed
 artifacts, Windows/Linux CI, hostile-input testing, external security review,
 and a documented restore drill succeed. Backup creation without verified
 restoration is not completion.
-

@@ -1,6 +1,6 @@
 [package]
-name = "guardian-core"
-description = "Domain model and use cases for VDS Guardian."
+name = "guardian-local-repository"
+description = "Fail-closed local filesystem repository adapter for VDS Guardian."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,15 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+fs2.workspace = true
+guardian-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek = "2"
 
 [lints]
 workspace = true

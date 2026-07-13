@@ -60,6 +60,15 @@
   ransomware resistance requires a second node, offline/removable media, or an
   object store with retention lock in a later milestone.
 
+Milestone 1 currently enforces validated identifiers during deserialization,
+slash-only relative payload paths, symlink rejection at write and verification
+boundaries, a cross-process writer lock held for the staging lifetime, streaming
+SHA-256 verification, Ed25519-only signing metadata, quarantine on seal failure,
+and same-filesystem atomic rename. The shipped signer is a port, not a stored
+production identity; Ed25519 test keys exist only in tests. OS-backed identity
+storage, read-only hardening, retention, golden format fixtures, archive limits,
+and clean-room restore drills remain mandatory before production use.
+
 ### Hostile backup content
 
 - Verification hashes bytes without executing or previewing them.
@@ -110,4 +119,3 @@ signing material is never exported with ordinary settings.
 These risks are addressed operationally through independent nodes, least
 privilege, offline/off-site copies, signed releases, and regular clean-room
 restore drills.
-
