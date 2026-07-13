@@ -1,10 +1,11 @@
 # Backup Format Contract
 
-Status: Milestone 1 draft. The initial local repository slice implements the
-directory boundary, validated payload paths, SHA-256 verification, manifest
-signature metadata, quarantine, and atomic seal. Golden fixtures and a
-persistent OS-backed signing identity are still required before this contract
-is declared stable.
+Status: Milestone 1 draft. The local repository slice implements the directory
+boundary, validated payload paths, SHA-256 verification, Ed25519 signature
+metadata, quarantine, atomic seal, and a byte-exact format-v1 golden fixture.
+The fixture now prevents silent serialization drift. Full plan/item schemas,
+key rotation fixtures, retention, and restore compatibility evidence are still
+required before this contract is declared stable.
 
 ## Directory layout
 

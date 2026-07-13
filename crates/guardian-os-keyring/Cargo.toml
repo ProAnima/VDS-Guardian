@@ -1,0 +1,15 @@
+[package]
+name = "guardian-os-keyring"
+description = "Windows Credential Manager and Linux Secret Service adapter for VDS Guardian."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+guardian-core.workspace = true
+keyring.workspace = true
+
+[lints]
+workspace = true

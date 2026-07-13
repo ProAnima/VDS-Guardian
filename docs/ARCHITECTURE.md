@@ -50,6 +50,11 @@ Adapters will be added by capability, not bundled into the domain crate:
 - Database adapters for PostgreSQL/MySQL and Docker-aware discovery/export.
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 
+Implemented Milestone 1 adapters are split into `guardian-local-repository`,
+`guardian-signing`, and `guardian-os-keyring`. The signing crate depends only on
+the core secret-store port; platform credential APIs remain isolated from domain
+and repository code.
+
 ### Desktop
 
 React presents profiles, plans, job state, verification, and restore previews.
@@ -131,4 +136,3 @@ configuration, not committed fixtures.
 The manifest has independent format and producer versions. Readers support a
 documented range and never "best effort" restore an unknown major format. Any
 format migration produces a new sealed backup; it does not mutate the original.
-

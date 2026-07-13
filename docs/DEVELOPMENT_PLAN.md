@@ -30,10 +30,11 @@ interruption, traversal, and concurrent writers fail safely.
 
 Implemented slice: validated identifiers and manifest fields, exhaustive state
 transition tests, a separate local repository adapter, cross-process locking,
-safe payload paths, streaming SHA-256 verification, an Ed25519 signing port,
-quarantine, abandoned-staging recovery, and atomic directory seal. Golden
-fixtures, persistent OS-backed signing identity, full schemas, retention, and
-the restore-drill gate remain open.
+safe payload paths, streaming SHA-256 verification, Ed25519 signing identities,
+Windows Credential Manager and Linux Secret Service integration, a byte-exact
+format-v1 golden fixture, quarantine, abandoned-staging recovery, and atomic
+directory seal. Enrollment locking/orchestration, full schemas, retention,
+archive hostility tests, and the restore-drill gate remain open.
 
 ## Milestone 2 — secure SSH capture (P0)
 

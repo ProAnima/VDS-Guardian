@@ -64,10 +64,12 @@ Milestone 1 currently enforces validated identifiers during deserialization,
 slash-only relative payload paths, symlink rejection at write and verification
 boundaries, a cross-process writer lock held for the staging lifetime, streaming
 SHA-256 verification, Ed25519-only signing metadata, quarantine on seal failure,
-and same-filesystem atomic rename. The shipped signer is a port, not a stored
-production identity; Ed25519 test keys exist only in tests. OS-backed identity
-storage, read-only hardening, retention, golden format fixtures, archive limits,
-and clean-room restore drills remain mandatory before production use.
+and same-filesystem atomic rename. Ed25519 seeds are zeroized in memory and can
+be persisted as binary secrets in Windows Credential Manager or Linux Secret
+Service under a random credential ID. Golden fixtures pin canonical manifest
+bytes. Enrollment still requires caller-held node locking and is not wired to a
+live command. Read-only hardening, retention, archive limits, key rotation, and
+clean-room restore drills remain mandatory before production use.
 
 ### Hostile backup content
 

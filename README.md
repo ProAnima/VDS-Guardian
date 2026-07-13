@@ -63,6 +63,8 @@ The architecture decision and rejected alternatives are documented in
 apps/desktop/          Tauri desktop shell and React UI
 crates/guardian-core/  Domain model and use cases; no UI or Tauri dependency
 crates/guardian-local-repository/  Cross-platform staging and seal adapter
+crates/guardian-signing/  Ed25519 backup-node identity lifecycle
+crates/guardian-os-keyring/  Windows/Linux secure credential-store adapter
 crates/guardian-cli/   Headless Linux/Windows entrypoint
 docs/                  Architecture, security, backup format, and roadmap
 scripts/               Canonical doctor and verification entrypoints
@@ -103,7 +105,8 @@ directories are not reused or modified by normal application flows.
 
 Storage isolation limits propagation and operator mistakes; it is not a malware
 scanner and cannot make a backup trustworthy by itself. See
-[`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for the full threat model.
+[`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for the full threat model and
+[`docs/SIGNING_IDENTITY.md`](docs/SIGNING_IDENTITY.md) for the node-key contract.
 
 ## Roadmap
 

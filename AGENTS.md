@@ -6,9 +6,10 @@ this repository. Read this file, `CODEX.md`, and the relevant document under
 
 ## Current status
 
-Milestone 1: domain and local repository. A simulated-source repository slice
-implements isolated staging, SHA-256 verification, a signing port, quarantine,
-and atomic seal. Live SSH backup, production signing-key storage, retention, and
+Milestone 1: domain and local repository. Simulated-source repository and
+signing slices implement isolated staging, SHA-256 verification, golden manifest
+fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
+and atomic seal. Live SSH backup, enrollment orchestration, retention, and
 restore are not implemented and must not be represented as production-ready.
 
 ## Source of truth

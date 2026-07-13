@@ -1,5 +1,7 @@
 use crate::RepositoryError;
-use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -58,10 +60,10 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), RepositoryEr
     sync_parent(path)
 }
 
-pub(crate) fn sync_parent(path: &Path) -> Result<(), RepositoryError> {
+pub(crate) fn sync_parent(_path: &Path) -> Result<(), RepositoryError> {
     #[cfg(unix)]
     {
-        let parent = path
+        let parent = _path
             .parent()
             .ok_or(RepositoryError::UnsafeFilesystemEntry)?;
         File::open(parent)

@@ -77,14 +77,29 @@ impl Manifest {
     }
 
     pub fn validate_for_verification(&self) -> Result<(), ManifestError> {
-        if self.format_version != CURRENT_FORMAT_VERSION {
-            return Err(ManifestError::UnsupportedFormatVersion);
-        }
+        self.validate_common()?;
         if self.verification_state != VerificationState::Pending
             || self.sealed_at.is_some()
             || self.signature.is_some()
         {
             return Err(ManifestError::AlreadyFinalized);
+        }
+        Ok(())
+    }
+
+    pub fn validate_sealed(&self) -> Result<(), ManifestError> {
+        self.validate_common()?;
+        let signature = self.signature.as_ref().ok_or(ManifestError::NotSealed)?;
+        if self.verification_state != VerificationState::Verified || self.sealed_at.is_none() {
+            return Err(ManifestError::NotSealed);
+        }
+        validate_label(&signature.algorithm)?;
+        validate_label(&signature.key_id)
+    }
+
+    fn validate_common(&self) -> Result<(), ManifestError> {
+        if self.format_version != CURRENT_FORMAT_VERSION {
+            return Err(ManifestError::UnsupportedFormatVersion);
         }
         if self.payloads.is_empty() {
             return Err(ManifestError::EmptyPayload);
@@ -181,6 +196,9 @@ impl PayloadEntry {
     }
 
     fn validate(&self) -> Result<(), ManifestError> {
+        if !self.path.as_str().starts_with("payload/") {
+            return Err(ManifestError::InvalidPayloadPath);
+        }
         validate_label(&self.logical_role)?;
         validate_label(&self.media_type)?;
         is_sha256(&self.sha256)
@@ -219,12 +237,16 @@ pub enum ManifestError {
     UnsupportedFormatVersion,
     #[error("only a fresh pending manifest can enter verification")]
     AlreadyFinalized,
+    #[error("manifest is not a complete verified sealed manifest")]
+    NotSealed,
     #[error("manifest must contain at least one payload")]
     EmptyPayload,
     #[error("manifest payload paths must be unique")]
     DuplicatePayloadPath,
     #[error("manifest SHA-256 must contain exactly 64 hexadecimal characters")]
     InvalidSha256,
+    #[error("manifest payload entries must remain under payload/")]
+    InvalidPayloadPath,
     #[error("manifest plan version or digest is invalid")]
     InvalidPlanReference,
     #[error("manifest text field is empty, too long, or contains control characters")]
