@@ -1,0 +1,38 @@
+# JavaScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+apps/desktop/src-tauri/gen/
+
+# Rust
+target/
+
+# Local runtime data and secrets
+.env
+.env.*
+!.env.example
+.guardian/
+data/
+backups/
+staging/
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# Logs and generated packages
+*.log
+*.AppImage
+*.deb
+*.msi
+*.exe

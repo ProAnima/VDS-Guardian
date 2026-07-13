@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VDS Guardian",
+  "version": "0.1.0",
+  "identifier": "studio.proanima.vdsguardian",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost" },
+    "windows": [
+      {
+        "title": "VDS Guardian",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 560,
+        "center": true
+      }
+    ]
+  },
+  "bundle": { "active": false }
+}
+

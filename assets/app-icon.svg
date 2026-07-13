@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">VDS Guardian shield</title>
+  <rect width="512" height="512" rx="112" fill="#07100f"/>
+  <path d="M256 70 411 128v118c0 101-61 161-155 199C162 407 101 347 101 246V128Z" fill="#102a25" stroke="#70d9b4" stroke-width="24"/>
+  <path d="m166 194 90 190 90-190h-54l-36 88-36-88Z" fill="#70d9b4"/>
+  <circle cx="256" cy="174" r="20" fill="#d9a858"/>
+</svg>

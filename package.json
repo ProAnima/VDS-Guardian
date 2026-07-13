@@ -1,0 +1,22 @@
+{
+  "name": "vds-guardian-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cross-platform isolated VDS backup and recovery tool.",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22", "npm": ">=10" },
+  "workspaces": ["apps/desktop"],
+  "scripts": {
+    "dev": "npm run tauri:dev --workspace @vds-guardian/desktop",
+    "doctor": "node scripts/doctor.mjs",
+    "verify": "node scripts/verify.mjs",
+    "format:check": "cargo fmt --all --check",
+    "lint": "npm run lint --workspace @vds-guardian/desktop",
+    "check:types": "npm run check:types --workspace @vds-guardian/desktop",
+    "test:web": "npm run test --workspace @vds-guardian/desktop",
+    "build:web": "npm run build --workspace @vds-guardian/desktop",
+    "test:rust": "cargo test --workspace --all-targets",
+    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings"
+  }
+}
+
