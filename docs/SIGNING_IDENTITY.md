@@ -1,7 +1,8 @@
 # Backup-Node Signing Identity
 
-Status: Milestone 1 implementation contract. Enrollment is not yet exposed by
-the desktop application or CLI.
+Status: Milestone 1 implementation contract. Locked, journaled enrollment is
+implemented as a shared Rust service but is not yet exposed by the desktop
+application or CLI.
 
 ## Purpose
 
@@ -25,16 +26,27 @@ are not an accepted fallback.
 
 ## Lifecycle
 
-1. Hold the exclusive node-configuration lock.
-2. Reject enrollment if the credential ID already contains a secret.
-3. Generate the seed from the operating-system CSPRNG.
+1. Acquire the cross-process `signing.lock` in the node configuration directory.
+2. Atomically create `signing-enrollment.json` with a random credential ID.
+3. Generate the seed from the operating-system CSPRNG only when that credential
+   ID does not already contain a secret.
 4. Store the binary seed, read it back, and compare the public verification key.
-5. Release the lock only after the credential reference is atomically committed.
+5. Atomically commit `signing.json` with only format version, credential ID,
+   algorithm, and derived public key ID.
+6. Remove the enrollment intent and release the lock.
+
+If execution stops after the keyring write but before configuration commit, the
+intent remains. The next run loads the existing secret and commits its reference
+with disposition `recovered`; it never generates a replacement key. A committed
+configuration with a missing secret fails closed and never rotates implicitly.
+Configuration/key-ID disagreement, unknown fields, unsafe filesystem entries,
+and concurrent enrollment also fail closed.
 
 Loading validates the exact 32-byte length. Signing keys and temporary seed
 buffers use zeroization on drop. Errors are typed and never include credential
 contents or platform error payloads.
 
 Rotation will enroll a new credential ID and preserve old public verification
-keys. It must never overwrite manifests or sealed backups. The rotation and
-trusted-public-key registry are not implemented in this slice.
+keys. It must never overwrite manifests or sealed backups. Explicit rotation,
+trusted-public-key registry, CLI/desktop commands, and encrypted-vault fallback
+are not implemented in this slice.

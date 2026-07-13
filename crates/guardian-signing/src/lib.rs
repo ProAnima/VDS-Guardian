@@ -1,5 +1,10 @@
 //! Ed25519 identity lifecycle backed by an injected secure secret store.
 
+mod enrollment;
+mod filesystem;
+
+pub use enrollment::{EnrollmentDisposition, ManagedIdentity, SigningIdentityManager};
+
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_core::{
     CredentialId, ManifestSigner, SecretStore, SecretStoreError, SecretValue, SigningError,
@@ -93,7 +98,7 @@ fn hex(bytes: &[u8]) -> String {
     output
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum IdentityError {
     #[error("signing identity is not enrolled")]
     Missing,
@@ -105,6 +110,28 @@ pub enum IdentityError {
     EnrollmentRace,
     #[error(transparent)]
     Store(#[from] SecretStoreError),
+    #[error("signing enrollment is already running")]
+    Busy,
+    #[error("signing enrollment configuration is incompatible")]
+    IncompatibleConfiguration,
+    #[error("signing enrollment configuration does not match the secure identity")]
+    ConfigurationMismatch,
+    #[error("signing enrollment rejected an unsafe filesystem entry")]
+    UnsafeFilesystemEntry,
+    #[error("signing enrollment metadata serialization failed")]
+    Serialization,
+    #[error("signing enrollment I/O failed during {operation}")]
+    Io {
+        operation: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+impl IdentityError {
+    pub(crate) fn io(operation: &'static str, source: std::io::Error) -> Self {
+        Self::Io { operation, source }
+    }
 }
 
 #[cfg(test)]
@@ -123,10 +150,10 @@ mod tests {
         let enrolled = Ed25519Identity::enroll_exclusive(&store, &id)?;
         let loaded = Ed25519Identity::load(&store, &id)?;
         assert_eq!(enrolled.key_id(), loaded.key_id());
-        assert_eq!(
-            Ed25519Identity::enroll_exclusive(&store, &id).err(),
-            Some(IdentityError::AlreadyEnrolled)
-        );
+        assert!(matches!(
+            Ed25519Identity::enroll_exclusive(&store, &id),
+            Err(IdentityError::AlreadyEnrolled)
+        ));
         Ok(())
     }
 
@@ -149,13 +176,13 @@ mod tests {
     {
         let store = MemoryStore::default();
         let missing = CredentialId::parse("missing")?;
-        assert_eq!(
-            Ed25519Identity::load(&store, &missing).err(),
-            Some(IdentityError::Missing)
-        );
+        assert!(matches!(
+            Ed25519Identity::load(&store, &missing),
+            Err(IdentityError::Missing)
+        ));
         store.store(&missing, &SecretValue::new(b"TOP-SECRET".to_vec()))?;
         let error = Ed25519Identity::load(&store, &missing).err();
-        assert_eq!(error, Some(IdentityError::InvalidSecret));
+        assert!(matches!(&error, Some(IdentityError::InvalidSecret)));
         assert!(!format!("{error:?}").contains("TOP-SECRET"));
         Ok(())
     }

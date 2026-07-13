@@ -53,7 +53,9 @@ Adapters will be added by capability, not bundled into the domain crate:
 Implemented Milestone 1 adapters are split into `guardian-local-repository`,
 `guardian-signing`, and `guardian-os-keyring`. The signing crate depends only on
 the core secret-store port; platform credential APIs remain isolated from domain
-and repository code.
+and repository code. Its application service serializes enrollment with a
+cross-process lock and uses a durable intent to reconcile a keyring write that
+completed before its public credential reference was committed.
 
 ### Desktop
 
@@ -120,6 +122,11 @@ retention and verification policies
 Config updates use atomic write-and-rename and a schema version. Unknown future
 fields are preserved where safe. Absolute local paths stay in ignored runtime
 configuration, not committed fixtures.
+
+Signing identity metadata is stricter than general profile configuration:
+unknown fields fail closed. `signing.json` stores only a credential reference,
+algorithm, and public key ID; an interrupted `signing-enrollment.json` is a
+recovery journal, never private key material.
 
 ## Concurrency and cancellation
 

@@ -35,9 +35,11 @@ Windows Credential Manager and Linux Secret Service integration, a byte-exact
 format-v1 golden fixture, quarantine, abandoned-staging recovery, and atomic
 directory seal. Whole-directory retention now re-verifies every sealed backup,
 creates deterministic snapshot-bound dry runs, requires exact approval, and
-records append-only audit evidence. Enrollment locking/orchestration, full
-schemas, archive hostility tests, power-loss recovery automation, and the
-restore-drill gate remain open.
+records append-only audit evidence. Full schemas, archive hostility tests,
+retention power-loss reconciliation, and the restore-drill gate remain open.
+Signing identity enrollment now uses a
+cross-process lock, an atomic public configuration, and a non-secret recovery
+intent, but its desktop/CLI entrypoints and explicit rotation remain open.
 
 ## Milestone 2 — secure SSH capture (P0)
 

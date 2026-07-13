@@ -21,7 +21,8 @@ mandatory cloud service.
 > **Project status:** Milestone 1 / local repository foundation. The first
 > fail-closed staging, verification, Ed25519 identity, quarantine, atomic seal,
 > and whole-directory retention slices are implemented and tested with
-> simulated sources. Live backup and
+> simulated sources. Signing enrollment now has a locked, crash-recoverable
+> application service, but no CLI or desktop command yet. Live backup and
 > restore operations remain disabled. Do not use it as a disaster-recovery
 > system until the restore-drill gate in the roadmap is complete.
 

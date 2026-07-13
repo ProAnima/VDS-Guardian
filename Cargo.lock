@@ -1578,8 +1578,11 @@ name = "guardian-signing"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
+ "fs2",
  "guardian-core",
  "rand_core",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 2.0.18",
  "zeroize",
