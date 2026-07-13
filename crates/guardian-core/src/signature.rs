@@ -22,6 +22,31 @@ pub trait ManifestSigner: Send + Sync {
     }
 }
 
+pub trait ManifestVerifier: Send + Sync {
+    fn verify_manifest(
+        &self,
+        algorithm: &str,
+        key_id: &str,
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), SigningError>;
+}
+
+impl<T: ManifestSigner + ?Sized> ManifestVerifier for T {
+    fn verify_manifest(
+        &self,
+        algorithm: &str,
+        key_id: &str,
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), SigningError> {
+        if algorithm != self.algorithm() || key_id != self.key_id() {
+            return Err(SigningError::VerificationFailed);
+        }
+        self.verify(message, signature)
+    }
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SigningError {
     #[error("manifest signing failed")]

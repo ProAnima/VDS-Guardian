@@ -1,7 +1,8 @@
 use crate::RepositoryError;
 use crate::filesystem::{atomic_write, create_safe_parent, sync_parent, write_new};
 use crate::repository::{LocalRepository, RepositoryLock};
-use crate::verification::{hex, sha256_bytes, verify_payloads};
+use crate::signature_file::DiskSignature;
+use crate::verification::{sha256_bytes, verify_staged_payloads};
 use guardian_core::{
     BackupId, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId, Timestamp,
     VerificationState,
@@ -70,7 +71,7 @@ impl StagingBackup<'_> {
         if signer.algorithm() != SIGNATURE_ALGORITHM {
             return Err(RepositoryError::UnsupportedSigner);
         }
-        verify_payloads(&self.path, manifest)?;
+        verify_staged_payloads(&self.path, manifest)?;
         manifest.prepare_for_seal(sealed_at, signer.algorithm(), signer.key_id())?;
         let canonical = manifest.canonical_bytes()?;
         let signature = signer.sign(&canonical)?;
@@ -85,16 +86,12 @@ impl StagingBackup<'_> {
         canonical: &[u8],
         signature: &[u8],
     ) -> Result<(), RepositoryError> {
-        let envelope = DiskSignature {
-            algorithm: SIGNATURE_ALGORITHM,
-            key_id: manifest
-                .signature
-                .as_ref()
-                .ok_or(RepositoryError::IntegrityFailure)?
-                .key_id
-                .as_str(),
-            signature: hex(signature),
-        };
+        let key_id = &manifest
+            .signature
+            .as_ref()
+            .ok_or(RepositoryError::IntegrityFailure)?
+            .key_id;
+        let envelope = DiskSignature::new(SIGNATURE_ALGORITHM, key_id, signature);
         let report = VerificationReport {
             state: VerificationState::Verified,
             payload_count: manifest.payloads.len(),
@@ -129,14 +126,6 @@ impl StagingBackup<'_> {
 pub struct SealedBackup {
     pub backup_id: BackupId,
     pub path: PathBuf,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DiskSignature<'a> {
-    algorithm: &'a str,
-    key_id: &'a str,
-    signature: String,
 }
 
 #[derive(Serialize)]

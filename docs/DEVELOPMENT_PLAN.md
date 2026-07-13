@@ -33,8 +33,11 @@ transition tests, a separate local repository adapter, cross-process locking,
 safe payload paths, streaming SHA-256 verification, Ed25519 signing identities,
 Windows Credential Manager and Linux Secret Service integration, a byte-exact
 format-v1 golden fixture, quarantine, abandoned-staging recovery, and atomic
-directory seal. Enrollment locking/orchestration, full schemas, retention,
-archive hostility tests, and the restore-drill gate remain open.
+directory seal. Whole-directory retention now re-verifies every sealed backup,
+creates deterministic snapshot-bound dry runs, requires exact approval, and
+records append-only audit evidence. Enrollment locking/orchestration, full
+schemas, archive hostility tests, power-loss recovery automation, and the
+restore-drill gate remain open.
 
 ## Milestone 2 — secure SSH capture (P0)
 

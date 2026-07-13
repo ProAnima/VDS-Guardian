@@ -68,8 +68,11 @@ and same-filesystem atomic rename. Ed25519 seeds are zeroized in memory and can
 be persisted as binary secrets in Windows Credential Manager or Linux Secret
 Service under a random credential ID. Golden fixtures pin canonical manifest
 bytes. Enrollment still requires caller-held node locking and is not wired to a
-live command. Read-only hardening, retention, archive limits, key rotation, and
-clean-room restore drills remain mandatory before production use.
+live command. Retention now verifies canonical manifest bytes, Ed25519
+signatures, and the exact payload tree before planning or executing a
+snapshot-bound whole-directory deletion. Read-only hardening, automatic
+power-loss reconciliation, archive limits, key rotation, and clean-room restore
+drills remain mandatory before production use.
 
 ### Hostile backup content
 

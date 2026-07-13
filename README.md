@@ -19,8 +19,9 @@ cryptographically verified manifests, and dry-run-first restoration without a
 mandatory cloud service.
 
 > **Project status:** Milestone 1 / local repository foundation. The first
-> fail-closed staging, verification, signing-port, quarantine, and atomic-seal
-> slice is implemented and tested with simulated sources. Live backup and
+> fail-closed staging, verification, Ed25519 identity, quarantine, atomic seal,
+> and whole-directory retention slices are implemented and tested with
+> simulated sources. Live backup and
 > restore operations remain disabled. Do not use it as a disaster-recovery
 > system until the restore-drill gate in the roadmap is complete.
 
@@ -107,6 +108,8 @@ Storage isolation limits propagation and operator mistakes; it is not a malware
 scanner and cannot make a backup trustworthy by itself. See
 [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) for the full threat model and
 [`docs/SIGNING_IDENTITY.md`](docs/SIGNING_IDENTITY.md) for the node-key contract.
+Retention safety and interrupted-cleanup behavior are specified in
+[`docs/RETENTION.md`](docs/RETENTION.md).
 
 ## Roadmap
 

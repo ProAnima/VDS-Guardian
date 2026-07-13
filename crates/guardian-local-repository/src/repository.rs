@@ -128,7 +128,7 @@ impl LocalRepository {
         atomic_write(&path, &bytes)
     }
 
-    fn acquire_lock(&self) -> Result<RepositoryLock, RepositoryError> {
+    pub(crate) fn acquire_lock(&self) -> Result<RepositoryLock, RepositoryError> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -170,8 +170,16 @@ impl LocalRepository {
         self.root.join("backups")
     }
 
-    fn quarantine_root(&self) -> PathBuf {
+    pub(crate) fn id(&self) -> &RepositoryId {
+        &self.id
+    }
+
+    pub(crate) fn quarantine_root(&self) -> PathBuf {
         self.root.join("quarantine")
+    }
+
+    pub(crate) fn audit_root(&self) -> PathBuf {
+        self.root.join("audit")
     }
 }
 

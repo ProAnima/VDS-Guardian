@@ -13,12 +13,24 @@ pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
-pub(crate) fn verify_payloads(
+pub(crate) fn verify_staged_payloads(
     payload_root: &Path,
     manifest: &Manifest,
 ) -> Result<(), RepositoryError> {
-    ensure_directory(payload_root)?;
     manifest.validate_for_verification()?;
+    verify_payload_tree(payload_root, manifest)
+}
+
+pub(crate) fn verify_sealed_payloads(
+    payload_root: &Path,
+    manifest: &Manifest,
+) -> Result<(), RepositoryError> {
+    manifest.validate_sealed()?;
+    verify_payload_tree(payload_root, manifest)
+}
+
+fn verify_payload_tree(payload_root: &Path, manifest: &Manifest) -> Result<(), RepositoryError> {
+    ensure_directory(payload_root)?;
     let actual = collect_payload_files(payload_root)?;
     let expected = manifest
         .payloads

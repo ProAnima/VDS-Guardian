@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_core::{
     BackupId, Manifest, ManifestSigner, PlanId, PlanReference, Producer, ProfileId, RepositoryId,
@@ -146,7 +148,7 @@ impl TestRoot {
         Ok(Self { path })
     }
 
-    fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 }

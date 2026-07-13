@@ -4,8 +4,8 @@ Status: Milestone 1 draft. The local repository slice implements the directory
 boundary, validated payload paths, SHA-256 verification, Ed25519 signature
 metadata, quarantine, atomic seal, and a byte-exact format-v1 golden fixture.
 The fixture now prevents silent serialization drift. Full plan/item schemas,
-key rotation fixtures, retention, and restore compatibility evidence are still
-required before this contract is declared stable.
+key rotation fixtures, archive hostility tests, and restore compatibility
+evidence are still required before this contract is declared stable.
 
 ## Directory layout
 
@@ -26,7 +26,10 @@ repository/
         capture.json
         verification.json
   quarantine/
+    retention-<plan-id>/
   audit/
+    retention-<plan-id>-approved.json
+    retention-<plan-id>-completed.json
 ```
 
 Every backup directory is self-describing and independent. No payload depends on
@@ -66,3 +69,6 @@ A backup is restorable only when:
 
 Any ambiguity fails closed. Warning-only backups need an explicit plan policy
 and are visibly distinct from fully consistent backups.
+
+Retention never edits a sealed directory. See `RETENTION.md` for the verified
+inventory, snapshot approval, and whole-directory deletion contract.

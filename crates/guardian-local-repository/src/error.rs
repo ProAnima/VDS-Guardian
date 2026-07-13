@@ -18,6 +18,18 @@ pub enum RepositoryError {
     UnsupportedSigner,
     #[error("staged payload verification failed")]
     IntegrityFailure,
+    #[error("retention confirmation does not match the generated plan")]
+    ConfirmationMismatch,
+    #[error("retention plan belongs to another repository")]
+    RepositoryMismatch,
+    #[error("repository contents changed after the retention plan was created")]
+    SnapshotChanged,
+    #[error("retention audit record already exists")]
+    AuditConflict,
+    #[error("retention move failed and automatic rollback was incomplete")]
+    RecoveryRequired,
+    #[error("backups were quarantined but retention cleanup is still pending")]
+    CleanupPending,
     #[error("filesystem boundary rejected a symlink or non-directory")]
     UnsafeFilesystemEntry,
     #[error("manifest contract rejected the backup")]

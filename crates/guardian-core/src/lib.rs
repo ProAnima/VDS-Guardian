@@ -2,6 +2,7 @@
 
 mod identifiers;
 mod manifest;
+mod retention;
 mod secret;
 mod signature;
 mod state;
@@ -15,7 +16,8 @@ pub use manifest::{
     ConsistencyLevel, Manifest, ManifestError, PayloadEntry, PlanReference, Producer,
     SignatureMetadata, SourceIdentity, VerificationState,
 };
+pub use retention::{RetentionPolicy, RetentionPolicyError};
 pub use secret::{SecretStore, SecretStoreError, SecretValue};
-pub use signature::{ManifestSigner, SignatureEnvelope, SigningError};
+pub use signature::{ManifestSigner, ManifestVerifier, SignatureEnvelope, SigningError};
 pub use state::BackupState;
 pub use status::FoundationStatus;
