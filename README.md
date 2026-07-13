@@ -1,10 +1,22 @@
-# VDS Guardian
+<p align="center">
+  <img src="docs/assets/readme-header.svg" alt="VDS Guardian — isolated backups and verified recovery" width="100%" />
+</p>
 
-VDS Guardian is a planned open-source desktop and headless application for
-creating isolated backups of remote Linux servers and restoring them quickly.
-It is designed for operators who manage Docker-based VDS deployments from
-Windows or Linux and want multiple independent backup nodes without a central
-cloud dependency.
+<p align="center">
+  <a href="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml"><img src="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-70ddb7.svg" alt="Apache-2.0 license" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-102a25.svg" alt="Windows and Linux" />
+  <img src="https://img.shields.io/badge/status-Iteration%200-e2b35d.svg" alt="Iteration 0" />
+</p>
+
+VDS Guardian is an open-source desktop and headless disaster-recovery manager
+for remote Linux servers. It is built for operators who need isolated,
+independently stored recovery points and a predictable path from a failed or
+compromised VDS to a clean, working deployment.
+
+The project focuses on Docker-based workloads, database-consistent capture,
+cryptographically verified manifests, and dry-run-first restoration without a
+mandatory cloud service.
 
 > **Project status:** production foundation / Iteration 0. The repository is
 > buildable, but live backup and restore operations are intentionally not yet

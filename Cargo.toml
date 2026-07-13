@@ -11,7 +11,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["ProAnima Studio"]
-repository = "https://github.com/ProAnima-Studio/vds-guardian"
+repository = "https://github.com/ProAnima/VDS-Guardian"
 
 [workspace.dependencies]
 guardian-core = { path = "crates/guardian-core" }
@@ -28,4 +28,3 @@ expect_used = "deny"
 panic = "deny"
 todo = "deny"
 unimplemented = "deny"
-
