@@ -1,9 +1,10 @@
 use crate::RepositoryError;
 use crate::filesystem::{atomic_write, ensure_directory, sync_parent, write_new};
+use crate::inventory::load_verified_manifest;
 use crate::process_lock::ProcessLock;
 use crate::staging::StagingBackup;
 use fs2::FileExt;
-use guardian_core::{BackupId, RepositoryId, RunId};
+use guardian_core::{BackupId, ManifestVerifier, RepositoryId, RestorePlan, RunId};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -206,6 +207,22 @@ impl LocalRepository {
         let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
         write_new(&path, &bytes)?;
         sync_parent(&path)
+    }
+
+    pub fn plan_restore(
+        &self,
+        backup_id: &BackupId,
+        destination: impl AsRef<Path>,
+        verifier: &dyn ManifestVerifier,
+    ) -> Result<RestorePlan, RepositoryError> {
+        let destination = destination.as_ref();
+        if destination.exists() {
+            return Err(RepositoryError::RestoreDestinationExists);
+        }
+        let _lock = self.acquire_lock()?;
+        let manifest =
+            load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)?;
+        RestorePlan::build(&manifest, destination).map_err(RepositoryError::RestorePlan)
     }
 }
 

@@ -1,4 +1,4 @@
-use guardian_core::{ManifestError, SigningError};
+use guardian_core::{ManifestError, RestorePlanError, SigningError};
 use std::io;
 use thiserror::Error;
 
@@ -34,8 +34,12 @@ pub enum RepositoryError {
     CleanupPending,
     #[error("filesystem boundary rejected a symlink or non-directory")]
     UnsafeFilesystemEntry,
+    #[error("restore destination already exists")]
+    RestoreDestinationExists,
     #[error("manifest contract rejected the backup")]
     Manifest(#[from] ManifestError),
+    #[error("restore plan could not be created")]
+    RestorePlan(#[source] RestorePlanError),
     #[error("manifest signing or verification failed")]
     Signing(#[from] SigningError),
     #[error("repository I/O failed during {operation}")]

@@ -142,7 +142,9 @@ proves rollback for every supported stack type.
 
 Foundation implemented: a core restore planner accepts only a sealed manifest,
 an absolute target path, and supported filesystem payloads. It generates an
-exact confirmation phrase but performs no extraction or target mutation.
+exact confirmation phrase but performs no extraction or target mutation. The
+local repository adapter creates it only after re-verifying the sealed backup's
+signature and payload checksums, and rejects an existing target path.
 
 ## Milestone 5 — desktop product and scheduling (P1)
 

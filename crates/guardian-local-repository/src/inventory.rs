@@ -37,7 +37,20 @@ fn inspect_backup(
     path: PathBuf,
     verifier: &dyn ManifestVerifier,
 ) -> Result<TrustedBackup, RepositoryError> {
-    ensure_directory(&path)?;
+    let manifest = load_verified_manifest(&path, verifier)?;
+    Ok(TrustedBackup {
+        backup_id: manifest.backup_id,
+        sealed_at: manifest
+            .sealed_at
+            .ok_or(RepositoryError::IntegrityFailure)?,
+    })
+}
+
+pub(crate) fn load_verified_manifest(
+    path: &Path,
+    verifier: &dyn ManifestVerifier,
+) -> Result<Manifest, RepositoryError> {
+    ensure_directory(path)?;
     let directory_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -51,14 +64,9 @@ fn inspect_backup(
     if manifest.backup_id != directory_id || manifest.canonical_bytes()? != canonical {
         return Err(RepositoryError::IntegrityFailure);
     }
-    verify_signature(&path, &manifest, &canonical, verifier)?;
-    verify_sealed_payloads(&path, &manifest)?;
-    Ok(TrustedBackup {
-        backup_id: manifest.backup_id,
-        sealed_at: manifest
-            .sealed_at
-            .ok_or(RepositoryError::IntegrityFailure)?,
-    })
+    verify_signature(path, &manifest, &canonical, verifier)?;
+    verify_sealed_payloads(path, &manifest)?;
+    Ok(manifest)
 }
 
 fn verify_signature(

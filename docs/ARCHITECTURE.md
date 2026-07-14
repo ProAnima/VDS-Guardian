@@ -124,6 +124,10 @@ absolute target path. It produces an exact confirmation phrase and lists only
 supported filesystem payloads. It does not extract data or mutate a target;
 those actions remain separate, approval-gated steps.
 
+The local-repository adapter reloads and verifies the manifest signature and
+every payload checksum immediately before it produces this plan. It rejects an
+already existing target path, so a plan cannot be used to merge into live data.
+
 ## Configuration model
 
 Configuration contains public profile data and secret references only:
