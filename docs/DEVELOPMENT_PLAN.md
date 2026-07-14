@@ -72,6 +72,13 @@ OpenSSH cannot launch or returns failure. It is not connected to credentials,
 profiles, staging, archive inspection, or an SSH integration fixture; those
 items remain required for this milestone's exit gate.
 
+`guardian-capture` now connects any filesystem capture transport, including the
+pinned OpenSSH transport, to an exclusive staging payload path. It inspects the
+completed tar.zst stream before computing the disk-based digest and returning a
+manifest-ready payload entry; invalid output is removed from staging. Manifest
+assembly, signing, seal orchestration, and disposable-host integration tests
+remain open.
+
 ## Milestone 3 — Docker and database consistency (P0)
 
 - Docker/Compose inventory: files, project labels, image digests, networks,

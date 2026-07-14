@@ -1557,6 +1557,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "guardian-capture"
+version = "0.1.0"
+dependencies = [
+ "guardian-archive",
+ "guardian-core",
+ "guardian-local-repository",
+ "guardian-ssh",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "guardian-cli"
 version = "0.1.0"
 dependencies = [

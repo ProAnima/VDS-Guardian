@@ -4,6 +4,7 @@ members = [
   "apps/desktop/src-tauri",
   "crates/guardian-cli",
   "crates/guardian-archive",
+  "crates/guardian-capture",
   "crates/guardian-core",
   "crates/guardian-local-repository",
   "crates/guardian-os-keyring",
@@ -20,6 +21,9 @@ repository = "https://github.com/ProAnima/VDS-Guardian"
 
 [workspace.dependencies]
 guardian-core = { path = "crates/guardian-core" }
+guardian-archive = { path = "crates/guardian-archive" }
+guardian-local-repository = { path = "crates/guardian-local-repository" }
+guardian-ssh = { path = "crates/guardian-ssh" }
 base64 = "0.22"
 tar = "0.4"
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }
