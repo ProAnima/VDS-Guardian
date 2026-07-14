@@ -4,6 +4,7 @@ mod archive;
 mod audit;
 mod capture;
 mod enroll_profile;
+mod host_trust;
 mod identifiers;
 mod manifest;
 mod profile;
@@ -22,6 +23,9 @@ pub use capture::{
     FilesystemCaptureRequest, FilesystemCaptureUseCase,
 };
 pub use enroll_profile::{EnrollProfileError, EnrollProfileUseCase};
+pub use host_trust::{
+    HostKeyDiscoveryError, HostKeyDiscoveryPort, HostTrustError, TrustHostKeyUseCase,
+};
 pub use identifiers::{
     ArchivePath, BackupId, CredentialId, IdentifierError, PayloadPath, PlanId, ProfileId,
     RepositoryId, RunId, Timestamp,
