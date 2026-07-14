@@ -6,7 +6,7 @@ use std::fs;
 fn profiles_round_trip_and_unknown_fields_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let store = ProfileStore::at(root.path());
-    store.upsert(profile())?;
+    store.upsert(profile()?)?;
     assert_eq!(store.list()?.len(), 1);
     fs::write(
         root.path().join("profiles.json"),
