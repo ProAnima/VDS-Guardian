@@ -140,6 +140,9 @@ recovery journal, never private key material.
   same time.
 - Repository and signing locks combine an in-process path registry with an OS
   file lock because same-process file-lock semantics differ across platforms.
+- Retention writes a durable non-secret intent outside its temporary quarantine
+  directory. Opening a repository reconciles interrupted moves by rollback or
+  resumes a durably marked cleanup; contradictory state fails closed.
 - Jobs have cooperative cancellation; process trees and remote commands receive
   bounded shutdown before forced termination.
 - Every external call has connect, idle, and total timeouts.

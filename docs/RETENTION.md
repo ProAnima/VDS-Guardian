@@ -38,10 +38,15 @@ Each selected sealed directory is then atomically moved, without opening it for
 write, into `quarantine/retention-<plan-id>/`. A move failure rolls back prior
 moves in reverse order. Survivors are never rewritten.
 
-After every selected directory has moved, the quarantine directory is removed
-as one cleanup unit and a create-only `completed` record is written. If cleanup
-is denied, the API returns `CleanupPending`: the selected backups are no longer
-in the active inventory, but their isolated quarantine bytes may still consume
-space. Operators must inspect the matching approved audit record before manual
-cleanup. Automated power-loss reconciliation remains an explicit Milestone 1
-gap and prevents a production-ready claim.
+The repository also writes a create-only non-secret intent beside the quarantine
+directory. Before cleanup, it creates a separate `cleanup-ready` marker. On
+repository open, an intent without that marker rolls moved backups back into the
+active inventory; an intent with the marker resumes deletion of only the
+approved backup IDs, then writes the create-only `completed` audit record.
+Malformed, orphaned, duplicate, symlinked, or contradictory transaction state
+fails closed with `RecoveryRequired`.
+
+If cleanup is denied, the API returns `CleanupPending`: the selected backups
+are no longer in the active inventory, but their isolated quarantine bytes may
+still consume space. The next repository open resumes this same approved cleanup
+idempotently; no new retention plan or confirmation is inferred.

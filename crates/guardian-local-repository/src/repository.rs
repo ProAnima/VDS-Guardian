@@ -25,6 +25,7 @@ impl LocalRepository {
         repository.ensure_layout()?;
         let _lock = repository.acquire_lock()?;
         repository.ensure_metadata()?;
+        repository.reconcile_retention_locked()?;
         Ok(repository)
     }
 

@@ -69,12 +69,16 @@ be persisted as binary secrets in Windows Credential Manager or Linux Secret
 Service under a random credential ID. Golden fixtures pin canonical manifest
 bytes. Enrollment orchestration now holds a cross-process configuration lock,
 commits a credential reference atomically, and recovers the same key from a
-durable non-secret intent after interruption. It is not wired to a live command.
+durable non-secret intent after interruption. It is exposed through explicit
+CLI and desktop commands, never implicitly.
 Retention verifies canonical manifest bytes, Ed25519
 signatures, and the exact payload tree before planning or executing a
-snapshot-bound whole-directory deletion. Read-only hardening, automatic
-power-loss reconciliation, archive limits, key rotation, and clean-room restore
-drills remain mandatory before production use.
+snapshot-bound whole-directory deletion. Retention deletion now writes a
+durable non-secret intent outside its temporary quarantine directory. On the
+next repository open, a move-phase interruption is rolled back; a durable
+cleanup-ready phase is resumed idempotently. Orphaned or malformed retention
+state fails closed. Read-only hardening, archive limits, key rotation, and
+clean-room restore drills remain mandatory before production use.
 
 Signing configuration tampering cannot silently select a replacement identity:
 the configured public key ID must match the key loaded through its credential

@@ -1,5 +1,6 @@
 use crate::filesystem::{ensure_directory, sync_parent, write_new};
 use crate::inventory::{TrustedBackup, trusted_inventory};
+use crate::retention_journal::RetentionTransaction;
 use crate::{LocalRepository, RepositoryError};
 use guardian_core::{BackupId, ManifestVerifier, PlanId, RepositoryId, RetentionPolicy, Timestamp};
 use serde::Serialize;
@@ -26,6 +27,10 @@ impl RetentionPlan {
     #[must_use]
     pub fn delete_backup_ids(&self) -> &[BackupId] {
         &self.delete_backup_ids
+    }
+
+    pub(crate) fn repository_id(&self) -> &RepositoryId {
+        &self.repository_id
     }
 
     #[must_use]
@@ -97,16 +102,14 @@ impl LocalRepository {
 
     fn execute_moves(&self, plan: &RetentionPlan) -> Result<(), RepositoryError> {
         write_audit(self.audit_root(), plan, "approved")?;
-        let trash = self
-            .quarantine_root()
-            .join(format!("retention-{}", plan.plan_id));
-        fs::create_dir(&trash).map_err(map_retention_directory_error)?;
+        let transaction = RetentionTransaction::begin(self, plan)?;
         let mut moved = Vec::new();
         for backup_id in &plan.delete_backup_ids {
             let source = self.backups_root().join(backup_id.as_str());
-            let destination = trash.join(backup_id.as_str());
+            let destination = transaction.trash().join(backup_id.as_str());
             if let Err(source_error) = fs::rename(&source, &destination) {
                 rollback_moves(&moved)?;
+                transaction.abort()?;
                 return Err(RepositoryError::io(
                     "move backup to retention quarantine",
                     source_error,
@@ -115,13 +118,14 @@ impl LocalRepository {
             moved.push((source, destination));
             if let Err(sync_error) = sync_move(&moved) {
                 rollback_moves(&moved)?;
+                transaction.abort()?;
                 return Err(sync_error);
             }
         }
-        if fs::remove_dir_all(&trash).is_err() {
-            return Err(RepositoryError::CleanupPending);
-        }
-        write_audit(self.audit_root(), plan, "completed")
+        transaction.mark_cleanup_ready()?;
+        transaction.cleanup(self)?;
+        write_audit(self.audit_root(), plan, "completed")?;
+        transaction.finish()
     }
 }
 
@@ -190,13 +194,29 @@ struct AuditRecord<'a> {
 }
 
 fn write_audit(root: PathBuf, plan: &RetentionPlan, state: &str) -> Result<(), RepositoryError> {
+    write_retention_audit(
+        root,
+        &plan.plan_id,
+        &plan.repository_id,
+        &plan.delete_backup_ids,
+        state,
+    )
+}
+
+pub(crate) fn write_retention_audit(
+    root: PathBuf,
+    plan_id: &PlanId,
+    repository_id: &RepositoryId,
+    delete_backup_ids: &[BackupId],
+    state: &str,
+) -> Result<(), RepositoryError> {
     ensure_directory(&root)?;
-    let path = root.join(format!("retention-{}-{state}.json", plan.plan_id));
+    let path = root.join(format!("retention-{plan_id}-{state}.json"));
     let record = AuditRecord {
         state,
-        plan_id: &plan.plan_id,
-        repository_id: &plan.repository_id,
-        delete_backup_ids: &plan.delete_backup_ids,
+        plan_id,
+        repository_id,
+        delete_backup_ids,
     };
     let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
     match write_new(&path, &bytes) {
@@ -209,14 +229,6 @@ fn write_audit(root: PathBuf, plan: &RetentionPlan, state: &str) -> Result<(), R
             result?;
             sync_parent(&path)
         }
-    }
-}
-
-fn map_retention_directory_error(source: std::io::Error) -> RepositoryError {
-    if source.kind() == std::io::ErrorKind::AlreadyExists {
-        RepositoryError::AuditConflict
-    } else {
-        RepositoryError::io("create retention quarantine", source)
     }
 }
 

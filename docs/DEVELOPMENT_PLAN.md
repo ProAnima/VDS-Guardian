@@ -36,7 +36,9 @@ format-v1 golden fixture, quarantine, abandoned-staging recovery, and atomic
 directory seal. Whole-directory retention now re-verifies every sealed backup,
 creates deterministic snapshot-bound dry runs, requires exact approval, and
 records append-only audit evidence. Full schemas, archive hostility tests,
-retention power-loss reconciliation, and the restore-drill gate remain open.
+and the restore-drill gate remain open. Retention now records a durable,
+non-secret transaction intent: reopening rolls back a partially moved deletion
+set, or resumes only a cleanup phase that was durably approved.
 Signing identity enrollment now uses a
 cross-process lock, an atomic public configuration, and a non-secret recovery
 intent. Read-only status and explicit enrollment are available through JSON CLI
