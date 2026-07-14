@@ -1614,6 +1614,7 @@ dependencies = [
 name = "guardian-profile-store"
 version = "0.1.0"
 dependencies = [
+ "fs2",
  "guardian-core",
  "serde",
  "serde_json",

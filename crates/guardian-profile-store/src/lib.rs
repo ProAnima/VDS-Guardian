@@ -1,8 +1,10 @@
+use fs2::FileExt;
 use guardian_core::{ProfileId, VdsProfile};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, File, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
 };
 use thiserror::Error;
@@ -22,6 +24,7 @@ impl ProfileStore {
     }
 
     pub fn list(&self) -> Result<Vec<VdsProfile>, ProfileStoreError> {
+        let _lock = self.lock()?;
         Ok(self.read()?.profiles.into_values().collect())
     }
 
@@ -29,6 +32,7 @@ impl ProfileStore {
         profile
             .validate()
             .map_err(|_| ProfileStoreError::InvalidProfile)?;
+        let _lock = self.lock()?;
         let mut document = self.read()?;
         document
             .profiles
@@ -37,8 +41,15 @@ impl ProfileStore {
     }
 
     fn read(&self) -> Result<Document, ProfileStoreError> {
-        if !self.path.exists() {
-            return Ok(Document::empty());
+        let metadata = match fs::symlink_metadata(&self.path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Document::empty());
+            }
+            Err(_) => return Err(ProfileStoreError::Io),
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(ProfileStoreError::UnsafeFilesystemEntry);
         }
         let bytes = fs::read(&self.path).map_err(|_| ProfileStoreError::Io)?;
         let document: Document =
@@ -60,11 +71,57 @@ impl ProfileStore {
     fn write(&self, document: &Document) -> Result<(), ProfileStoreError> {
         let parent = self.path.parent().ok_or(ProfileStoreError::Io)?;
         fs::create_dir_all(parent).map_err(|_| ProfileStoreError::Io)?;
+        let parent_metadata = fs::symlink_metadata(parent).map_err(|_| ProfileStoreError::Io)?;
+        if !parent_metadata.is_dir() || parent_metadata.file_type().is_symlink() {
+            return Err(ProfileStoreError::UnsafeFilesystemEntry);
+        }
         let temporary = self.path.with_extension("json.tmp");
+        remove_regular(&temporary)?;
         let bytes = serde_json::to_vec(document).map_err(|_| ProfileStoreError::InvalidDocument)?;
-        fs::write(&temporary, bytes).map_err(|_| ProfileStoreError::Io)?;
-        fs::rename(temporary, &self.path).map_err(|_| ProfileStoreError::Io)
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|_| ProfileStoreError::Io)?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| ProfileStoreError::Io)?;
+        fs::rename(&temporary, &self.path).map_err(|_| ProfileStoreError::Io)?;
+        sync_parent(&self.path)
     }
+
+    fn lock(&self) -> Result<File, ProfileStoreError> {
+        let parent = self.path.parent().ok_or(ProfileStoreError::Io)?;
+        fs::create_dir_all(parent).map_err(|_| ProfileStoreError::Io)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(parent.join("profiles.lock"))
+            .map_err(|_| ProfileStoreError::Io)?;
+        file.lock_exclusive().map_err(|_| ProfileStoreError::Busy)?;
+        Ok(file)
+    }
+}
+
+fn remove_regular(path: &Path) -> Result<(), ProfileStoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+            fs::remove_file(path).map_err(|_| ProfileStoreError::Io)
+        }
+        Ok(_) => Err(ProfileStoreError::UnsafeFilesystemEntry),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(ProfileStoreError::Io),
+    }
+}
+
+fn sync_parent(_path: &Path) -> Result<(), ProfileStoreError> {
+    #[cfg(unix)]
+    File::open(_path.parent().ok_or(ProfileStoreError::Io)?)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| ProfileStoreError::Io)?;
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -92,4 +149,8 @@ pub enum ProfileStoreError {
     IncompatibleVersion,
     #[error("profile storage I/O failed")]
     Io,
+    #[error("profile storage is busy")]
+    Busy,
+    #[error("profile storage rejected an unsafe filesystem entry")]
+    UnsafeFilesystemEntry,
 }
