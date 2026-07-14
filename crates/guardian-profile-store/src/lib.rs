@@ -1,5 +1,5 @@
 use fs2::FileExt;
-use guardian_core::{ProfileId, VdsProfile};
+use guardian_core::{ProfileId, ProfileStorePort, ProfileStorePortError, VdsProfile};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -102,6 +102,29 @@ impl ProfileStore {
             .map_err(|_| ProfileStoreError::Io)?;
         file.lock_exclusive().map_err(|_| ProfileStoreError::Busy)?;
         Ok(file)
+    }
+}
+
+impl ProfileStorePort for ProfileStore {
+    fn save(&self, profile: VdsProfile) -> Result<(), ProfileStorePortError> {
+        self.upsert(profile).map_err(map_port_error)
+    }
+
+    fn get(&self, profile_id: &ProfileId) -> Result<Option<VdsProfile>, ProfileStorePortError> {
+        Ok(self
+            .list()
+            .map_err(map_port_error)?
+            .into_iter()
+            .find(|profile| profile.profile_id == *profile_id))
+    }
+}
+
+fn map_port_error(error: ProfileStoreError) -> ProfileStorePortError {
+    match error {
+        ProfileStoreError::InvalidProfile
+        | ProfileStoreError::InvalidDocument
+        | ProfileStoreError::UnsafeFilesystemEntry => ProfileStorePortError::Rejected,
+        _ => ProfileStorePortError::Unavailable,
     }
 }
 
