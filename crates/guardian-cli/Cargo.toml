@@ -9,8 +9,10 @@ repository.workspace = true
 
 [dependencies]
 guardian-core.workspace = true
+guardian-os-keyring = { path = "../guardian-os-keyring" }
+guardian-signing = { path = "../guardian-signing" }
+serde.workspace = true
 serde_json.workspace = true
 
 [lints]
 workspace = true
-

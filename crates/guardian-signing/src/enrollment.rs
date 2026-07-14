@@ -1,10 +1,15 @@
-use crate::filesystem::{atomic_write, ensure_directory, read_optional, remove_regular};
+use crate::filesystem::{
+    acquire_lock, atomic_write, ensure_directory, read_optional, remove_regular,
+};
+use crate::public::{
+    EnrollmentDisposition, SigningIdentityDescriptor, SigningIdentityEnrollment,
+    SigningIdentityState, SigningIdentityStatus,
+};
 use crate::{Ed25519Identity, IdentityError};
-use fs2::FileExt;
 use guardian_core::{CredentialId, ManifestSigner, SecretStore, SigningError};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const CONFIG_VERSION: u32 = 1;
@@ -30,7 +35,7 @@ impl SigningIdentityManager {
         &self,
         store: &dyn SecretStore,
     ) -> Result<ManagedIdentity, IdentityError> {
-        let _lock = self.acquire_lock()?;
+        let _lock = acquire_lock(&self.root)?;
         if let Some(config) = read_optional::<SigningConfig>(&self.config_path())? {
             return self.load_committed(store, config);
         }
@@ -39,6 +44,18 @@ impl SigningIdentityManager {
             None => self.create_intent()?,
         };
         self.finish_enrollment(store, intent)
+    }
+
+    pub fn status(&self, store: &dyn SecretStore) -> Result<SigningIdentityStatus, IdentityError> {
+        let _lock = acquire_lock(&self.root)?;
+        if let Some(config) = read_optional::<SigningConfig>(&self.config_path())? {
+            let managed = self.load_committed_read_only(store, config)?;
+            return Ok(SigningIdentityStatus {
+                state: SigningIdentityState::Ready,
+                identity: Some(managed.descriptor()),
+            });
+        }
+        self.pending_status(store)
     }
 
     fn load_committed(
@@ -57,6 +74,47 @@ impl SigningIdentityManager {
             disposition: EnrollmentDisposition::Loaded,
             identity,
         })
+    }
+
+    fn load_committed_read_only(
+        &self,
+        store: &dyn SecretStore,
+        config: SigningConfig,
+    ) -> Result<ManagedIdentity, IdentityError> {
+        let config = config.validate()?;
+        let identity = Ed25519Identity::load(store, &config.credential_id)?;
+        if identity.key_id() != config.key_id {
+            return Err(IdentityError::ConfigurationMismatch);
+        }
+        Ok(ManagedIdentity {
+            credential_id: config.credential_id,
+            disposition: EnrollmentDisposition::Loaded,
+            identity,
+        })
+    }
+
+    fn pending_status(
+        &self,
+        store: &dyn SecretStore,
+    ) -> Result<SigningIdentityStatus, IdentityError> {
+        let Some(intent) = read_optional::<EnrollmentIntent>(&self.intent_path())? else {
+            return Ok(SigningIdentityStatus {
+                state: SigningIdentityState::NotEnrolled,
+                identity: None,
+            });
+        };
+        let intent = intent.validate()?;
+        match Ed25519Identity::load(store, &intent.credential_id) {
+            Ok(identity) => Ok(SigningIdentityStatus {
+                state: SigningIdentityState::RecoveryPending,
+                identity: Some(descriptor(&intent.credential_id, &identity)),
+            }),
+            Err(IdentityError::Missing) => Ok(SigningIdentityStatus {
+                state: SigningIdentityState::EnrollmentPending,
+                identity: None,
+            }),
+            Err(error) => Err(error),
+        }
     }
 
     fn create_intent(&self) -> Result<EnrollmentIntent, IdentityError> {
@@ -100,23 +158,6 @@ impl SigningIdentityManager {
         })
     }
 
-    fn acquire_lock(&self) -> Result<SigningLock, IdentityError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(self.root.join("signing.lock"))
-            .map_err(|source| IdentityError::io("open signing configuration lock", source))?;
-        match FileExt::try_lock_exclusive(&file) {
-            Ok(()) => Ok(SigningLock { _file: file }),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                Err(IdentityError::Busy)
-            }
-            Err(source) => Err(IdentityError::io("lock signing configuration", source)),
-        }
-    }
-
     fn config_path(&self) -> PathBuf {
         self.root.join("signing.json")
     }
@@ -142,6 +183,19 @@ impl ManagedIdentity {
     pub fn disposition(&self) -> EnrollmentDisposition {
         self.disposition
     }
+
+    #[must_use]
+    pub fn descriptor(&self) -> SigningIdentityDescriptor {
+        descriptor(&self.credential_id, &self.identity)
+    }
+
+    #[must_use]
+    pub fn enrollment(&self) -> SigningIdentityEnrollment {
+        SigningIdentityEnrollment {
+            disposition: self.disposition,
+            identity: self.descriptor(),
+        }
+    }
 }
 
 impl ManifestSigner for ManagedIdentity {
@@ -160,14 +214,6 @@ impl ManifestSigner for ManagedIdentity {
     fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), SigningError> {
         self.identity.verify(message, signature)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EnrollmentDisposition {
-    Enrolled,
-    Recovered,
-    Loaded,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -210,10 +256,6 @@ impl EnrollmentIntent {
     }
 }
 
-struct SigningLock {
-    _file: File,
-}
-
 fn hex(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(bytes.len() * 2);
@@ -222,4 +264,15 @@ fn hex(bytes: &[u8]) -> String {
         output.push(char::from(ALPHABET[usize::from(byte & 0x0f)]));
     }
     output
+}
+
+fn descriptor(
+    credential_id: &CredentialId,
+    identity: &Ed25519Identity,
+) -> SigningIdentityDescriptor {
+    SigningIdentityDescriptor {
+        credential_id: credential_id.clone(),
+        algorithm: identity.algorithm().to_owned(),
+        key_id: identity.key_id().to_owned(),
+    }
 }

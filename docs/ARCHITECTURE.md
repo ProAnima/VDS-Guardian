@@ -62,13 +62,16 @@ completed before its public credential reference was committed.
 React presents profiles, plans, job state, verification, and restore previews.
 It calls typed Tauri commands through one bridge module. Tauri owns window and
 OS integration only; blocking jobs run outside the UI thread and stream bounded
-events.
+events. Signing status and explicit enrollment are the first infrastructure
+commands: their Tauri functions only resolve the app config path and dispatch
+the shared signing service to a blocking worker.
 
 ### CLI/service
 
-The CLI exposes the same use cases for automation. Stable commands will support
-machine-readable JSON and meaningful exit codes. Service installation is an
-explicit command and never occurs simply by launching the desktop app.
+The CLI exposes the same use cases for automation. Signing status/enrollment
+require JSON mode and an explicit absolute configuration path, and return
+meaningful exit codes. Service installation is an explicit command and never
+occurs simply by launching the desktop app.
 
 ## Backup lifecycle
 
@@ -133,6 +136,8 @@ recovery journal, never private key material.
 - One mutating job per server profile.
 - Repository-level locks prevent two processes from sealing or retaining at the
   same time.
+- Repository and signing locks combine an in-process path registry with an OS
+  file lock because same-process file-lock semantics differ across platforms.
 - Jobs have cooperative cancellation; process trees and remote commands receive
   bounded shutdown before forced termination.
 - Every external call has connect, idle, and total timeouts.

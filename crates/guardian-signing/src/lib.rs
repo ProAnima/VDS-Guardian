@@ -2,8 +2,13 @@
 
 mod enrollment;
 mod filesystem;
+mod public;
 
-pub use enrollment::{EnrollmentDisposition, ManagedIdentity, SigningIdentityManager};
+pub use enrollment::{ManagedIdentity, SigningIdentityManager};
+pub use public::{
+    EnrollmentDisposition, SigningIdentityDescriptor, SigningIdentityEnrollment,
+    SigningIdentityErrorCode, SigningIdentityFailure, SigningIdentityState, SigningIdentityStatus,
+};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_core::{

@@ -1,10 +1,65 @@
 use crate::IdentityError;
+use fs2::FileExt;
 use serde::de::DeserializeOwned;
-#[cfg(unix)]
-use std::fs::File;
-use std::fs::{self, OpenOptions};
+use std::collections::HashSet;
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+static HELD_CONFIGURATIONS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+pub(crate) struct ProcessLock {
+    path: PathBuf,
+}
+
+pub(crate) struct ConfigurationLock {
+    _file: File,
+    _process_lock: ProcessLock,
+}
+
+pub(crate) fn acquire_lock(root: &Path) -> Result<ConfigurationLock, IdentityError> {
+    let process_lock = ProcessLock::acquire(root)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(root.join("signing.lock"))
+        .map_err(|source| IdentityError::io("open signing configuration lock", source))?;
+    match FileExt::try_lock_exclusive(&file) {
+        Ok(()) => Ok(ConfigurationLock {
+            _file: file,
+            _process_lock: process_lock,
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Err(IdentityError::Busy),
+        Err(source) => Err(IdentityError::io("lock signing configuration", source)),
+    }
+}
+
+impl ProcessLock {
+    pub fn acquire(path: &Path) -> Result<Self, IdentityError> {
+        let mut held = registry().lock().map_err(|_| IdentityError::Busy)?;
+        if !held.insert(path.to_path_buf()) {
+            return Err(IdentityError::Busy);
+        }
+        Ok(Self {
+            path: path.to_path_buf(),
+        })
+    }
+}
+
+impl Drop for ProcessLock {
+    fn drop(&mut self) {
+        if let Ok(mut held) = registry().lock() {
+            held.remove(&self.path);
+        }
+    }
+}
+
+fn registry() -> &'static Mutex<HashSet<PathBuf>> {
+    HELD_CONFIGURATIONS.get_or_init(|| Mutex::new(HashSet::new()))
+}
 
 pub(crate) fn ensure_directory(path: &Path) -> Result<(), IdentityError> {
     let metadata = fs::symlink_metadata(path)

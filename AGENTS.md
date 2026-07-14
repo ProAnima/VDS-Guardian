@@ -10,9 +10,10 @@ Milestone 1: domain and local repository. Simulated-source repository and
 signing slices implement isolated staging, SHA-256 verification, golden manifest
 fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
 atomic seal, journaled signing enrollment, and verified whole-directory
-retention. Live SSH backup, desktop/CLI enrollment commands, automated
-power-loss reconciliation, and restore are not implemented and must not be
-represented as production-ready.
+retention. Live SSH backup, the desktop enrollment UI, automated power-loss
+reconciliation, and restore are not implemented and must not be represented as
+production-ready. Signing status/enrollment bridge commands now exist, but no
+desktop screen invokes enrollment automatically or implicitly.
 
 ## Source of truth
 

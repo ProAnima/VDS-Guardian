@@ -82,6 +82,13 @@ reference. A missing committed secret, incompatible schema, unsafe metadata
 file, or concurrent enrollment fails closed. The recovery journal contains only
 a random credential ID and format version.
 
+Status inspection cannot initiate enrollment. CLI enrollment requires an exact
+verb, JSON mode, and an absolute configuration path. Tauri performs credential
+work outside the UI thread, and both adapters return bounded error codes and
+remediation text rather than internal paths or operating-system error payloads.
+Process-local lock registries close Windows same-process re-entry while OS file
+locks continue to serialize independent processes.
+
 ### Hostile backup content
 
 - Verification hashes bytes without executing or previewing them.

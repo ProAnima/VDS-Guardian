@@ -1,11 +1,17 @@
+#[cfg(unix)]
 use fs2::FileExt;
 use guardian_core::{CredentialId, ManifestSigner, SecretStore, SecretStoreError, SecretValue};
-use guardian_signing::{EnrollmentDisposition, IdentityError, SigningIdentityManager};
+use guardian_signing::{
+    EnrollmentDisposition, IdentityError, SigningIdentityErrorCode, SigningIdentityFailure,
+    SigningIdentityManager, SigningIdentityState,
+};
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs;
+#[cfg(unix)]
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Barrier, Mutex};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -31,6 +37,30 @@ fn enrollment_commits_only_a_credential_reference() -> TestResult {
     assert_eq!(loaded.disposition(), EnrollmentDisposition::Loaded);
     assert_eq!(loaded.credential_id(), &first_credential);
     assert_eq!(loaded.key_id(), first_key_id);
+    let status = manager.status(&store)?;
+    assert_eq!(status.state, SigningIdentityState::Ready);
+    assert_eq!(status.identity, Some(loaded.descriptor()));
+    Ok(())
+}
+
+#[test]
+fn status_never_starts_enrollment() -> TestResult {
+    let root = TestRoot::new()?;
+    let store = MemoryStore::default();
+    let manager = SigningIdentityManager::open(root.path())?;
+
+    let status = manager.status(&store)?;
+    assert_eq!(status.state, SigningIdentityState::NotEnrolled);
+    assert!(status.identity.is_none());
+    assert!(!root.path().join("signing.json").exists());
+    assert!(!root.path().join("signing-enrollment.json").exists());
+    assert!(
+        store
+            .values
+            .lock()
+            .map_err(|_| "poisoned test store")?
+            .is_empty()
+    );
     Ok(())
 }
 
@@ -93,6 +123,21 @@ fn unknown_configuration_fields_fail_closed() -> TestResult {
 }
 
 #[test]
+fn public_failures_redact_internal_io_payloads() -> TestResult {
+    let internal = IdentityError::Io {
+        operation: "read signing metadata",
+        source: std::io::Error::other("C:/secret/operator/path"),
+    };
+    let public = SigningIdentityFailure::from(internal);
+    let json = serde_json::to_string(&public)?;
+
+    assert_eq!(public.code, SigningIdentityErrorCode::LocalIoFailure);
+    assert!(!json.contains("secret/operator"));
+    assert!(!json.contains("read signing metadata"));
+    Ok(())
+}
+
+#[test]
 fn missing_committed_secret_never_rotates_implicitly() -> TestResult {
     let root = TestRoot::new()?;
     let populated = MemoryStore::default();
@@ -106,8 +151,9 @@ fn missing_committed_secret_never_rotates_implicitly() -> TestResult {
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
-fn cross_process_lock_rejects_concurrent_enrollment() -> TestResult {
+fn os_file_lock_rejects_concurrent_enrollment() -> TestResult {
     let root = TestRoot::new()?;
     let manager = SigningIdentityManager::open(root.path())?;
     let lock = OpenOptions::new()
@@ -122,6 +168,30 @@ fn cross_process_lock_rejects_concurrent_enrollment() -> TestResult {
         manager.enroll_or_load(&MemoryStore::default()),
         Err(IdentityError::Busy)
     ));
+    Ok(())
+}
+
+#[test]
+fn process_lock_rejects_concurrent_enrollment() -> TestResult {
+    let root = TestRoot::new()?;
+    let store = Arc::new(BlockingStore::default());
+    let worker_store = Arc::clone(&store);
+    let worker_root = root.path().to_owned();
+    let worker = std::thread::spawn(move || {
+        let manager = SigningIdentityManager::open(worker_root)?;
+        manager.enroll_or_load(worker_store.as_ref()).map(|_| ())
+    });
+    store.entered.wait();
+
+    let concurrent = SigningIdentityManager::open(root.path())?;
+    assert!(matches!(
+        concurrent.status(store.as_ref()),
+        Err(IdentityError::Busy)
+    ));
+    store.release.wait();
+    worker
+        .join()
+        .map_err(|_| std::io::Error::other("enrollment worker panicked"))??;
     Ok(())
 }
 
@@ -170,6 +240,47 @@ impl SecretStore for MemoryStore {
 #[derive(Default)]
 struct FailReadbackOnceStore {
     state: Mutex<FailState>,
+}
+
+struct BlockingStore {
+    entered: Barrier,
+    release: Barrier,
+    blocked: AtomicBool,
+    value: Mutex<Option<Vec<u8>>>,
+}
+
+impl Default for BlockingStore {
+    fn default() -> Self {
+        Self {
+            entered: Barrier::new(2),
+            release: Barrier::new(2),
+            blocked: AtomicBool::new(false),
+            value: Mutex::new(None),
+        }
+    }
+}
+
+impl SecretStore for BlockingStore {
+    fn load(&self, _id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        if !self.blocked.swap(true, Ordering::Relaxed) {
+            self.entered.wait();
+            self.release.wait();
+        }
+        let value = self
+            .value
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        Ok(value.clone().map(SecretValue::new))
+    }
+
+    fn store(&self, _id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError> {
+        let mut value = self
+            .value
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        *value = Some(secret.expose().to_vec());
+        Ok(())
+    }
 }
 
 #[derive(Default)]

@@ -22,7 +22,8 @@ mandatory cloud service.
 > fail-closed staging, verification, Ed25519 identity, quarantine, atomic seal,
 > and whole-directory retention slices are implemented and tested with
 > simulated sources. Signing enrollment now has a locked, crash-recoverable
-> application service, but no CLI or desktop command yet. Live backup and
+> application service plus explicit JSON CLI and Tauri bridge commands; the
+> desktop setup screen is not wired yet. Live backup and
 > restore operations remain disabled. Do not use it as a disaster-recovery
 > system until the restore-drill gate in the roadmap is complete.
 
@@ -96,6 +97,17 @@ npm run dev
 
 The canonical gates are described in `AGENTS.md`. Do not replace them with an
 informal list of partial checks.
+
+Signing identity inspection is read-only and never enrolls implicitly. The
+headless CLI requires an explicit absolute node-configuration path:
+
+```powershell
+guardian-cli signing status --config-dir D:\VDSGuardian\node --json
+guardian-cli signing enroll --config-dir D:\VDSGuardian\node --json
+```
+
+On headless Linux, enrollment fails closed unless a supported Secret Service is
+available; the encrypted-vault fallback remains future work.
 
 ## Security boundary
 

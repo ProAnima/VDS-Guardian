@@ -3,6 +3,7 @@
 mod error;
 mod filesystem;
 mod inventory;
+mod process_lock;
 mod repository;
 mod retention;
 mod signature_file;

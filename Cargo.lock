@@ -1539,6 +1539,9 @@ name = "guardian-cli"
 version = "0.1.0"
 dependencies = [
  "guardian-core",
+ "guardian-os-keyring",
+ "guardian-signing",
+ "serde",
  "serde_json",
 ]
 
@@ -4325,6 +4328,8 @@ name = "vds-guardian-desktop"
 version = "0.1.0"
 dependencies = [
  "guardian-core",
+ "guardian-os-keyring",
+ "guardian-signing",
  "tauri",
  "tauri-build",
 ]

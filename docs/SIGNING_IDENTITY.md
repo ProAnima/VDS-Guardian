@@ -1,8 +1,8 @@
 # Backup-Node Signing Identity
 
 Status: Milestone 1 implementation contract. Locked, journaled enrollment is
-implemented as a shared Rust service but is not yet exposed by the desktop
-application or CLI.
+implemented as a shared Rust service and exposed through explicit JSON CLI and
+Tauri bridge commands. The desktop setup screen is not wired yet.
 
 ## Purpose
 
@@ -42,11 +42,25 @@ configuration with a missing secret fails closed and never rotates implicitly.
 Configuration/key-ID disagreement, unknown fields, unsafe filesystem entries,
 and concurrent enrollment also fail closed.
 
+## Application entrypoints
+
+`signing status` is read-only: it reports `not_enrolled`,
+`enrollment_pending`, `recovery_pending`, or `ready`. It can verify an existing
+credential but never generates a seed, writes a secret, creates an enrollment
+intent, or repairs state.
+
+`signing enroll` is the only entrypoint that may start or finish enrollment.
+The CLI requires `--json` and an explicit absolute `--config-dir`; malformed or
+relative paths are rejected before touching the keyring. Tauri resolves the
+application configuration directory and runs keyring/filesystem work on a
+blocking worker, never the UI thread. Both surfaces serialize the same DTOs and
+safe error codes. Internal paths and platform error payloads are not returned.
+
 Loading validates the exact 32-byte length. Signing keys and temporary seed
 buffers use zeroization on drop. Errors are typed and never include credential
 contents or platform error payloads.
 
 Rotation will enroll a new credential ID and preserve old public verification
 keys. It must never overwrite manifests or sealed backups. Explicit rotation,
-trusted-public-key registry, CLI/desktop commands, and encrypted-vault fallback
-are not implemented in this slice.
+trusted-public-key registry, desktop setup UI, and encrypted-vault fallback are
+not implemented in this slice.

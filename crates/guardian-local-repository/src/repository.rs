@@ -1,5 +1,6 @@
 use crate::RepositoryError;
 use crate::filesystem::{atomic_write, ensure_directory, sync_parent};
+use crate::process_lock::ProcessLock;
 use crate::staging::StagingBackup;
 use fs2::FileExt;
 use guardian_core::{RepositoryId, RunId};
@@ -129,6 +130,7 @@ impl LocalRepository {
     }
 
     pub(crate) fn acquire_lock(&self) -> Result<RepositoryLock, RepositoryError> {
+        let process_lock = ProcessLock::acquire(&self.root)?;
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -137,7 +139,10 @@ impl LocalRepository {
             .open(self.root.join("repository.lock"))
             .map_err(|source| RepositoryError::io("open repository lock", source))?;
         match FileExt::try_lock_exclusive(&file) {
-            Ok(()) => Ok(RepositoryLock { _file: file }),
+            Ok(()) => Ok(RepositoryLock {
+                _file: file,
+                _process_lock: process_lock,
+            }),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 Err(RepositoryError::Busy)
             }
@@ -185,6 +190,7 @@ impl LocalRepository {
 
 pub(crate) struct RepositoryLock {
     _file: File,
+    _process_lock: ProcessLock,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

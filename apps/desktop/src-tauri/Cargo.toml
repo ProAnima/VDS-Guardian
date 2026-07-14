@@ -16,8 +16,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 guardian-core.workspace = true
+guardian-os-keyring = { path = "../../../crates/guardian-os-keyring" }
+guardian-signing = { path = "../../../crates/guardian-signing" }
 tauri = { version = "2", features = [] }
 
 [lints]
 workspace = true
-
