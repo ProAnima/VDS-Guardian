@@ -1,4 +1,4 @@
-use guardian_core::{CredentialId, ProfileId, SshEndpoint, VdsProfile};
+use guardian_core::{CredentialId, HostPin, ProfileId, SshEndpoint, VdsProfile};
 use guardian_profile_store::ProfileStore;
 use std::fs;
 
@@ -25,8 +25,7 @@ fn profile() -> Result<VdsProfile, Box<dyn std::error::Error>> {
             host: "vds.example".to_owned(),
             port: 22,
             user: "backup".to_owned(),
-            host_key_algorithm: "ssh-ed25519".to_owned(),
-            host_key_base64: "key".to_owned(),
+            host_pin: HostPin::parse("ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AQ==")?,
         },
     })
 }

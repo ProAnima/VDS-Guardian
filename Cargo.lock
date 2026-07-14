@@ -1583,6 +1583,7 @@ dependencies = [
 name = "guardian-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1642,6 +1643,7 @@ name = "guardian-ssh"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "guardian-core",
  "tempfile",
  "thiserror 2.0.18",
 ]

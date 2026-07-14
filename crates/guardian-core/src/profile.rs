@@ -1,4 +1,5 @@
 use crate::{CredentialId, ProfileId};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -28,8 +29,7 @@ pub struct SshEndpoint {
     pub host: String,
     pub port: u16,
     pub user: String,
-    pub host_key_algorithm: String,
-    pub host_key_base64: String,
+    pub host_pin: HostPin,
 }
 
 impl SshEndpoint {
@@ -49,16 +49,49 @@ impl SshEndpoint {
                 .user
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
+        (host_valid && user_valid && self.port != 0)
+            .then_some(())
+            .ok_or(ProfileError::InvalidEndpoint)?;
+        self.host_pin.validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HostPin {
+    pub algorithm: String,
+    pub public_key_base64: String,
+}
+
+impl HostPin {
+    pub fn parse(
+        algorithm: impl Into<String>,
+        public_key_base64: impl Into<String>,
+    ) -> Result<Self, ProfileError> {
+        let pin = Self {
+            algorithm: algorithm.into(),
+            public_key_base64: public_key_base64.into(),
+        };
+        pin.validate()?;
+        Ok(pin)
+    }
+    pub fn validate(&self) -> Result<(), ProfileError> {
         let algorithm_valid = matches!(
-            self.host_key_algorithm.as_str(),
+            self.algorithm.as_str(),
             "ssh-ed25519" | "ecdsa-sha2-nistp256" | "ecdsa-sha2-nistp384" | "ecdsa-sha2-nistp521"
         );
-        let key_valid = !self.host_key_base64.is_empty()
-            && self.host_key_base64.len() <= 16_384
-            && !self.host_key_base64.chars().any(char::is_whitespace);
-        (host_valid && user_valid && self.port != 0 && algorithm_valid && key_valid)
+        let decoded = STANDARD
+            .decode(self.public_key_base64.as_bytes())
+            .map_err(|_| ProfileError::InvalidHostPin)?;
+        let length = decoded
+            .get(..4)
+            .map(|bytes| u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+            .ok_or(ProfileError::InvalidHostPin)?;
+        (algorithm_valid
+            && decoded.get(4..4 + length) == Some(self.algorithm.as_bytes())
+            && decoded.len() > 4 + length)
             .then_some(())
-            .ok_or(ProfileError::InvalidEndpoint)
+            .ok_or(ProfileError::InvalidHostPin)
     }
 }
 
@@ -68,4 +101,6 @@ pub enum ProfileError {
     InvalidLabel,
     #[error("SSH endpoint or host pin is invalid")]
     InvalidEndpoint,
+    #[error("SSH host pin is invalid")]
+    InvalidHostPin,
 }

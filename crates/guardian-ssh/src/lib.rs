@@ -1,6 +1,6 @@
 //! Narrow system-OpenSSH adapter for pinned, read-only archive capture.
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use guardian_core::HostPin;
 use std::{
     ffi::OsString,
     fs::{self, OpenOptions},
@@ -29,15 +29,10 @@ impl PinnedHost {
         let host = host.into();
         let algorithm = algorithm.into();
         let public_key = public_key.into();
-        if !valid_host(&host) || port == 0 || !valid_algorithm(&algorithm) {
+        if !valid_host(&host) || port == 0 {
             return Err(SshError::InvalidHostPin);
         }
-        let decoded = STANDARD
-            .decode(public_key.as_bytes())
-            .map_err(|_| SshError::InvalidHostPin)?;
-        if !key_blob_matches_algorithm(&decoded, &algorithm) {
-            return Err(SshError::InvalidHostPin);
-        }
+        HostPin::parse(&algorithm, &public_key).map_err(|_| SshError::InvalidHostPin)?;
         Ok(Self {
             host,
             port,
@@ -244,21 +239,6 @@ fn valid_host(host: &str) -> bool {
         && host
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
-}
-
-fn valid_algorithm(algorithm: &str) -> bool {
-    matches!(
-        algorithm,
-        "ssh-ed25519" | "ecdsa-sha2-nistp256" | "ecdsa-sha2-nistp384" | "ecdsa-sha2-nistp521"
-    )
-}
-
-fn key_blob_matches_algorithm(blob: &[u8], algorithm: &str) -> bool {
-    let Some(length) = blob.get(..4) else {
-        return false;
-    };
-    let length = u32::from_be_bytes([length[0], length[1], length[2], length[3]]) as usize;
-    blob.get(4..4 + length) == Some(algorithm.as_bytes()) && blob.len() > 4 + length
 }
 
 fn valid_remote_root(root: &str) -> bool {

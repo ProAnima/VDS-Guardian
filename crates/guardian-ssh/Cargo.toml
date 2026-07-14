@@ -8,9 +8,12 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-base64.workspace = true
+guardian-core.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
 
 [lints]
 workspace = true
