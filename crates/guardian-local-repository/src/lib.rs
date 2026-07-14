@@ -1,5 +1,6 @@
 //! Local repository adapter with isolated staging and atomic sealing.
 
+mod core_adapter;
 mod error;
 mod filesystem;
 mod inventory;
@@ -13,6 +14,7 @@ mod signature_file;
 mod staging;
 mod verification;
 
+pub use core_adapter::LocalRepositoryStorageAdapter;
 pub use error::RepositoryError;
 pub use repository::LocalRepository;
 pub use retention::{RetentionOutcome, RetentionPlan};
