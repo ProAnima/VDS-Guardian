@@ -16,6 +16,6 @@ mod verification;
 
 pub use core_adapter::LocalRepositoryStorageAdapter;
 pub use error::RepositoryError;
+pub use guardian_core::{RetentionOutcome, RetentionPlan};
 pub use repository::LocalRepository;
-pub use retention::{RetentionOutcome, RetentionPlan};
 pub use staging::{SealedBackup, StagingBackup};

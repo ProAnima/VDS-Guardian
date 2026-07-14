@@ -1,3 +1,6 @@
+mod credential;
+mod profile;
+
 use guardian_core::{FoundationStatus, SecretStore};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::{
@@ -10,7 +13,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 pub fn run(arguments: impl Iterator<Item = OsString>) -> ExitCode {
-    match parse(arguments.collect()) {
+    let arguments: Vec<_> = arguments.collect();
+    if arguments.first().and_then(|value| value.to_str()) == Some("profile") {
+        return profile::run(&arguments[1..]);
+    }
+    if arguments.first().and_then(|value| value.to_str()) == Some("credential") {
+        return credential::run(&arguments[1..], &OsCredentialStore);
+    }
+    match parse(arguments) {
         Ok(Command::Foundation) => write_plain(&FoundationStatus::current()),
         Ok(Command::Signing(command)) => run_signing(command, &OsCredentialStore),
         Err(error) => write_error(&error, ExitCode::from(2)),

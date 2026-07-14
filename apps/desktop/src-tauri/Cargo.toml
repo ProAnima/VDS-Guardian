@@ -16,9 +16,21 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 guardian-core.workspace = true
+guardian-configuration = { path = "../../../crates/guardian-configuration" }
+guardian-local-repository.workspace = true
 guardian-os-keyring = { path = "../../../crates/guardian-os-keyring" }
+guardian-profile-store = { path = "../../../crates/guardian-profile-store" }
 guardian-signing = { path = "../../../crates/guardian-signing" }
+guardian-ssh.workspace = true
+fs2.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2.7.1"
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

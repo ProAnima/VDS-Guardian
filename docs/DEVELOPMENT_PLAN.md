@@ -68,16 +68,21 @@ Foundation implemented: `guardian-ssh` builds direct system-OpenSSH argv for a
 validated user and a temporary exact pinned `known_hosts` entry, with strict
 host-key checking, password/keyboard-interactive authentication disabled, and a
 reviewed read-only tar capture template. It deletes a partial local stream when
-OpenSSH cannot launch or returns failure. It is not connected to credentials,
-profiles, staging, archive inspection, or an SSH integration fixture; those
-items remain required for this milestone's exit gate.
+OpenSSH cannot launch or returns failure. It resolves an enrolled profile
+credential reference through the OS credential store into a short-lived local
+identity file. Capability discovery, Windows ACL hardening, encrypted-key agent
+support, and a complete cancellation policy remain required for this milestone's
+exit gate.
 
 `guardian-capture` now connects any filesystem capture transport, including the
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the
 completed tar.zst stream before computing the disk-based digest and returning a
 manifest-ready payload entry; invalid output is removed from staging. Manifest
 assembly, signing, and sealing are now available as a fail-closed use case;
-disposable-host integration tests remain open.
+the capture composition derives the SSH target only from the matching validated
+pinned profile. A shared preflight use case now loads that profile, invokes the
+read-only `tar --zstd` probe, and blocks unsupported hosts before capture.
+Disposable-host integration tests remain open.
 
 The reproducible Alpine OpenSSH fixture is available through
 `npm run test:integration:ssh`; it verifies a real pinned-key capture and
@@ -97,6 +102,27 @@ suite; Windows retains the same canonical suite without requiring Docker.
 
 Exit gate: fixture stacks with databases restore to a fresh host and pass data
 integrity and health checks.
+
+Foundation implemented: `guardian-core` defines a bounded, validated Docker
+inventory contract for container identity, image digests, Compose project labels,
+mounts, networks, secret references, state, and health. It rejects duplicate or
+unsafe metadata before an inventory is accepted. `guardian-docker` additionally
+parses bounded `docker inspect` JSON into that contract and rejects unexpected
+state or unsafe mount data. Its pinned-SSH adapter invokes only a reviewed
+read-only Docker command, caps local output at 8 MiB, and passes it to the
+parser. Database preflight now requires matching major versions between a
+reported PostgreSQL/MySQL server and its selected dump tool, and rejects an
+empty discovery result. `guardian-database` composes the fixed server-version
+and dump-tool probes into the core capability port, so an SSH preflight cannot
+succeed with only one side of that comparison. It discovers locally available
+`pg_dump`/`mysqldump` versions through a fixed,
+pinned-SSH command with a 64 KiB output cap. An `sshPeer` database connection
+can now use that same pinned VDS profile to request a server version from
+`localhost` or `127.0.0.1` without passing a database password over SSH. The
+remote commands are fixed `psql --no-password` or `mysql --skip-password`
+version queries; unavailable local non-interactive database authorization fails closed. A
+credential-reference connection mode remains modeled but has no adapter yet.
+The dump adapter, fixture stacks, and restore behavior are not implemented yet.
 
 ## Milestone 4 — restore engine (P0)
 
@@ -120,6 +146,21 @@ proves rollback for every supported stack type.
 
 Exit gate: non-technical operator can configure, schedule, verify, and drill a
 backup without terminal use; UI never bypasses core policies.
+
+Initial desktop slice implemented: the Overview now offers a single SSH server
+enrollment form. It generates opaque profile and credential references, stores
+only the public profile locally, places the selected supported key in the OS
+credential store, requires explicit host-key verification acknowledgement, and
+performs a fixed pinned SSH connection probe and a read-only `tar --zstd`
+capability preflight after enrollment. A native key-file picker, enrollment
+recovery/credential cleanup, repository and plan setup, scheduling, and all
+backup/restore UI remain open.
+
+The desktop can now register a single selected local backup folder as an
+isolated `LocalRepository`. Registration creates the repository's own atomic
+staging/sealed layout and stores only the canonical path, label, and repository
+ID in the local application registry. It does not make a capture plan or enable
+backup creation.
 
 ## Milestone 6 — release hardening (P1)
 

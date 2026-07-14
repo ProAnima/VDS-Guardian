@@ -1,0 +1,19 @@
+[package]
+name = "guardian-docker"
+description = "Hostile-output-safe Docker inventory adapter components."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+guardian-core.workspace = true
+guardian-ssh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

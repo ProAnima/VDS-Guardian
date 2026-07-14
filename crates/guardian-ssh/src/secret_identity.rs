@@ -1,0 +1,157 @@
+use crate::SshError;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use guardian_core::{CredentialId, SecretStore};
+use std::{fs, io::Write, path::Path};
+use tempfile::{NamedTempFile, TempPath};
+
+const HEADER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----";
+const FOOTER: &str = "-----END OPENSSH PRIVATE KEY-----";
+const MAX_KEY_BYTES: usize = 64 * 1024;
+
+pub struct SecretIdentityFile {
+    path: TempPath,
+}
+
+impl SecretIdentityFile {
+    pub fn from_store(store: &dyn SecretStore, id: &CredentialId) -> Result<Self, SshError> {
+        let secret = store
+            .load(id)
+            .map_err(|_| SshError::CredentialUnavailable)?
+            .ok_or(SshError::CredentialUnavailable)?;
+        validate_private_key(secret.expose())?;
+        let mut file = NamedTempFile::new().map_err(|_| SshError::TemporaryIdentityFile)?;
+        file.write_all(secret.expose())
+            .and_then(|_| file.as_file().sync_all())
+            .map_err(|_| SshError::TemporaryIdentityFile)?;
+        restrict_permissions(file.path())?;
+        Ok(Self {
+            path: file.into_temp_path(),
+        })
+    }
+
+    pub fn validate(bytes: &[u8]) -> Result<(), SshError> {
+        validate_private_key(bytes)
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        self.path.as_ref()
+    }
+}
+
+fn validate_private_key(bytes: &[u8]) -> Result<(), SshError> {
+    if bytes.is_empty() || bytes.len() > MAX_KEY_BYTES || bytes.contains(&0) {
+        return Err(SshError::InvalidCredential);
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| SshError::InvalidCredential)?;
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    let body = text
+        .strip_prefix(HEADER)
+        .and_then(|value| value.strip_prefix('\n'))
+        .and_then(|value| value.strip_suffix(FOOTER))
+        .ok_or(SshError::InvalidCredential)?;
+    let encoded: String = body.lines().collect();
+    let decoded = STANDARD
+        .decode(encoded.as_bytes())
+        .map_err(|_| SshError::InvalidCredential)?;
+    let mut cursor = decoded.as_slice();
+    if !take_prefix(&mut cursor, b"openssh-key-v1\0")
+        || read_string(&mut cursor) != Some(b"none".as_slice())
+        || read_string(&mut cursor) != Some(b"none".as_slice())
+        || read_string(&mut cursor) != Some(b"".as_slice())
+    {
+        return Err(SshError::InvalidCredential);
+    }
+    Ok(())
+}
+
+fn take_prefix(cursor: &mut &[u8], prefix: &[u8]) -> bool {
+    let Some(rest) = cursor.strip_prefix(prefix) else {
+        return false;
+    };
+    *cursor = rest;
+    true
+}
+
+fn read_string<'a>(cursor: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let length = usize::try_from(u32::from_be_bytes(cursor.get(..4)?.try_into().ok()?)).ok()?;
+    let value = cursor.get(4..4 + length)?;
+    *cursor = cursor.get(4 + length..)?;
+    Some(value)
+}
+
+fn restrict_permissions(path: &Path) -> Result<(), SshError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|_| SshError::TemporaryIdentityFile)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let metadata = fs::metadata(path).map_err(|_| SshError::TemporaryIdentityFile)?;
+        if !metadata.is_file() {
+            return Err(SshError::TemporaryIdentityFile);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FOOTER, HEADER, SecretIdentityFile, validate_private_key};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use guardian_core::{CredentialId, SecretStore, SecretStoreError, SecretValue};
+
+    #[test]
+    fn materialized_identity_is_deleted_on_drop() -> Result<(), Box<dyn std::error::Error>> {
+        let id = CredentialId::parse("credential-001")?;
+        let store = Store {
+            secret: Some(SecretValue::new(valid_key())),
+        };
+        let identity = SecretIdentityFile::from_store(&store, &id)?;
+        let path = identity.path().to_owned();
+        assert!(path.is_file());
+        drop(identity);
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn encrypted_or_malformed_key_envelopes_fail_closed() {
+        assert!(validate_private_key(b"not a key").is_err());
+        let encrypted = envelope(b"aes256-ctr", b"bcrypt", b"salt");
+        assert!(validate_private_key(&encrypted).is_err());
+    }
+
+    fn valid_key() -> Vec<u8> {
+        envelope(b"none", b"none", b"")
+    }
+
+    fn envelope(cipher: &[u8], kdf: &[u8], options: &[u8]) -> Vec<u8> {
+        let mut bytes = b"openssh-key-v1\0".to_vec();
+        for value in [cipher, kdf, options] {
+            bytes.extend_from_slice(&(value.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(value);
+        }
+        let encoded = STANDARD.encode(bytes);
+        format!("{HEADER}\n{encoded}\n{FOOTER}\n").into_bytes()
+    }
+
+    struct Store {
+        secret: Option<SecretValue>,
+    }
+
+    impl SecretStore for Store {
+        fn load(&self, _: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+            Ok(self
+                .secret
+                .as_ref()
+                .map(|value| SecretValue::new(value.expose().to_vec())))
+        }
+
+        fn store(&self, _: &CredentialId, _: &SecretValue) -> Result<(), SecretStoreError> {
+            Ok(())
+        }
+    }
+}

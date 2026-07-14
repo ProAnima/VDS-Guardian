@@ -67,10 +67,11 @@ export const en = {
   signingCreating: "Creating identity…",
   signingDesktopRequired: "Available in the desktop app",
   signingErrorFallback: "The signing identity could not be checked safely.",
+  setupServerEyebrow: "Server", setupServerTitle: "Add server", setupServerBody: "One SSH profile. The key stays only in the operating-system credential store.", setupLabel: "Name", setupHost: "Server address", setupUser: "SSH user", setupPort: "Port", setupHostKey: "Verified host key", setupKey: "SSH key", setupBrowse: "Browse…", setupVerifyHostKey: "I verified the host key through another trusted channel.", setupSaveCheck: "Save and check", setupSaving: "Saving and checking…", setupDesktopOnly: "Available in the desktop app", setupRepositoryEyebrow: "Storage", setupRepositoryTitle: "Choose backup location", setupRepositoryBody: "One dedicated folder for independent recovery points.", setupFolder: "Backup folder", setupCreateRepository: "Create storage", setupCreatingRepository: "Creating storage…", setupPlanEyebrow: "Plan", setupPlanTitle: "What to save", setupPlanBody: "Choose a server, storage, and VDS folders. One absolute folder per line.", setupServer: "Server", setupStorage: "Storage", setupRoots: "VDS folders", setupSavePlan: "Save plan", setupSavingPlan: "Saving…", setupPlanSaved: "Plan saved:", setupPlanFailed: "The plan could not be saved. Check the server, storage, and absolute paths.",
 } as const;
 
 export type MessageKey = keyof typeof en;
-export type Messages = Record<MessageKey, string>;
+export type Messages = Partial<Record<MessageKey, string>>;
 
 export const ru: Messages = {
   appTagline: "Центр управления восстановлением",
@@ -141,6 +142,7 @@ export const ru: Messages = {
   signingCreating: "Создаём идентичность…",
   signingDesktopRequired: "Доступно в десктоп-приложении",
   signingErrorFallback: "Не удалось безопасно проверить подписывающую идентичность.",
+  setupServerEyebrow: "Сервер", setupServerTitle: "Добавить сервер", setupServerBody: "Один SSH-профиль. Ключ останется только в хранилище учётных данных ОС.", setupLabel: "Название", setupHost: "Адрес сервера", setupUser: "SSH-пользователь", setupPort: "Порт", setupHostKey: "Проверенный host key", setupKey: "SSH-ключ", setupBrowse: "Обзор…", setupVerifyHostKey: "Я проверил host key другим доверенным способом.", setupSaveCheck: "Сохранить и проверить", setupSaving: "Сохраняем и проверяем…", setupDesktopOnly: "Доступно в desktop-приложении", setupRepositoryEyebrow: "Хранилище", setupRepositoryTitle: "Выбрать место для бэкапов", setupRepositoryBody: "Одна выделенная папка для независимых точек восстановления.", setupFolder: "Папка для бэкапов", setupCreateRepository: "Создать хранилище", setupCreatingRepository: "Создаём хранилище…", setupPlanEyebrow: "План", setupPlanTitle: "Что сохраняем", setupPlanBody: "Выберите сервер, хранилище и папки VDS. Каждая строка — одна абсолютная папка.", setupServer: "Сервер", setupStorage: "Хранилище", setupRoots: "Папки VDS", setupSavePlan: "Сохранить план", setupSavingPlan: "Сохраняем…", setupPlanSaved: "План сохранён:", setupPlanFailed: "Не удалось сохранить план. Проверьте сервер, хранилище и абсолютные пути.",
 };
 
 export const de: Messages = {

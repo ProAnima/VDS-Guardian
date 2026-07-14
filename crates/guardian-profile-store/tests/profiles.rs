@@ -3,7 +3,8 @@ use guardian_profile_store::ProfileStore;
 use std::fs;
 
 #[test]
-fn profiles_round_trip_and_unknown_fields_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+fn profiles_round_trip_and_preserve_safe_future_document_fields()
+-> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let store = ProfileStore::at(root.path());
     store.upsert(profile()?)?;
@@ -12,7 +13,9 @@ fn profiles_round_trip_and_unknown_fields_fail_closed() -> Result<(), Box<dyn st
         root.path().join("profiles.json"),
         br#"{"formatVersion":1,"profiles":{},"unknown":true}"#,
     )?;
-    assert!(store.list().is_err());
+    assert!(store.list().is_ok());
+    store.upsert(profile()?)?;
+    assert!(fs::read_to_string(root.path().join("profiles.json"))?.contains("\"unknown\":true"));
     Ok(())
 }
 

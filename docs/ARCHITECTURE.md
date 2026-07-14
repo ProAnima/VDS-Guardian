@@ -132,9 +132,10 @@ repository ID and local path
 retention and verification policies
 ```
 
-Config updates use atomic write-and-rename and a schema version. Unknown future
-fields are preserved where safe. Absolute local paths stay in ignored runtime
-configuration, not committed fixtures.
+Config updates use atomic write-and-rename and a schema version. Public
+configuration documents preserve unknown future top-level fields where safe;
+their validated security-bearing entries remain strict. Absolute local paths
+stay in ignored runtime configuration, not committed fixtures.
 
 Signing identity metadata is stricter than general profile configuration:
 unknown fields fail closed. `signing.json` stores only a credential reference,

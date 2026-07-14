@@ -148,16 +148,19 @@ fn sync_parent(_path: &Path) -> Result<(), ProfileStoreError> {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 struct Document {
     format_version: u32,
     profiles: BTreeMap<String, VdsProfile>,
+    #[serde(flatten, default)]
+    extensions: BTreeMap<String, serde_json::Value>,
 }
 impl Document {
     fn empty() -> Self {
         Self {
             format_version: FORMAT_VERSION,
             profiles: BTreeMap::new(),
+            extensions: BTreeMap::new(),
         }
     }
 }

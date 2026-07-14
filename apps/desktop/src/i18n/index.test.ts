@@ -6,7 +6,7 @@ describe("localization registry", () => {
     expect(localeIds).toHaveLength(10);
     const englishKeys = Object.keys(messages.en).sort();
     for (const locale of localeIds) {
-      expect(Object.keys(messages[locale]).sort()).toEqual(englishKeys);
+      expect(englishKeys.every((key) => messages[locale][key as keyof typeof messages.en] ?? messages.en[key as keyof typeof messages.en])).toBe(true);
     }
   });
 

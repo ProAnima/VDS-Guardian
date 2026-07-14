@@ -98,12 +98,18 @@ impl FilesystemCaptureUseCase<'_> {
 pub enum CaptureRequestError {
     #[error("capture roots must be bounded absolute lexical paths")]
     InvalidRoots,
+    #[error("capture request profile does not match the pinned SSH profile")]
+    ProfileMismatch,
+    #[error("pinned SSH profile is invalid")]
+    InvalidProfile,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CapturePortError {
     #[error("filesystem capture transport failed")]
     Transport,
+    #[error("filesystem capture credential is unavailable or invalid")]
+    Credential,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

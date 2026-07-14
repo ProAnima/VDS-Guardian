@@ -43,6 +43,7 @@ identifier!(ProfileId, "profile");
 identifier!(PlanId, "plan");
 identifier!(RepositoryId, "repository");
 identifier!(CredentialId, "credential");
+identifier!(DatabaseId, "database");
 
 fn parse_identifier(value: String, kind: &'static str) -> Result<String, IdentifierError> {
     let valid = !value.is_empty()

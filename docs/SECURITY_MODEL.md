@@ -54,9 +54,42 @@ writes it to a temporary `known_hosts` file, and invokes the system OpenSSH
 client through direct local argv with `StrictHostKeyChecking=yes`, noninteractive
 authentication, and global known-host lookup disabled. It accepts only a
 validated backup user and an allowlisted read-only tar command template; remote
-path arguments are independently shell-quoted. It is not yet connected to a
-profile, credential reference, timeout/cancellation policy, capability probe,
-or repository seal workflow, so it is not a production backup feature.
+path arguments are independently shell-quoted. Every capture has a bounded
+total runtime and removes its partial local stream after a launch error,
+deadline, or nonzero exit. The capture composition resolves the profile's
+credential reference through the injected secure store, accepts only an
+unencrypted OpenSSH private-key envelope, and deletes its short-lived temporary
+identity file after SSH exits. Windows ACL hardening, encrypted-key/agent
+support, cooperative process-tree cancellation, and repository seal workflow
+remain incomplete, so it is not a production backup feature. Capture streams
+have a five-minute idle-byte deadline that kills local SSH and discards the
+partial stream; that deadline is not a substitute for full cancellation. The
+adapter's fixed read-only `tar --zstd` probe uses the same pinned identity and a
+30-second SSH connect timeout. The shared preflight use case requires that
+probe's success before a future capture workflow can continue; its result alone
+never authorizes a backup.
+
+The desktop enrollment screen follows the same boundary: the operator supplies
+an absolute path to a dedicated unencrypted OpenSSH key and explicitly confirms
+that the pasted host key was verified out-of-band. The application validates
+the regular non-symlink key file, stores its bytes only in the OS credential
+store under a generated reference, persists only public profile data, and then
+runs a fixed pinned non-interactive SSH `true` probe. The probe never accepts an
+operator-supplied remote command and a changed host key fails closed. A failure
+after the credential-store write can leave an unreferenced local credential;
+it never creates a usable profile or exposes key bytes, and enrollment recovery
+and cleanup remain a hardening follow-up. Before a future capture can be
+enabled, the desktop also invokes the same pinned fixed `tar --zstd` capability
+preflight used by the core use case; it remains read-only and does not create a
+backup or authorize a live run on its own.
+
+Desktop repository registration accepts only an absolute non-symlink directory
+path, initializes the existing local repository layout, and records a public
+repository ID, display label, and canonical path in an atomically replaced
+local registry. It never stores server credentials or archive payloads in the
+application configuration. If registration fails after repository initialization,
+the repository remains isolated on disk but is not treated as a configured
+backup target; cleanup/discovery is a future recovery workflow.
 
 ### Repository isolation
 
@@ -123,6 +156,32 @@ clears that acknowledgement.
   ownership mapping policy.
 - Optional antivirus integration is an adapter with timeout and clear
   `not-scanned` versus `clean` states. No scanner result upgrades trust by itself.
+
+### Docker and database discovery
+
+- Docker/Compose output is untrusted. Inventory parsers must bound container and
+  nested metadata counts, validate every identifier and mount destination, and
+  store secret references only, never secret values.
+- The initial core inventory contract enforces these limits before inventory can
+  enter a capture plan. Its `docker inspect` parser accepts only a bounded JSON
+  response and maps fixed Docker fields into that contract. The pinned-SSH
+  adapter accepts no operator command input, uses one reviewed `docker ps` /
+  `docker inspect --` template, and kills an output stream above 8 MiB. Database
+  consistency logic remains unimplemented.
+- Database dump preflight rejects missing, malformed, or major-version-mismatched
+  PostgreSQL/MySQL server and dump-tool capabilities. This compatibility check is
+  not a substitute for quiesce, a successful dump, or a restore drill.
+- Dump-tool discovery uses only reviewed `pg_dump --version` and `mysqldump
+  --version` commands over pinned SSH, with a 64 KiB local output cap. It does
+  not connect to a database or disclose credentials.
+- Database connection metadata supports an `sshPeer` mode and a credential
+  reference mode. `sshPeer` is restricted to `localhost` or `127.0.0.1`; it
+  runs only fixed `psql --no-password` or `mysql --skip-password` server-version
+  queries under the pinned SSH profile. The backup account must already have a
+  non-interactive local database authorization path; otherwise the probe fails
+  closed. Validation rejects unsafe identifier syntax before any adapter is
+  called, and secret bytes never become remote command arguments. The
+  credential-reference mode has no transport adapter yet.
 
 ### Restore safety
 

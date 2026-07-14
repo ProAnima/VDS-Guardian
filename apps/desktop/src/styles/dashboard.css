@@ -30,6 +30,40 @@
 .status-card[data-tone="amber"] .status-card__indicator { background: var(--amber); }
 
 .signing-panel { margin-top: 18px; padding: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: linear-gradient(125deg, var(--surface), var(--surface-muted)); }
+.ssh-profile-panel { margin-top: 18px; padding: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: linear-gradient(125deg, var(--surface), var(--surface-muted)); }
+.repository-panel { margin-top: 18px; padding: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: linear-gradient(125deg, var(--surface), var(--surface-muted)); }
+.ssh-profile-panel__header { display: flex; justify-content: space-between; gap: 24px; }
+.repository-panel__header { display: flex; justify-content: space-between; gap: 24px; }
+.ssh-profile-panel__header .eyebrow { margin-bottom: 9px; }
+.repository-panel__header .eyebrow { margin-bottom: 9px; }
+.ssh-profile-panel h2 { margin: 0; font-size: 1.1rem; letter-spacing: -0.025em; }
+.repository-panel h2 { margin: 0; font-size: 1.1rem; letter-spacing: -0.025em; }
+.ssh-profile-panel__header > div > p:not(.eyebrow) { max-width: 670px; margin: 8px 0 0; color: var(--text-muted); font-size: 0.76rem; line-height: 1.65; }
+.repository-panel__header > div > p:not(.eyebrow) { max-width: 670px; margin: 8px 0 0; color: var(--text-muted); font-size: 0.76rem; line-height: 1.65; }
+.ssh-profile-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 22px; }
+.ssh-profile-form label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 0.69rem; font-weight: 650; }
+.ssh-profile-form input:not([type="checkbox"]) { width: 100%; min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); background: var(--surface); font: 0.73rem var(--font-mono); }
+.ssh-profile-form__wide, .ssh-profile-form__ack, .ssh-profile-form__actions { grid-column: 1 / -1; }
+.ssh-profile-form__ack { grid-template-columns: 16px 1fr !important; align-items: start; cursor: pointer; font-weight: 500 !important; line-height: 1.45; }
+.ssh-profile-form__ack input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.ssh-profile-form__ack input { appearance:none; border:1px solid var(--border); border-radius:5px; background:var(--surface); }
+.ssh-profile-form__ack input:checked { border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 3px var(--surface); }
+.path-picker { display:flex; gap:8px; }
+.path-picker input { min-width:0; flex:1; }
+.path-picker button { min-height:38px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius-xs); color:var(--text-secondary); background:var(--surface-muted); font-size:.7rem; cursor:pointer; }
+.ssh-profile-form__actions { display: flex; align-items: center; gap: 10px; }
+.ssh-profile-panel__success { display: flex; align-items: center; gap: 8px; margin: 17px 0 0; color: var(--accent); font-size: 0.73rem; }
+.ssh-profile-panel__profiles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 17px; }
+.ssh-profile-panel__profiles span { padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--surface); font: 0.64rem var(--font-mono); }
+.repository-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 22px; }
+.repository-form label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 0.69rem; font-weight: 650; }
+.repository-form input { width: 100%; min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); background: var(--surface); font: 0.73rem var(--font-mono); }
+.repository-form select, .repository-form textarea { width:100%; min-height:38px; padding:8px 11px; border:1px solid var(--border); border-radius:var(--radius-xs); color:var(--text); background:var(--surface); font:0.73rem var(--font-mono); }
+.repository-form textarea { min-height:78px; resize:vertical; }
+.repository-form__actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.repository-panel__success { display: flex; align-items: center; gap: 8px; margin: 17px 0 0; color: var(--accent); font-size: 0.73rem; }
+.repository-panel__items { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 17px; }
+.repository-panel__items span { max-width: 100%; overflow: hidden; padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--surface); font: 0.64rem var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .signing-panel__header { display: flex; justify-content: space-between; gap: 24px; }
 .signing-panel__header .eyebrow { margin-bottom: 9px; }
 .signing-panel h2 { margin: 0; font-size: 1.1rem; letter-spacing: -0.025em; }
@@ -86,5 +120,5 @@
 .app-footer { display: flex; justify-content: space-between; padding: 22px 4px 0; color: var(--text-muted); font: 0.61rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
 
 @media (max-width: 1100px) { .status-grid { grid-template-columns: repeat(2, 1fr); } .status-card:nth-child(3) { border-inline-start: 0; border-block-start: 1px solid var(--border-soft); } .status-card:nth-child(4) { border-block-start: 1px solid var(--border-soft); } }
-@media (max-width: 950px) { .hero-panel { grid-template-columns: 1fr; } .safety-lock { min-height: auto; } .safety-lock__icon { margin-bottom: 24px; } .dashboard__columns { grid-template-columns: 1fr; } .signing-panel__header { flex-direction: column; } .signing-state { align-self: flex-start; } }
-@media (max-width: 620px) { .dashboard { padding-inline: 18px; padding-top: 34px; } .hero-panel h1 { font-size: 2.6rem; } .status-grid { grid-template-columns: 1fr; } .status-card + .status-card { border-inline-start: 0; border-block-start: 1px solid var(--border-soft); } .hero-panel__actions, .signing-panel__actions, .signing-confirm__actions { flex-direction: column; align-items: stretch; } .button { justify-content: center; } .signing-panel__actions .button { margin-inline-start: 0; } .signing-details { grid-template-columns: 1fr; } }
+@media (max-width: 950px) { .hero-panel { grid-template-columns: 1fr; } .safety-lock { min-height: auto; } .safety-lock__icon { margin-bottom: 24px; } .dashboard__columns { grid-template-columns: 1fr; } .signing-panel__header, .ssh-profile-panel__header, .repository-panel__header { flex-direction: column; } .signing-state { align-self: flex-start; } }
+@media (max-width: 620px) { .dashboard { padding-inline: 18px; padding-top: 34px; } .hero-panel h1 { font-size: 2.6rem; } .status-grid { grid-template-columns: 1fr; } .status-card + .status-card { border-inline-start: 0; border-block-start: 1px solid var(--border-soft); } .hero-panel__actions, .signing-panel__actions, .signing-confirm__actions, .ssh-profile-form__actions, .repository-form__actions { flex-direction: column; align-items: stretch; } .button { justify-content: center; } .signing-panel__actions .button { margin-inline-start: 0; } .signing-details, .ssh-profile-form, .repository-form { grid-template-columns: 1fr; } }

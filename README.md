@@ -107,6 +107,33 @@ guardian-cli signing enroll --config-dir D:\VDSGuardian\node --json
 On headless Linux, enrollment fails closed unless a supported Secret Service is
 available; the encrypted-vault fallback remains future work.
 
+Pinned VDS profiles are also enrolled through explicit JSON commands. The input
+document contains public endpoint data, a credential reference, and an already
+verified host-key pin; it never contains private key material. This is profile
+setup only: it does not discover a host key or start a backup.
+
+```powershell
+guardian-cli profile enroll --profiles-dir D:\VDSGuardian\profiles --input D:\VDSGuardian\profile.json --json
+guardian-cli profile list --profiles-dir D:\VDSGuardian\profiles --json
+```
+
+Importing a dedicated SSH key is a separate, explicit operation. The key is
+stored only in the OS credential store under the profile's credential ID; an
+existing credential is never overwritten. The current foundation accepts only
+unencrypted OpenSSH private keys, and does not yet support rotation or SSH-agent
+backed encrypted keys.
+
+```powershell
+guardian-cli credential import-ssh-key --credential-id credential-001 --input D:\VDSGuardian\backup.key --json
+```
+
+The pinned SSH profile is the only VDS transport boundary. The current
+database preflight can use an `sshPeer` connection to ask PostgreSQL or MySQL
+for its version on `localhost` over that profile; it never puts a database
+password in an SSH command. The VDS backup account must already be authorized
+for non-interactive local access. Capture, database dumps, and restore remain
+unimplemented and are not production-ready.
+
 ## Security boundary
 
 VDS Guardian assumes the remote server may already be compromised. A backup
