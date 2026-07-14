@@ -1,7 +1,7 @@
 use guardian_core::{
-    AuditPort, BackupStoragePort, CaptureAuditCode, CapturePortError, FilesystemCapturePort,
-    FilesystemCaptureRequest, FilesystemCaptureUseCase, PayloadEntry, PayloadPath, ProfileId,
-    RunId, StoragePortError,
+    ArchiveInspectionPort, ArchiveInspectionPortError, AuditPort, BackupStoragePort,
+    CaptureAuditCode, CapturePortError, FilesystemCapturePort, FilesystemCaptureRequest,
+    FilesystemCaptureUseCase, PayloadEntry, PayloadPath, ProfileId, RunId, StoragePortError,
 };
 use std::{
     path::{Path, PathBuf},
@@ -15,6 +15,7 @@ fn transport_failure_is_audited_and_discarded() -> Result<(), Box<dyn std::error
     let use_case = FilesystemCaptureUseCase {
         capture: &FailingCapture,
         storage: &storage,
+        inspector: &AcceptingInspector,
         audit: &audit,
     };
     assert!(use_case.execute(&request()?).is_err());
@@ -36,6 +37,7 @@ fn successful_capture_registers_the_payload() -> Result<(), Box<dyn std::error::
     let use_case = FilesystemCaptureUseCase {
         capture: &SuccessfulCapture,
         storage: &storage,
+        inspector: &AcceptingInspector,
         audit: &audit,
     };
     assert_eq!(use_case.execute(&request()?)?.logical_role, "filesystem");
@@ -65,6 +67,12 @@ impl FilesystemCapturePort for FailingCapture {
 struct SuccessfulCapture;
 impl FilesystemCapturePort for SuccessfulCapture {
     fn capture_to(&self, _: &FilesystemCaptureRequest, _: &Path) -> Result<(), CapturePortError> {
+        Ok(())
+    }
+}
+struct AcceptingInspector;
+impl ArchiveInspectionPort for AcceptingInspector {
+    fn inspect(&self, _: &Path) -> Result<(), ArchiveInspectionPortError> {
         Ok(())
     }
 }

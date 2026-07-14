@@ -1,5 +1,6 @@
 //! Platform-independent domain contracts and use cases for VDS Guardian.
 
+mod archive;
 mod audit;
 mod capture;
 mod identifiers;
@@ -12,6 +13,7 @@ mod state;
 mod status;
 mod storage;
 
+pub use archive::{ArchiveInspectionPort, ArchiveInspectionPortError};
 pub use audit::{AuditPort, CaptureAuditCode};
 pub use capture::{
     CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemCapturePort,

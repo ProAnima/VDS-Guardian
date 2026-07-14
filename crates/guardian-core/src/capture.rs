@@ -1,5 +1,6 @@
 use crate::{
-    AuditPort, BackupStoragePort, CaptureAuditCode, PayloadEntry, PayloadPath, ProfileId, RunId,
+    ArchiveInspectionPort, AuditPort, BackupStoragePort, CaptureAuditCode, PayloadEntry,
+    PayloadPath, ProfileId, RunId,
 };
 use std::path::Path;
 use thiserror::Error;
@@ -34,6 +35,7 @@ pub trait FilesystemCapturePort: Send + Sync {
 pub struct FilesystemCaptureUseCase<'a> {
     pub capture: &'a dyn FilesystemCapturePort,
     pub storage: &'a dyn BackupStoragePort,
+    pub inspector: &'a dyn ArchiveInspectionPort,
     pub audit: &'a dyn AuditPort,
 }
 
@@ -55,6 +57,13 @@ impl FilesystemCaptureUseCase<'_> {
                 request,
                 CaptureAuditCode::Transport,
                 CaptureUseCaseError::Capture(error),
+            );
+        }
+        if self.inspector.inspect(&destination).is_err() {
+            return self.fail(
+                request,
+                CaptureAuditCode::ArchivePolicy,
+                CaptureUseCaseError::Archive,
             );
         }
         match self.storage.register_payload_path(
@@ -105,6 +114,8 @@ pub enum CaptureUseCaseError {
     Capture(#[source] CapturePortError),
     #[error("capture storage failed")]
     Storage(#[source] crate::StoragePortError),
+    #[error("captured archive violates inspection policy")]
+    Archive,
 }
 
 fn valid_remote_root(root: &str) -> bool {
