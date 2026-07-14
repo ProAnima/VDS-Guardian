@@ -119,6 +119,11 @@ Restore is a separate use case, not "backup in reverse":
 6. Run health probes and emit a signed restore report.
 7. Preserve the previous deployment until rollback expiry.
 
+The initial restore-planning slice accepts only a sealed manifest and an
+absolute target path. It produces an exact confirmation phrase and lists only
+supported filesystem payloads. It does not extract data or mutate a target;
+those actions remain separate, approval-gated steps.
+
 ## Configuration model
 
 Configuration contains public profile data and secret references only:

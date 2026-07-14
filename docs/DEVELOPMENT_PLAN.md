@@ -140,6 +140,10 @@ The dump adapter, fixture stacks, and restore behavior are not implemented yet.
 Exit gate: automated clean-room restore drill meets documented RTO/RPO and
 proves rollback for every supported stack type.
 
+Foundation implemented: a core restore planner accepts only a sealed manifest,
+an absolute target path, and supported filesystem payloads. It generates an
+exact confirmation phrase but performs no extraction or target mutation.
+
 ## Milestone 5 — desktop product and scheduling (P1)
 
 - Profile and plan editor with validation and least-privilege guidance.

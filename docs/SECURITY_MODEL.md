@@ -201,6 +201,8 @@ clears that acknowledgement.
 ### Restore safety
 
 - Default to dry-run and a new destination.
+- The initial restore planner rejects unsealed manifests and relative targets,
+  and requires an exact confirmation phrase before a future extraction step.
 - Verify backup signature/checksums immediately before mutation.
 - Re-confirm server identity and show all deletions/service impacts.
 - Create a safety point before destructive in-place restore.

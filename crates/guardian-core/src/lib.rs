@@ -14,6 +14,7 @@ mod plan;
 mod preflight;
 mod profile;
 mod profile_port;
+mod restore;
 mod retention;
 mod secret;
 mod signature;
@@ -61,6 +62,7 @@ pub use preflight::{
 };
 pub use profile::{HostPin, ProfileError, SshEndpoint, VdsProfile};
 pub use profile_port::{ProfileStorePort, ProfileStorePortError};
+pub use restore::{RestorePlan, RestorePlanError};
 pub use retention::{
     RetentionOutcome, RetentionPlan, RetentionPlanError, RetentionPolicy, RetentionPolicyError,
     RetentionSnapshotEntry, build_retention_plan,
