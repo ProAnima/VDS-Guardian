@@ -104,10 +104,12 @@ clears that acknowledgement.
   rejects absolute paths, traversal, empty segments, Windows separators/drive
   syntax, alternate streams, and NUL bytes before extraction exists.
 - Verification hashes bytes without executing or previewing them.
-- Archive readers reject absolute paths, `..`, Windows drive/UNC paths, device
-  nodes, unexpected hardlinks, and links escaping the restore root.
-- Extraction applies file-count, total-size, per-file-size, depth, and expansion
-  ratio limits.
+- The current streaming tar.zst inspector rejects unsafe paths and every entry
+  type except regular files and directories, including links, device nodes, and
+  other special files. It enforces entry-count, declared per-file, and expanded
+  stream-byte limits before extraction exists.
+- A future extractor will add depth and expansion-ratio limits, safe ownership
+  and permission handling, and destination-root containment checks.
 - Restores never preserve setuid/setgid bits by default and use an explicit
   ownership mapping policy.
 - Optional antivirus integration is an adapter with timeout and clear

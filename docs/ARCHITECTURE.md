@@ -46,7 +46,9 @@ Adapters will be added by capability, not bundled into the domain crate:
 - Local repository with staging, atomic seal, read-only best-effort flags, and
   whole-directory retention.
 - Secret storage backed by Windows Credential Manager and Linux Secret Service.
-- Tar/Zstandard archive writer and hostile-input-safe reader.
+- Tar/Zstandard archive writer and hostile-input-safe reader. The initial
+  `guardian-archive` adapter performs streaming tar.zst inspection; archive
+  writing and extraction remain later capabilities.
 - Database adapters for PostgreSQL/MySQL and Docker-aware discovery/export.
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 

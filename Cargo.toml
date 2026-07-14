@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "apps/desktop/src-tauri",
   "crates/guardian-cli",
+  "crates/guardian-archive",
   "crates/guardian-core",
   "crates/guardian-local-repository",
   "crates/guardian-os-keyring",
@@ -18,6 +19,7 @@ repository = "https://github.com/ProAnima/VDS-Guardian"
 
 [workspace.dependencies]
 guardian-core = { path = "crates/guardian-core" }
+tar = "0.4"
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }
 fs2 = "0.4"
 keyring = { version = "4.1", default-features = false, features = ["v1"] }
@@ -27,6 +29,7 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 zeroize = "1.8"
+zstd = "0.13"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
