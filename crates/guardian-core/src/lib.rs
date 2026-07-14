@@ -1,5 +1,6 @@
 //! Platform-independent domain contracts and use cases for VDS Guardian.
 
+mod capture;
 mod identifiers;
 mod manifest;
 mod profile;
@@ -9,6 +10,10 @@ mod signature;
 mod state;
 mod status;
 
+pub use capture::{
+    CapturePortError, CaptureRequestError, CapturedStream, FilesystemCapturePort,
+    FilesystemCaptureRequest,
+};
 pub use identifiers::{
     ArchivePath, BackupId, CredentialId, IdentifierError, PayloadPath, PlanId, ProfileId,
     RepositoryId, RunId, Timestamp,
