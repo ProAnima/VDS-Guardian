@@ -14,8 +14,8 @@ mod storage;
 
 pub use audit::{AuditPort, CaptureAuditCode};
 pub use capture::{
-    CapturePortError, CaptureRequestError, CaptureUseCaseError, CapturedStream,
-    FilesystemCapturePort, FilesystemCaptureRequest, FilesystemCaptureUseCase,
+    CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemCapturePort,
+    FilesystemCaptureRequest, FilesystemCaptureUseCase,
 };
 pub use identifiers::{
     ArchivePath, BackupId, CredentialId, IdentifierError, PayloadPath, PlanId, ProfileId,

@@ -1,9 +1,12 @@
 use guardian_core::{
-    AuditPort, BackupStoragePort, CaptureAuditCode, CapturePortError, CapturedStream,
-    FilesystemCapturePort, FilesystemCaptureRequest, FilesystemCaptureUseCase, PayloadEntry,
-    PayloadPath, ProfileId, RunId, StoragePortError,
+    AuditPort, BackupStoragePort, CaptureAuditCode, CapturePortError, FilesystemCapturePort,
+    FilesystemCaptureRequest, FilesystemCaptureUseCase, PayloadEntry, PayloadPath, ProfileId,
+    RunId, StoragePortError,
 };
-use std::sync::Mutex;
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 #[test]
 fn transport_failure_is_audited_and_discarded() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +20,7 @@ fn transport_failure_is_audited_and_discarded() -> Result<(), Box<dyn std::error
     assert!(use_case.execute(&request()?).is_err());
     assert_eq!(
         *storage.events.lock().map_err(|_| "lock")?,
-        vec!["begin", "discard"]
+        vec!["begin", "reserve", "discard"]
     );
     assert_eq!(
         *audit.codes.lock().map_err(|_| "lock")?,
@@ -38,7 +41,7 @@ fn successful_capture_registers_the_payload() -> Result<(), Box<dyn std::error::
     assert_eq!(use_case.execute(&request()?)?.logical_role, "filesystem");
     assert_eq!(
         *storage.events.lock().map_err(|_| "lock")?,
-        vec!["begin", "register"]
+        vec!["begin", "reserve", "register"]
     );
     assert!(audit.codes.lock().map_err(|_| "lock")?.is_empty());
     Ok(())
@@ -55,24 +58,14 @@ fn request() -> Result<FilesystemCaptureRequest, Box<dyn std::error::Error>> {
 
 struct FailingCapture;
 impl FilesystemCapturePort for FailingCapture {
-    fn capture(&self, _: &FilesystemCaptureRequest) -> Result<CapturedStream, CapturePortError> {
+    fn capture_to(&self, _: &FilesystemCaptureRequest, _: &Path) -> Result<(), CapturePortError> {
         Err(CapturePortError::Transport)
     }
 }
 struct SuccessfulCapture;
 impl FilesystemCapturePort for SuccessfulCapture {
-    fn capture(&self, _: &FilesystemCaptureRequest) -> Result<CapturedStream, CapturePortError> {
-        Ok(CapturedStream {
-            payload: PayloadEntry::new(
-                "filesystem",
-                PayloadPath::parse("payload/filesystem.tar.zst")
-                    .map_err(|_| CapturePortError::Transport)?,
-                1,
-                "0000000000000000000000000000000000000000000000000000000000000000",
-                "application/zstd",
-            )
-            .map_err(|_| CapturePortError::Transport)?,
-        })
+    fn capture_to(&self, _: &FilesystemCaptureRequest, _: &Path) -> Result<(), CapturePortError> {
+        Ok(())
     }
 }
 
@@ -88,12 +81,31 @@ impl BackupStoragePort for FakeStorage {
             .push("begin");
         Ok(())
     }
-    fn register_payload(&self, _: PayloadEntry) -> Result<(), StoragePortError> {
+    fn reserve(&self, _: &PayloadPath) -> Result<PathBuf, StoragePortError> {
+        self.events
+            .lock()
+            .map_err(|_| StoragePortError::Unavailable)?
+            .push("reserve");
+        Ok(std::env::temp_dir().join("guardian-core-test.tar.zst"))
+    }
+    fn register_payload_path(
+        &self,
+        _: &str,
+        path: PayloadPath,
+        _: &str,
+    ) -> Result<PayloadEntry, StoragePortError> {
         self.events
             .lock()
             .map_err(|_| StoragePortError::Unavailable)?
             .push("register");
-        Ok(())
+        PayloadEntry::new(
+            "filesystem",
+            path,
+            1,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "application/zstd",
+        )
+        .map_err(|_| StoragePortError::Rejected)
     }
     fn discard(&self, _: &RunId) -> Result<(), StoragePortError> {
         self.events

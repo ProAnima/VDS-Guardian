@@ -1,6 +1,7 @@
 use crate::{
     AuditPort, BackupStoragePort, CaptureAuditCode, PayloadEntry, PayloadPath, ProfileId, RunId,
 };
+use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,15 +24,11 @@ impl FilesystemCaptureRequest {
 }
 
 pub trait FilesystemCapturePort: Send + Sync {
-    fn capture(
+    fn capture_to(
         &self,
         request: &FilesystemCaptureRequest,
-    ) -> Result<CapturedStream, CapturePortError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CapturedStream {
-    pub payload: PayloadEntry,
+        destination: &Path,
+    ) -> Result<(), CapturePortError>;
 }
 
 pub struct FilesystemCaptureUseCase<'a> {
@@ -49,18 +46,23 @@ impl FilesystemCaptureUseCase<'_> {
         self.storage
             .begin(&request.run_id)
             .map_err(CaptureUseCaseError::Storage)?;
-        let captured = match self.capture.capture(request) {
-            Ok(captured) => captured,
-            Err(error) => {
-                return self.fail(
-                    request,
-                    CaptureAuditCode::Transport,
-                    CaptureUseCaseError::Capture(error),
-                );
-            }
-        };
-        match self.storage.register_payload(captured.payload.clone()) {
-            Ok(()) => Ok(captured.payload),
+        let destination = self
+            .storage
+            .reserve(&request.payload_path)
+            .map_err(CaptureUseCaseError::Storage)?;
+        if let Err(error) = self.capture.capture_to(request, &destination) {
+            return self.fail(
+                request,
+                CaptureAuditCode::Transport,
+                CaptureUseCaseError::Capture(error),
+            );
+        }
+        match self.storage.register_payload_path(
+            "filesystem",
+            request.payload_path.clone(),
+            "application/zstd",
+        ) {
+            Ok(payload) => Ok(payload),
             Err(error) => self.fail(
                 request,
                 CaptureAuditCode::Storage,
