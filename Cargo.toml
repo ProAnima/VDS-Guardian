@@ -6,6 +6,7 @@ members = [
   "crates/guardian-archive",
   "crates/guardian-capture",
   "crates/guardian-core",
+  "crates/guardian-profile-store",
   "crates/guardian-local-repository",
   "crates/guardian-os-keyring",
   "crates/guardian-signing",
