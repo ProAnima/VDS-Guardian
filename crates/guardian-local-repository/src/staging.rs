@@ -21,6 +21,11 @@ pub struct StagingBackup<'repository> {
 }
 
 impl StagingBackup<'_> {
+    pub fn discard(self) -> Result<(), RepositoryError> {
+        self.repository.quarantine(&self.run_id, "capture_failed")?;
+        Ok(())
+    }
+
     pub fn write_payload(
         &self,
         logical_role: impl Into<String>,

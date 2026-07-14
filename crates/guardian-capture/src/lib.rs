@@ -1,8 +1,8 @@
 //! Capture pipeline: isolated staging, archive validation, then payload registration.
 
 use guardian_archive::{ArchiveInspection, ArchiveLimits, inspect_tar_zstd};
-use guardian_core::{PayloadEntry, PayloadPath};
-use guardian_local_repository::{RepositoryError, StagingBackup};
+use guardian_core::{Manifest, ManifestSigner, PayloadEntry, PayloadPath, Timestamp};
+use guardian_local_repository::{RepositoryError, SealedBackup, StagingBackup};
 use guardian_ssh::{PinnedHost, RemoteCapturePlan, SshUser, SystemOpenSsh};
 use std::{fs, fs::File, path::Path};
 use thiserror::Error;
@@ -70,6 +70,43 @@ pub fn capture_filesystem(
     })
 }
 
+pub fn capture_and_seal(
+    staging: StagingBackup<'_>,
+    transport: &dyn FilesystemCaptureTransport,
+    request: SealRequest<'_>,
+) -> Result<SealedBackup, CaptureError> {
+    let captured = match capture_filesystem(
+        &staging,
+        transport,
+        request.logical_role,
+        request.payload_path,
+        request.limits,
+    ) {
+        Ok(captured) => captured,
+        Err(error) => {
+            staging.discard()?;
+            return Err(error);
+        }
+    };
+    let mut manifest = request.manifest;
+    if manifest.add_payload(captured.payload).is_err() {
+        staging.discard()?;
+        return Err(CaptureError::Manifest);
+    }
+    staging
+        .seal(manifest, request.sealed_at, request.signer)
+        .map_err(CaptureError::Repository)
+}
+
+pub struct SealRequest<'a> {
+    pub logical_role: &'a str,
+    pub payload_path: PayloadPath,
+    pub limits: ArchiveLimits,
+    pub manifest: Manifest,
+    pub sealed_at: Timestamp,
+    pub signer: &'a dyn ManifestSigner,
+}
+
 fn remove_partial(destination: &Path) {
     let _ = fs::remove_file(destination);
 }
@@ -94,4 +131,6 @@ pub enum CaptureError {
     Archive,
     #[error("repository rejected the staged payload")]
     Repository(#[from] RepositoryError),
+    #[error("manifest rejected the captured payload")]
+    Manifest,
 }
