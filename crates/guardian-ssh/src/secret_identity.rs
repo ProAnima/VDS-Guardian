@@ -1,7 +1,9 @@
 use crate::SshError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use guardian_core::{CredentialId, SecretStore};
-use std::{fs, io::Write, path::Path};
+#[cfg(not(windows))]
+use std::fs;
+use std::{io::Write, path::Path};
 use tempfile::{NamedTempFile, TempPath};
 
 const OPENSSH_HEADER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----";
@@ -123,15 +125,49 @@ fn restrict_permissions(path: &Path) -> Result<(), SshError> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))
             .map_err(|_| SshError::TemporaryIdentityFile)?;
+        return Ok(());
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        restrict_windows_permissions(path)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let metadata = fs::metadata(path).map_err(|_| SshError::TemporaryIdentityFile)?;
         if !metadata.is_file() {
             return Err(SshError::TemporaryIdentityFile);
         }
+        Ok(())
     }
-    Ok(())
+}
+
+#[cfg(windows)]
+fn restrict_windows_permissions(path: &Path) -> Result<(), SshError> {
+    let identity = std::process::Command::new("whoami")
+        .arg("/user")
+        .output()
+        .map_err(|_| SshError::TemporaryIdentityFile)?;
+    let sid = std::str::from_utf8(&identity.stdout)
+        .ok()
+        .and_then(|value| {
+            value
+                .split_ascii_whitespace()
+                .find(|part| part.starts_with("S-1-"))
+        })
+        .ok_or(SshError::TemporaryIdentityFile)?;
+    let hardened = std::process::Command::new("icacls")
+        .arg(path)
+        .arg("/inheritance:r")
+        .arg("/grant:r")
+        .arg(format!("*{sid}:F"))
+        .arg("/c")
+        .output()
+        .map_err(|_| SshError::TemporaryIdentityFile)?;
+    hardened
+        .status
+        .success()
+        .then_some(())
+        .ok_or(SshError::TemporaryIdentityFile)
 }
 
 #[cfg(test)]
@@ -154,6 +190,26 @@ mod tests {
         assert!(path.is_file());
         drop(identity);
         assert!(!path.exists());
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn materialized_identity_removes_inherited_windows_permissions()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let id = CredentialId::parse("credential-001")?;
+        let identity = SecretIdentityFile::from_store(
+            &Store {
+                secret: Some(SecretValue::new(valid_key())),
+            },
+            &id,
+        )?;
+        let acl = std::process::Command::new("icacls")
+            .arg(identity.path())
+            .output()?;
+        let rendered = String::from_utf8(acl.stdout)?;
+        assert!(acl.status.success());
+        assert!(!rendered.contains("(I)"));
         Ok(())
     }
 

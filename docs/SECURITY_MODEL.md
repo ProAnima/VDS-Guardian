@@ -59,8 +59,9 @@ total runtime and removes its partial local stream after a launch error,
 deadline, or nonzero exit. The capture composition resolves the profile's
 credential reference through the injected secure store, accepts only an
 unencrypted OpenSSH private-key envelope or unencrypted PEM private key, and deletes its short-lived temporary
-identity file after SSH exits. Windows ACL hardening, encrypted-key/agent
-support, cooperative process-tree cancellation, and repository seal workflow
+identity file after SSH exits. Windows temporary identity-file ACLs are reduced
+to the current user before SSH starts. Encrypted-key/agent support, cooperative
+process-tree cancellation, and repository seal workflow
 remain incomplete, so it is not a production backup feature. Capture streams
 have a five-minute idle-byte deadline that kills local SSH and discards the
 partial stream; that deadline is not a substitute for full cancellation. The

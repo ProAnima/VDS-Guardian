@@ -20,8 +20,9 @@ The capture composition resolves the profile credential reference through the
 injected OS credential store. It accepts an unencrypted OpenSSH key envelope or
 an unencrypted PEM private key (RSA, EC, or PKCS#8), writes it to a short-lived temporary identity
 file, and deletes that file after the SSH invocation; private key bytes are
-never logged or written to repository configuration. Windows ACL hardening and
-support for encrypted keys through an OS SSH agent remain required before
+never logged or written to repository configuration. Windows temporary identity
+files have inherited ACLs removed and grant access only to the current user.
+Support for encrypted keys through an OS SSH agent remains required before
 unattended production use.
 
 The only current remote command template is a read-only GNU tar stream:
