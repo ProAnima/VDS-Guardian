@@ -49,6 +49,29 @@ fn successful_capture_registers_the_payload() -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
+#[test]
+fn rejected_archive_is_audited_and_discarded_before_registration()
+-> Result<(), Box<dyn std::error::Error>> {
+    let storage = FakeStorage::default();
+    let audit = FakeAudit::default();
+    let use_case = FilesystemCaptureUseCase {
+        capture: &SuccessfulCapture,
+        storage: &storage,
+        inspector: &RejectingInspector,
+        audit: &audit,
+    };
+    assert!(use_case.execute(&request()?).is_err());
+    assert_eq!(
+        *storage.events.lock().map_err(|_| "lock")?,
+        vec!["begin", "reserve", "discard"]
+    );
+    assert_eq!(
+        *audit.codes.lock().map_err(|_| "lock")?,
+        vec![CaptureAuditCode::ArchivePolicy]
+    );
+    Ok(())
+}
+
 fn request() -> Result<FilesystemCaptureRequest, Box<dyn std::error::Error>> {
     Ok(FilesystemCaptureRequest {
         run_id: RunId::parse("run-001")?,
@@ -74,6 +97,12 @@ struct AcceptingInspector;
 impl ArchiveInspectionPort for AcceptingInspector {
     fn inspect(&self, _: &Path) -> Result<(), ArchiveInspectionPortError> {
         Ok(())
+    }
+}
+struct RejectingInspector;
+impl ArchiveInspectionPort for RejectingInspector {
+    fn inspect(&self, _: &Path) -> Result<(), ArchiveInspectionPortError> {
+        Err(ArchiveInspectionPortError::Rejected)
     }
 }
 

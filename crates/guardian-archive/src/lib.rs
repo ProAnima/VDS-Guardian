@@ -2,8 +2,12 @@
 
 mod writer;
 
-use guardian_core::ArchivePath;
-use std::io::{self, Read};
+use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError, ArchivePath};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 use tar::Archive;
 use thiserror::Error;
 
@@ -43,6 +47,26 @@ pub enum ArchiveError {
     UnsafePath,
     #[error("archive entry type is not supported")]
     UnsupportedEntryType,
+}
+
+pub struct TarZstdInspector {
+    limits: ArchiveLimits,
+}
+
+impl TarZstdInspector {
+    #[must_use]
+    pub const fn new(limits: ArchiveLimits) -> Self {
+        Self { limits }
+    }
+}
+
+impl ArchiveInspectionPort for TarZstdInspector {
+    fn inspect(&self, payload: &Path) -> Result<(), ArchiveInspectionPortError> {
+        let file = File::open(payload).map_err(|_| ArchiveInspectionPortError::Rejected)?;
+        inspect_tar_zstd(file, self.limits)
+            .map(|_| ())
+            .map_err(|_| ArchiveInspectionPortError::Rejected)
+    }
 }
 
 pub fn inspect_tar_zstd(
