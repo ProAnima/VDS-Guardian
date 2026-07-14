@@ -58,7 +58,7 @@ path arguments are independently shell-quoted. Every capture has a bounded
 total runtime and removes its partial local stream after a launch error,
 deadline, or nonzero exit. The capture composition resolves the profile's
 credential reference through the injected secure store, accepts only an
-unencrypted OpenSSH private-key envelope, and deletes its short-lived temporary
+unencrypted OpenSSH private-key envelope or unencrypted PEM private key, and deletes its short-lived temporary
 identity file after SSH exits. Windows ACL hardening, encrypted-key/agent
 support, cooperative process-tree cancellation, and repository seal workflow
 remain incomplete, so it is not a production backup feature. Capture streams
@@ -81,7 +81,7 @@ least that budget plus a 5 GiB free-space reserve on the destination filesystem.
 The capture is rejected before opening staging if the reserve is unavailable.
 
 The desktop enrollment screen follows the same boundary: the operator supplies
-an absolute path to a dedicated unencrypted OpenSSH key and explicitly confirms
+an absolute path to a dedicated unencrypted OpenSSH or PEM private key and explicitly confirms
 that the pasted host key was verified out-of-band. The application validates
 the regular non-symlink key file, stores its bytes only in the OS credential
 store under a generated reference, persists only public profile data, and then

@@ -17,11 +17,12 @@ The system `ssh` executable receives direct local argv, never a locally
 constructed shell command. Its options disable password and keyboard-interactive
 authentication and require `StrictHostKeyChecking=yes` and `IdentitiesOnly=yes`.
 The capture composition resolves the profile credential reference through the
-injected OS credential store. It accepts only an unencrypted OpenSSH key
-envelope, writes it to a short-lived temporary identity file, and deletes that
-file after the SSH invocation; private key bytes are never logged or written to
-repository configuration. Windows ACL hardening and support for encrypted keys
-through an OS SSH agent remain required before unattended production use.
+injected OS credential store. It accepts an unencrypted OpenSSH key envelope or
+an unencrypted PEM private key (RSA, EC, or PKCS#8), writes it to a short-lived temporary identity
+file, and deletes that file after the SSH invocation; private key bytes are
+never logged or written to repository configuration. Windows ACL hardening and
+support for encrypted keys through an OS SSH agent remain required before
+unattended production use.
 
 The only current remote command template is a read-only GNU tar stream:
 

@@ -604,7 +604,7 @@ pub enum SshError {
     IdleTimedOut,
     #[error("SSH credential is unavailable")]
     CredentialUnavailable,
-    #[error("SSH credential is not a supported unencrypted OpenSSH private key")]
+    #[error("SSH credential is not a supported unencrypted SSH private key")]
     InvalidCredential,
     #[error("temporary SSH identity file could not be prepared")]
     TemporaryIdentityFile,

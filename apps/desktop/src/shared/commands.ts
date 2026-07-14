@@ -148,7 +148,10 @@ export async function listRepositories(): Promise<RepositorySummary[]> {
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId } }); }
-export async function pickSshKeyPath(): Promise<string | undefined> { return pickPath({ directory: false, filters: [{ name: "OpenSSH key", extensions: ["key", "pem"] }] }); }
+// OpenSSH commonly stores private identities without a conventional extension
+// (for example `id_rsa` or an operator-provided `id_rsa.priv`). File type is
+// validated by the desktop command after selection, never by this UI filter.
+export async function pickSshKeyPath(): Promise<string | undefined> { return pickPath({ directory: false }); }
 export async function pickRepositoryPath(): Promise<string | undefined> { return pickPath({ directory: true }); }
 
 export function hasTauriRuntime(): boolean {

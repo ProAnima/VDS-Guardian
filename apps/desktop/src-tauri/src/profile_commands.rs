@@ -264,8 +264,8 @@ impl ProfileCommandFailure {
     fn invalid_key() -> Self {
         Self {
             code: "invalid_ssh_key",
-            message: "The SSH key is not a supported unencrypted OpenSSH private key.",
-            remediation: "Use a dedicated unencrypted OpenSSH key protected by the operating-system credential store.",
+            message: "The SSH key is not a supported unencrypted private key.",
+            remediation: "Use a dedicated unencrypted OpenSSH or PEM private key protected by the operating-system credential store.",
         }
     }
     fn credential_store() -> Self {

@@ -214,8 +214,8 @@ impl CredentialFailure {
     fn invalid_key() -> Self {
         Self {
             code: "invalid_ssh_key",
-            message: "The key is not a supported unencrypted OpenSSH private key.",
-            usage: "Create a dedicated unencrypted OpenSSH key and protect it through the OS credential store.",
+            message: "The key is not a supported unencrypted private key.",
+            usage: "Create a dedicated unencrypted OpenSSH or PEM private key and protect it through the OS credential store.",
         }
     }
 

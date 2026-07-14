@@ -4,8 +4,14 @@ use guardian_core::{CredentialId, SecretStore};
 use std::{fs, io::Write, path::Path};
 use tempfile::{NamedTempFile, TempPath};
 
-const HEADER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----";
-const FOOTER: &str = "-----END OPENSSH PRIVATE KEY-----";
+const OPENSSH_HEADER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----";
+const OPENSSH_FOOTER: &str = "-----END OPENSSH PRIVATE KEY-----";
+const PEM_RSA_HEADER: &str = "-----BEGIN RSA PRIVATE KEY-----";
+const PEM_RSA_FOOTER: &str = "-----END RSA PRIVATE KEY-----";
+const PEM_EC_HEADER: &str = "-----BEGIN EC PRIVATE KEY-----";
+const PEM_EC_FOOTER: &str = "-----END EC PRIVATE KEY-----";
+const PEM_PKCS8_HEADER: &str = "-----BEGIN PRIVATE KEY-----";
+const PEM_PKCS8_FOOTER: &str = "-----END PRIVATE KEY-----";
 const MAX_KEY_BYTES: usize = 64 * 1024;
 
 pub struct SecretIdentityFile {
@@ -44,12 +50,33 @@ fn validate_private_key(bytes: &[u8]) -> Result<(), SshError> {
         return Err(SshError::InvalidCredential);
     }
     let text = std::str::from_utf8(bytes).map_err(|_| SshError::InvalidCredential)?;
-    let text = text.strip_suffix('\n').unwrap_or(text);
-    let body = text
-        .strip_prefix(HEADER)
-        .and_then(|value| value.strip_prefix('\n'))
-        .and_then(|value| value.strip_suffix(FOOTER))
-        .ok_or(SshError::InvalidCredential)?;
+    let text = text.trim_end_matches(['\r', '\n']);
+    if let Some(body) = pem_body(text, OPENSSH_HEADER, OPENSSH_FOOTER) {
+        return validate_openssh_envelope(body);
+    }
+    for (header, footer) in [
+        (PEM_RSA_HEADER, PEM_RSA_FOOTER),
+        (PEM_EC_HEADER, PEM_EC_FOOTER),
+        (PEM_PKCS8_HEADER, PEM_PKCS8_FOOTER),
+    ] {
+        if let Some(body) = pem_body(text, header, footer) {
+            return validate_pem_private_key(body);
+        }
+    }
+    Err(SshError::InvalidCredential)
+}
+
+fn pem_body<'a>(text: &'a str, header: &str, footer: &str) -> Option<&'a str> {
+    text.strip_prefix(header)
+        .and_then(|value| {
+            value
+                .strip_prefix("\r\n")
+                .or_else(|| value.strip_prefix('\n'))
+        })
+        .and_then(|value| value.strip_suffix(footer))
+}
+
+fn validate_openssh_envelope(body: &str) -> Result<(), SshError> {
     let encoded: String = body.lines().collect();
     let decoded = STANDARD
         .decode(encoded.as_bytes())
@@ -63,6 +90,16 @@ fn validate_private_key(bytes: &[u8]) -> Result<(), SshError> {
         return Err(SshError::InvalidCredential);
     }
     Ok(())
+}
+
+fn validate_pem_private_key(body: &str) -> Result<(), SshError> {
+    let encoded: String = body.lines().collect();
+    let der = STANDARD
+        .decode(encoded.as_bytes())
+        .map_err(|_| SshError::InvalidCredential)?;
+    (der.len() > 8 && der.first() == Some(&0x30))
+        .then_some(())
+        .ok_or(SshError::InvalidCredential)
 }
 
 fn take_prefix(cursor: &mut &[u8], prefix: &[u8]) -> bool {
@@ -99,7 +136,10 @@ fn restrict_permissions(path: &Path) -> Result<(), SshError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FOOTER, HEADER, SecretIdentityFile, validate_private_key};
+    use super::{
+        OPENSSH_FOOTER, OPENSSH_HEADER, PEM_EC_FOOTER, PEM_EC_HEADER, PEM_PKCS8_FOOTER,
+        PEM_PKCS8_HEADER, PEM_RSA_FOOTER, PEM_RSA_HEADER, SecretIdentityFile, validate_private_key,
+    };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use guardian_core::{CredentialId, SecretStore, SecretStoreError, SecretValue};
 
@@ -122,6 +162,22 @@ mod tests {
         assert!(validate_private_key(b"not a key").is_err());
         let encrypted = envelope(b"aes256-ctr", b"bcrypt", b"salt");
         assert!(validate_private_key(&encrypted).is_err());
+        assert!(validate_private_key(b"-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----\n").is_err());
+    }
+
+    #[test]
+    fn unencrypted_common_pem_keys_are_accepted() {
+        let der = [
+            0x30, 0x09, 0x02, 0x01, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04,
+        ];
+        for (header, footer) in [
+            (PEM_RSA_HEADER, PEM_RSA_FOOTER),
+            (PEM_EC_HEADER, PEM_EC_FOOTER),
+            (PEM_PKCS8_HEADER, PEM_PKCS8_FOOTER),
+        ] {
+            let key = format!("{header}\r\n{}\r\n{footer}\r\n", STANDARD.encode(der));
+            assert!(validate_private_key(key.as_bytes()).is_ok());
+        }
     }
 
     fn valid_key() -> Vec<u8> {
@@ -135,7 +191,7 @@ mod tests {
             bytes.extend_from_slice(value);
         }
         let encoded = STANDARD.encode(bytes);
-        format!("{HEADER}\n{encoded}\n{FOOTER}\n").into_bytes()
+        format!("{OPENSSH_HEADER}\n{encoded}\n{OPENSSH_FOOTER}\n").into_bytes()
     }
 
     struct Store {
