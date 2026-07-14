@@ -49,6 +49,8 @@ cross-process lock, an atomic public configuration, and a non-secret recovery
 intent. Read-only status and explicit enrollment are available through JSON CLI
 and Tauri bridge commands; the desktop setup UI requires a separate explicit
 acknowledgement before enrollment. Explicit rotation remains open.
+Staging payloads can now be reserved exclusively for streaming adapters and are
+registered only after a regular-file check and disk-based SHA-256 calculation.
 
 ## Milestone 2 — secure SSH capture (P0)
 

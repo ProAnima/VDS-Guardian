@@ -47,7 +47,9 @@ Adapters will be added by capability, not bundled into the domain crate:
   temporary exact `known_hosts` input, and non-interactive strict host-key
   checking for read-only archive capture; it is not wired to a backup use case.
 - Local repository with staging, atomic seal, read-only best-effort flags, and
-  whole-directory retention.
+  whole-directory retention. Staging can reserve an exclusive payload path for
+  a streaming adapter, then registers the regular file and hashes it from disk
+  before it can enter a manifest.
 - Secret storage backed by Windows Credential Manager and Linux Secret Service.
 - Tar/Zstandard archive writer and hostile-input-safe reader. The initial
   `guardian-archive` adapter emits deterministic tar.zst streams and performs

@@ -2,7 +2,7 @@ use crate::RepositoryError;
 use crate::filesystem::{atomic_write, create_safe_parent, sync_parent, write_new};
 use crate::repository::{LocalRepository, RepositoryLock};
 use crate::signature_file::DiskSignature;
-use crate::verification::{sha256_bytes, verify_staged_payloads};
+use crate::verification::verify_staged_payloads;
 use guardian_core::{
     BackupId, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId, Timestamp,
     VerificationState,
@@ -28,19 +28,44 @@ impl StagingBackup<'_> {
         media_type: impl Into<String>,
         bytes: &[u8],
     ) -> Result<PayloadEntry, RepositoryError> {
+        let target = self.reserve_payload_destination(&relative_path)?;
+        write_new(&target, bytes)?;
+        self.register_payload_file(logical_role, relative_path, media_type)
+    }
+
+    pub fn reserve_payload_destination(
+        &self,
+        relative_path: &PayloadPath,
+    ) -> Result<PathBuf, RepositoryError> {
         if !relative_path.as_str().starts_with("payload/") {
             return Err(RepositoryError::UnsafeFilesystemEntry);
         }
-        let entry = PayloadEntry::new(
-            logical_role,
-            relative_path.clone(),
-            u64::try_from(bytes.len()).map_err(|_| RepositoryError::IntegrityFailure)?,
-            sha256_bytes(bytes),
-            media_type,
-        )?;
         let target = create_safe_parent(&self.path, relative_path.as_str())?;
-        write_new(&target, bytes)?;
-        Ok(entry)
+        (!target.exists())
+            .then_some(target)
+            .ok_or(RepositoryError::PayloadExists)
+    }
+
+    pub fn register_payload_file(
+        &self,
+        logical_role: impl Into<String>,
+        relative_path: PayloadPath,
+        media_type: impl Into<String>,
+    ) -> Result<PayloadEntry, RepositoryError> {
+        let target = self.path.join(relative_path.as_str());
+        let metadata = fs::symlink_metadata(&target)
+            .map_err(|source| RepositoryError::io("inspect staged payload", source))?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(RepositoryError::UnsafeFilesystemEntry);
+        }
+        PayloadEntry::new(
+            logical_role,
+            relative_path,
+            metadata.len(),
+            crate::verification::hash_file(&target)?,
+            media_type,
+        )
+        .map_err(RepositoryError::from)
     }
 
     pub fn seal(

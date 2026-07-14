@@ -12,6 +12,8 @@ pub enum RepositoryError {
     StagingExists,
     #[error("sealed backup already exists")]
     BackupExists,
+    #[error("staged payload path already exists")]
+    PayloadExists,
     #[error("manifest does not belong to this staging run")]
     RunMismatch,
     #[error("manifest signer must use Ed25519")]

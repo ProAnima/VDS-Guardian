@@ -9,10 +9,6 @@ use std::path::{Path, PathBuf};
 const MAX_PAYLOAD_FILES: usize = 100_000;
 const MAX_PAYLOAD_DEPTH: usize = 64;
 
-pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
-
 pub(crate) fn verify_staged_payloads(
     payload_root: &Path,
     manifest: &Manifest,
@@ -104,7 +100,7 @@ fn walk_payload(
     Ok(())
 }
 
-fn hash_file(path: &Path) -> Result<String, RepositoryError> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, RepositoryError> {
     let mut file =
         File::open(path).map_err(|source| RepositoryError::io("open staged payload", source))?;
     let mut digest = Sha256::new();

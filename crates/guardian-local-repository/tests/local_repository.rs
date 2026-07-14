@@ -58,6 +58,21 @@ fn simulated_bytes_become_a_signed_independent_backup() -> TestResult {
 }
 
 #[test]
+fn reserved_payload_is_registered_from_staging_without_memory_buffering() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let staging = repository.begin_staging(RunId::parse("run-stream")?)?;
+    let path = PayloadPath::parse("payload/filesystem-000.tar.zst")?;
+    let destination = staging.reserve_payload_destination(&path)?;
+    fs::write(&destination, b"streamed archive")?;
+    let payload = staging.register_payload_file("filesystem", path.clone(), "application/zstd")?;
+    assert_eq!(payload.path, path);
+    assert_eq!(payload.byte_length, 16);
+    assert!(staging.reserve_payload_destination(&path).is_err());
+    Ok(())
+}
+
+#[test]
 fn corruption_is_quarantined_and_never_published() -> TestResult {
     let root = TestRoot::new()?;
     let repository = repository(&root)?;
