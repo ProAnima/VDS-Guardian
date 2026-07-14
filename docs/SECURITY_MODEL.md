@@ -89,6 +89,11 @@ remediation text rather than internal paths or operating-system error payloads.
 Process-local lock registries close Windows same-process re-entry while OS file
 locks continue to serialize independent processes.
 
+The desktop setup screen follows the same boundary: rendering, status refresh,
+and browser preview cannot create an identity. Enrollment requires a separate
+user action, an acknowledgement checkbox, and a final confirmation; cancelling
+clears that acknowledgement.
+
 ### Hostile backup content
 
 - Verification hashes bytes without executing or previewing them.

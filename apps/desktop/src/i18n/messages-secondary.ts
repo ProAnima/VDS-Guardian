@@ -17,6 +17,7 @@ export const ptBr: Messages = {
   statusReady: "Pronto", statusInProgress: "Em andamento", statusPlanned: "Planejado",
   securityTitle: "Criado para uma origem potencialmente comprometida", securityBody: "Os backups passam por staging, verificação, assinatura e selagem antes de se tornarem pontos de recuperação.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "Confiança do nó", signingTitle: "Identidade de assinatura", signingBody: "Este nó assina manifestos de backup selados. A semente privada fica no armazenamento de credenciais do sistema.", signingLoading: "Verificando a identidade local…", signingNotEnrolled: "Não inscrita", signingEnrollmentPending: "Inscrição pendente", signingRecoveryPending: "Recuperação pendente", signingReady: "Pronta", signingCredential: "Referência de credencial", signingKeyId: "ID da chave pública", signingStart: "Criar identidade", signingFinish: "Concluir inscrição", signingRefresh: "Atualizar status", signingConfirmTitle: "Criar a identidade deste nó?", signingConfirmBody: "Uma nova semente Ed25519 será gerada e armazenada apenas no gerenciador de credenciais do sistema. Ela não é exportada nem adicionada às configurações do projeto.", signingAcknowledge: "Entendo que isto cria uma identidade de assinatura local.", signingCreate: "Criar identidade", signingCancel: "Cancelar", signingCreating: "Criando identidade…", signingDesktopRequired: "Disponível no aplicativo para desktop", signingErrorFallback: "Não foi possível verificar a identidade de assinatura com segurança.",
 };
 
 export const zhCn: Messages = {
@@ -36,6 +37,7 @@ export const zhCn: Messages = {
   statusReady: "已就绪", statusInProgress: "进行中", statusPlanned: "已计划",
   securityTitle: "面向源服务器可能已受侵的威胁模型", securityBody: "备份必须经过暂存、验证、签名和封存，之后才能成为恢复点。",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "节点信任", signingTitle: "签名身份", signingBody: "此节点会为已封存的备份清单签名。私有种子仅保留在操作系统的凭据存储中。", signingLoading: "正在检查本地身份…", signingNotEnrolled: "尚未创建", signingEnrollmentPending: "创建待完成", signingRecoveryPending: "等待恢复", signingReady: "已就绪", signingCredential: "凭据引用", signingKeyId: "公钥 ID", signingStart: "创建身份", signingFinish: "完成创建", signingRefresh: "刷新状态", signingConfirmTitle: "创建此节点身份？", signingConfirmBody: "将生成新的 Ed25519 种子，并仅保存到操作系统凭据存储中。它不会被导出或写入项目设置。", signingAcknowledge: "我理解这将创建本地签名身份。", signingCreate: "创建身份", signingCancel: "取消", signingCreating: "正在创建身份…", signingDesktopRequired: "仅在桌面应用中可用", signingErrorFallback: "无法安全检查签名身份。",
 };
 
 export const ja: Messages = {
@@ -55,6 +57,7 @@ export const ja: Messages = {
   statusReady: "準備完了", statusInProgress: "進行中", statusPlanned: "計画済み",
   securityTitle: "侵害された可能性のある取得元を想定", securityBody: "バックアップはステージング、検証、署名、封印を経て初めて復元ポイントになります。",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "ノードの信頼", signingTitle: "署名 ID", signingBody: "このノードは封印済みバックアップマニフェストに署名します。秘密シードは OS の資格情報ストアにのみ保持されます。", signingLoading: "ローカル ID を確認中…", signingNotEnrolled: "未登録", signingEnrollmentPending: "登録待ち", signingRecoveryPending: "復旧待ち", signingReady: "準備完了", signingCredential: "資格情報参照", signingKeyId: "公開鍵 ID", signingStart: "ID を作成", signingFinish: "登録を完了", signingRefresh: "状態を更新", signingConfirmTitle: "このノード ID を作成しますか？", signingConfirmBody: "新しい Ed25519 シードが生成され、OS の資格情報ストアにのみ保存されます。エクスポートもプロジェクト設定への追加も行いません。", signingAcknowledge: "ローカル署名 ID が作成されることを理解しました。", signingCreate: "ID を作成", signingCancel: "キャンセル", signingCreating: "ID を作成中…", signingDesktopRequired: "デスクトップアプリで利用可能", signingErrorFallback: "署名 ID を安全に確認できませんでした。",
 };
 
 export const ko: Messages = {
@@ -74,6 +77,7 @@ export const ko: Messages = {
   statusReady: "준비됨", statusInProgress: "진행 중", statusPlanned: "계획됨",
   securityTitle: "침해 가능성이 있는 원본을 고려한 설계", securityBody: "백업은 스테이징, 검증, 서명, 봉인을 거친 후에만 복구 지점이 됩니다.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "노드 신뢰", signingTitle: "서명 ID", signingBody: "이 노드는 봉인된 백업 매니페스트에 서명합니다. 비밀 시드는 운영 체제 자격 증명 저장소에만 보관됩니다.", signingLoading: "로컬 ID 확인 중…", signingNotEnrolled: "미등록", signingEnrollmentPending: "등록 대기", signingRecoveryPending: "복구 대기", signingReady: "준비됨", signingCredential: "자격 증명 참조", signingKeyId: "공개 키 ID", signingStart: "ID 만들기", signingFinish: "등록 완료", signingRefresh: "상태 새로 고침", signingConfirmTitle: "이 노드 ID를 만들까요?", signingConfirmBody: "새 Ed25519 시드가 생성되어 운영 체제 자격 증명 저장소에만 저장됩니다. 내보내거나 프로젝트 설정에 추가하지 않습니다.", signingAcknowledge: "로컬 서명 ID가 생성됨을 이해합니다.", signingCreate: "ID 만들기", signingCancel: "취소", signingCreating: "ID 생성 중…", signingDesktopRequired: "데스크톱 앱에서 사용 가능", signingErrorFallback: "서명 ID를 안전하게 확인할 수 없습니다.",
 };
 
 export const ar: Messages = {
@@ -93,4 +97,5 @@ export const ar: Messages = {
   statusReady: "جاهز", statusInProgress: "قيد التنفيذ", statusPlanned: "مخطط",
   securityTitle: "مصمم لمصدر قد يكون مخترقاً", securityBody: "تمر النسخ بمرحلة التجهيز والتحقق والتوقيع والختم قبل أن تصبح نقاط استعادة.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "ثقة العقدة", signingTitle: "هوية التوقيع", signingBody: "توقّع هذه العقدة بيانات النسخ الاحتياطية المختومة. تبقى البذرة الخاصة في مخزن بيانات اعتماد نظام التشغيل فقط.", signingLoading: "جارٍ التحقق من الهوية المحلية…", signingNotEnrolled: "غير مسجلة", signingEnrollmentPending: "التسجيل قيد الانتظار", signingRecoveryPending: "الاسترداد قيد الانتظار", signingReady: "جاهزة", signingCredential: "مرجع بيانات الاعتماد", signingKeyId: "معرف المفتاح العام", signingStart: "إنشاء هوية", signingFinish: "إتمام التسجيل", signingRefresh: "تحديث الحالة", signingConfirmTitle: "إنشاء هوية هذه العقدة؟", signingConfirmBody: "سيتم إنشاء بذرة Ed25519 جديدة وتخزينها في مخزن بيانات اعتماد نظام التشغيل فقط. لن يتم تصديرها أو إضافتها إلى إعدادات المشروع.", signingAcknowledge: "أفهم أن هذا ينشئ هوية توقيع محلية.", signingCreate: "إنشاء هوية", signingCancel: "إلغاء", signingCreating: "جارٍ إنشاء الهوية…", signingDesktopRequired: "متاح في تطبيق سطح المكتب", signingErrorFallback: "تعذر التحقق من هوية التوقيع بأمان.",
 };

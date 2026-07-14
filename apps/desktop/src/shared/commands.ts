@@ -31,6 +31,12 @@ export interface SigningIdentityEnrollment {
   identity: SigningIdentityDescriptor;
 }
 
+export interface SigningIdentityFailure {
+  code: string;
+  message: string;
+  remediation: string;
+}
+
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
@@ -62,6 +68,6 @@ export async function enrollSigningIdentity(): Promise<SigningIdentityEnrollment
   return invoke<SigningIdentityEnrollment>("enroll_signing_identity");
 }
 
-function hasTauriRuntime(): boolean {
+export function hasTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }

@@ -9,11 +9,12 @@ this repository. Read this file, `CODEX.md`, and the relevant document under
 Milestone 1: domain and local repository. Simulated-source repository and
 signing slices implement isolated staging, SHA-256 verification, golden manifest
 fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
-atomic seal, journaled signing enrollment, and verified whole-directory
-retention. Live SSH backup, the desktop enrollment UI, automated power-loss
-reconciliation, and restore are not implemented and must not be represented as
-production-ready. Signing status/enrollment bridge commands now exist, but no
-desktop screen invokes enrollment automatically or implicitly.
+atomic seal, journaled signing enrollment, verified whole-directory retention,
+and a desktop signing-identity setup screen. Live SSH backup, automated
+power-loss reconciliation, and restore are not implemented and must not be
+represented as production-ready. The signing screen shows status and requires
+an explicit action plus acknowledgement before it invokes enrollment; it never
+creates an identity automatically or implicitly.
 
 ## Source of truth
 

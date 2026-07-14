@@ -2,7 +2,8 @@
 
 Status: Milestone 1 implementation contract. Locked, journaled enrollment is
 implemented as a shared Rust service and exposed through explicit JSON CLI and
-Tauri bridge commands. The desktop setup screen is not wired yet.
+Tauri bridge commands. The desktop setup screen shows status and offers a
+deliberate, acknowledged enrollment flow.
 
 ## Purpose
 
@@ -56,11 +57,16 @@ application configuration directory and runs keyring/filesystem work on a
 blocking worker, never the UI thread. Both surfaces serialize the same DTOs and
 safe error codes. Internal paths and platform error payloads are not returned.
 
+The desktop screen first reads status and never enrolls on mount or refresh. A
+user must choose enrollment, acknowledge the confirmation statement, and then
+choose the final create action. Browser previews cannot invoke enrollment. On
+success, the screen reloads and displays only public credential metadata.
+
 Loading validates the exact 32-byte length. Signing keys and temporary seed
 buffers use zeroization on drop. Errors are typed and never include credential
 contents or platform error payloads.
 
 Rotation will enroll a new credential ID and preserve old public verification
 keys. It must never overwrite manifests or sealed backups. Explicit rotation,
-trusted-public-key registry, desktop setup UI, and encrypted-vault fallback are
-not implemented in this slice.
+trusted-public-key registry, and encrypted-vault fallback are not implemented
+in this slice.

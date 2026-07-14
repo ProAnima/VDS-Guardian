@@ -63,8 +63,10 @@ React presents profiles, plans, job state, verification, and restore previews.
 It calls typed Tauri commands through one bridge module. Tauri owns window and
 OS integration only; blocking jobs run outside the UI thread and stream bounded
 events. Signing status and explicit enrollment are the first infrastructure
-commands: their Tauri functions only resolve the app config path and dispatch
-the shared signing service to a blocking worker.
+commands: the Overview setup panel reads status, and only calls enrollment
+after an explicit acknowledgement and final confirmation. Their Tauri functions
+only resolve the app config path and dispatch the shared signing service to a
+blocking worker.
 
 ### CLI/service
 

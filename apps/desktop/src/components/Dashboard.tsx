@@ -5,6 +5,7 @@ import {
 import type { Translate } from "../i18n";
 import type { FoundationStatus } from "../shared/commands";
 import { StatusCard } from "./StatusCard";
+import { SigningIdentityPanel } from "./SigningIdentityPanel";
 
 interface DashboardProps {
   status: FoundationStatus;
@@ -16,6 +17,7 @@ export function Dashboard({ status, t }: DashboardProps) {
     <main className="dashboard">
       <Hero status={status} t={t} />
       <StatusGrid t={t} />
+      <SigningIdentityPanel t={t} />
       <div className="dashboard__columns">
         <ServersPanel t={t} />
         <RoadmapPanel t={t} />

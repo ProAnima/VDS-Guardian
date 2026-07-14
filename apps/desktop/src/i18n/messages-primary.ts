@@ -46,6 +46,27 @@ export const en = {
   securityBody: "Backups are staged, verified, signed, and sealed before they can become recovery points.",
   footerPlatform: "Windows + Linux",
   footerLicense: "Apache-2.0",
+  signingEyebrow: "Node trust",
+  signingTitle: "Signing identity",
+  signingBody: "This node signs sealed backup manifests. The private seed stays in the operating-system credential store.",
+  signingLoading: "Checking local identity…",
+  signingNotEnrolled: "Not enrolled",
+  signingEnrollmentPending: "Enrollment pending",
+  signingRecoveryPending: "Recovery pending",
+  signingReady: "Ready",
+  signingCredential: "Credential reference",
+  signingKeyId: "Public key ID",
+  signingStart: "Create identity",
+  signingFinish: "Finish enrollment",
+  signingRefresh: "Refresh status",
+  signingConfirmTitle: "Create this node identity?",
+  signingConfirmBody: "A new Ed25519 seed will be generated and stored only in your operating-system credential store. It is not exported or added to project settings.",
+  signingAcknowledge: "I understand this creates a local signing identity.",
+  signingCreate: "Create identity",
+  signingCancel: "Cancel",
+  signingCreating: "Creating identity…",
+  signingDesktopRequired: "Available in the desktop app",
+  signingErrorFallback: "The signing identity could not be checked safely.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -99,6 +120,27 @@ export const ru: Messages = {
   securityBody: "Бэкапы проходят staging, проверку, подпись и sealing, прежде чем стать точками восстановления.",
   footerPlatform: "Windows + Linux",
   footerLicense: "Apache-2.0",
+  signingEyebrow: "Доверие узла",
+  signingTitle: "Подписывающая идентичность",
+  signingBody: "Этот узел подписывает sealed-манифесты бэкапов. Приватный seed остаётся в хранилище учётных данных ОС.",
+  signingLoading: "Проверяем локальную идентичность…",
+  signingNotEnrolled: "Не создана",
+  signingEnrollmentPending: "Создание ожидает",
+  signingRecoveryPending: "Ожидается восстановление",
+  signingReady: "Готово",
+  signingCredential: "Ссылка на учётные данные",
+  signingKeyId: "ID публичного ключа",
+  signingStart: "Создать идентичность",
+  signingFinish: "Завершить создание",
+  signingRefresh: "Обновить статус",
+  signingConfirmTitle: "Создать идентичность этого узла?",
+  signingConfirmBody: "Новый Ed25519 seed будет создан и сохранён только в хранилище учётных данных ОС. Он не экспортируется и не добавляется в настройки проекта.",
+  signingAcknowledge: "Я понимаю, что создаю локальную подписывающую идентичность.",
+  signingCreate: "Создать идентичность",
+  signingCancel: "Отмена",
+  signingCreating: "Создаём идентичность…",
+  signingDesktopRequired: "Доступно в десктоп-приложении",
+  signingErrorFallback: "Не удалось безопасно проверить подписывающую идентичность.",
 };
 
 export const de: Messages = {
@@ -118,6 +160,7 @@ export const de: Messages = {
   statusReady: "Bereit", statusInProgress: "In Arbeit", statusPlanned: "Geplant",
   securityTitle: "Für ein kompromittiertes Quellsystem entwickelt", securityBody: "Backups werden bereitgestellt, geprüft, signiert und versiegelt, bevor sie Wiederherstellungspunkte werden.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "Knotenvertrauen", signingTitle: "Signieridentität", signingBody: "Dieser Knoten signiert versiegelte Backup-Manifeste. Der private Seed bleibt im Anmeldespeicher des Betriebssystems.", signingLoading: "Lokale Identität wird geprüft…", signingNotEnrolled: "Nicht eingerichtet", signingEnrollmentPending: "Einrichtung ausstehend", signingRecoveryPending: "Wiederherstellung ausstehend", signingReady: "Bereit", signingCredential: "Anmeldereferenz", signingKeyId: "Öffentliche Schlüssel-ID", signingStart: "Identität erstellen", signingFinish: "Einrichtung abschließen", signingRefresh: "Status aktualisieren", signingConfirmTitle: "Diese Knotenidentität erstellen?", signingConfirmBody: "Ein neuer Ed25519-Seed wird nur im Anmeldespeicher des Betriebssystems erzeugt und gespeichert. Er wird nicht exportiert oder zu Projekteinstellungen hinzugefügt.", signingAcknowledge: "Ich verstehe, dass dadurch eine lokale Signieridentität entsteht.", signingCreate: "Identität erstellen", signingCancel: "Abbrechen", signingCreating: "Identität wird erstellt…", signingDesktopRequired: "In der Desktop-App verfügbar", signingErrorFallback: "Die Signieridentität konnte nicht sicher geprüft werden.",
 };
 
 export const fr: Messages = {
@@ -137,6 +180,7 @@ export const fr: Messages = {
   statusReady: "Prêt", statusInProgress: "En cours", statusPlanned: "Planifié",
   securityTitle: "Conçu pour une source potentiellement compromise", securityBody: "Les sauvegardes sont préparées, vérifiées, signées et scellées avant de devenir des points de reprise.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "Confiance du nœud", signingTitle: "Identité de signature", signingBody: "Ce nœud signe les manifestes de sauvegarde scellés. La graine privée reste dans le magasin d’identifiants du système.", signingLoading: "Vérification de l’identité locale…", signingNotEnrolled: "Non inscrite", signingEnrollmentPending: "Inscription en attente", signingRecoveryPending: "Récupération en attente", signingReady: "Prête", signingCredential: "Référence d’identifiant", signingKeyId: "ID de clé publique", signingStart: "Créer l’identité", signingFinish: "Terminer l’inscription", signingRefresh: "Actualiser l’état", signingConfirmTitle: "Créer l’identité de ce nœud ?", signingConfirmBody: "Une nouvelle graine Ed25519 sera générée et stockée uniquement dans le magasin d’identifiants du système. Elle n’est ni exportée ni ajoutée aux réglages du projet.", signingAcknowledge: "Je comprends que cela crée une identité de signature locale.", signingCreate: "Créer l’identité", signingCancel: "Annuler", signingCreating: "Création de l’identité…", signingDesktopRequired: "Disponible dans l’application de bureau", signingErrorFallback: "L’identité de signature n’a pas pu être vérifiée en toute sécurité.",
 };
 
 export const es: Messages = {
@@ -156,4 +200,5 @@ export const es: Messages = {
   statusReady: "Listo", statusInProgress: "En curso", statusPlanned: "Planificado",
   securityTitle: "Creado para una fuente potencialmente comprometida", securityBody: "Las copias se preparan, verifican, firman y sellan antes de convertirse en puntos de recuperación.",
   footerPlatform: "Windows + Linux", footerLicense: "Apache-2.0",
+  signingEyebrow: "Confianza del nodo", signingTitle: "Identidad de firma", signingBody: "Este nodo firma manifiestos de copia sellados. La semilla privada permanece en el almacén de credenciales del sistema operativo.", signingLoading: "Comprobando la identidad local…", signingNotEnrolled: "Sin registrar", signingEnrollmentPending: "Registro pendiente", signingRecoveryPending: "Recuperación pendiente", signingReady: "Lista", signingCredential: "Referencia de credencial", signingKeyId: "ID de clave pública", signingStart: "Crear identidad", signingFinish: "Finalizar registro", signingRefresh: "Actualizar estado", signingConfirmTitle: "¿Crear la identidad de este nodo?", signingConfirmBody: "Se generará una nueva semilla Ed25519 y se guardará solo en el almacén de credenciales del sistema. No se exporta ni se añade a los ajustes del proyecto.", signingAcknowledge: "Entiendo que esto crea una identidad de firma local.", signingCreate: "Crear identidad", signingCancel: "Cancelar", signingCreating: "Creando identidad…", signingDesktopRequired: "Disponible en la aplicación de escritorio", signingErrorFallback: "No se pudo comprobar con seguridad la identidad de firma.",
 };
