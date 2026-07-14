@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 fs2.workspace = true
+guardian-archive.workspace = true
 guardian-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -22,7 +22,10 @@ fn restore_plan_requires_a_sealed_backup_and_exact_confirmation()
     )?;
     let destination = std::env::temp_dir().join("vds-guardian-restore-target");
     let plan = RestorePlan::build(&manifest, &destination)?;
-    assert_eq!(plan.filesystem_payloads.len(), 1);
+    assert_eq!(
+        plan.filesystem_payload.as_str(),
+        "payload/filesystem.tar.zst"
+    );
     assert!(plan.destination_is_new());
     assert!(plan.approve("RESTORE something else").is_err());
     assert!(plan.approve(&plan.confirmation).is_ok());

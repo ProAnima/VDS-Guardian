@@ -4,6 +4,7 @@ use crate::inventory::load_verified_manifest;
 use crate::process_lock::ProcessLock;
 use crate::staging::StagingBackup;
 use fs2::FileExt;
+use guardian_archive::{ArchiveLimits, extract_tar_zstd};
 use guardian_core::{BackupId, ManifestVerifier, RepositoryId, RestorePlan, RunId};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
@@ -223,6 +224,33 @@ impl LocalRepository {
         let manifest =
             load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)?;
         RestorePlan::build(&manifest, destination).map_err(RepositoryError::RestorePlan)
+    }
+
+    pub fn execute_restore(
+        &self,
+        backup_id: &BackupId,
+        destination: impl AsRef<Path>,
+        confirmation: &str,
+        verifier: &dyn ManifestVerifier,
+    ) -> Result<RestorePlan, RepositoryError> {
+        let destination = destination.as_ref();
+        let plan = self.plan_restore(backup_id, destination, verifier)?;
+        plan.approve(confirmation)
+            .map_err(RepositoryError::RestorePlan)?;
+        let payload = self
+            .backups_root()
+            .join(backup_id.as_str())
+            .join(plan.filesystem_payload.as_str());
+        let metadata = fs::symlink_metadata(&payload)
+            .map_err(|source| RepositoryError::io("inspect restore payload", source))?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(RepositoryError::UnsafeFilesystemEntry);
+        }
+        let source = File::open(&payload)
+            .map_err(|source| RepositoryError::io("open restore payload", source))?;
+        extract_tar_zstd(source, destination, ArchiveLimits::conservative())
+            .map_err(RepositoryError::RestoreExtraction)?;
+        Ok(plan)
     }
 }
 

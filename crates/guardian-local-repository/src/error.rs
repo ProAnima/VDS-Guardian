@@ -1,3 +1,4 @@
+use guardian_archive::ArchiveError;
 use guardian_core::{ManifestError, RestorePlanError, SigningError};
 use std::io;
 use thiserror::Error;
@@ -40,6 +41,8 @@ pub enum RepositoryError {
     Manifest(#[from] ManifestError),
     #[error("restore plan could not be created")]
     RestorePlan(#[source] RestorePlanError),
+    #[error("restore extraction failed")]
+    RestoreExtraction(#[source] ArchiveError),
     #[error("manifest signing or verification failed")]
     Signing(#[from] SigningError),
     #[error("repository I/O failed during {operation}")]

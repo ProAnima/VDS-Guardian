@@ -6,7 +6,7 @@ use thiserror::Error;
 pub struct RestorePlan {
     pub backup_id: BackupId,
     pub destination: PathBuf,
-    pub filesystem_payloads: Vec<PayloadPath>,
+    pub filesystem_payload: PayloadPath,
     pub confirmation: String,
 }
 
@@ -22,13 +22,13 @@ impl RestorePlan {
         if !destination.is_absolute() {
             return Err(RestorePlanError::UnsafeDestination);
         }
-        let filesystem_payloads = manifest
+        let mut filesystem_payloads = manifest
             .payloads
             .iter()
             .filter(|payload| payload.media_type == "application/zstd")
             .map(|payload| payload.path.clone())
             .collect::<Vec<_>>();
-        if filesystem_payloads.is_empty() {
+        if filesystem_payloads.len() != 1 {
             return Err(RestorePlanError::NoFilesystemPayload);
         }
         let confirmation = format!(
@@ -39,7 +39,7 @@ impl RestorePlan {
         Ok(Self {
             backup_id: manifest.backup_id.clone(),
             destination,
-            filesystem_payloads,
+            filesystem_payload: filesystem_payloads.remove(0),
             confirmation,
         })
     }
