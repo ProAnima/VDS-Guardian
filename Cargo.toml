@@ -4,6 +4,7 @@ members = [
   "apps/desktop/src-tauri",
   "crates/guardian-cli",
   "crates/guardian-archive",
+  "crates/guardian-encryption",
   "crates/guardian-capture",
   "crates/guardian-core",
   "crates/guardian-configuration",
@@ -29,6 +30,7 @@ guardian-archive = { path = "crates/guardian-archive" }
 guardian-local-repository = { path = "crates/guardian-local-repository" }
 guardian-ssh = { path = "crates/guardian-ssh" }
 base64 = "0.22"
+aes-gcm = "0.10"
 tar = "0.4"
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }
 fs2 = "0.4"

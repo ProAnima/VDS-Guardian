@@ -2,6 +2,7 @@ mod job_commands;
 mod plan_commands;
 mod profile_commands;
 mod repository_commands;
+mod restore_commands;
 mod signing_commands;
 
 use guardian_core::FoundationStatus;
@@ -98,6 +99,22 @@ async fn run_capture_plan(
     job_commands::run(app, request).await
 }
 
+#[tauri::command]
+async fn preview_restore(
+    app: tauri::AppHandle,
+    request: restore_commands::RestoreRequest,
+) -> Result<restore_commands::RestorePreview, restore_commands::RestoreFailure> {
+    restore_commands::preview(app, request).await
+}
+
+#[tauri::command]
+async fn execute_restore(
+    app: tauri::AppHandle,
+    request: restore_commands::RestoreRequest,
+) -> Result<restore_commands::RestorePreview, restore_commands::RestoreFailure> {
+    restore_commands::execute(app, request).await
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -113,7 +130,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_repositories,
             save_capture_plan,
             list_capture_plans,
-            run_capture_plan
+            run_capture_plan,
+            preview_restore,
+            execute_restore
         ])
         .run(tauri::generate_context!())?;
     Ok(())
