@@ -16,7 +16,7 @@
     "test:web": "npm run test --workspace @vds-guardian/desktop",
     "build:web": "npm run build --workspace @vds-guardian/desktop",
     "test:rust": "cargo test --workspace --all-targets",
+    "test:integration:ssh": "node scripts/test-ssh-integration.mjs",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings"
   }
 }
-

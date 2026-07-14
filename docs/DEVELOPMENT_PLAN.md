@@ -76,8 +76,11 @@ items remain required for this milestone's exit gate.
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the
 completed tar.zst stream before computing the disk-based digest and returning a
 manifest-ready payload entry; invalid output is removed from staging. Manifest
-assembly, signing, seal orchestration, and disposable-host integration tests
-remain open.
+assembly, signing, and sealing are now available as a fail-closed use case;
+disposable-host integration tests remain open.
+
+The reproducible Alpine OpenSSH fixture is available through
+`npm run test:integration:ssh`; real capture assertions are the next slice.
 
 ## Milestone 3 — Docker and database consistency (P0)
 
