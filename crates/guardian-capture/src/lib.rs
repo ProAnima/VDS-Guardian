@@ -1,14 +1,20 @@
 //! Composition root for the core filesystem-capture use case.
 
+use fs2::available_space;
 use guardian_archive::{ArchiveLimits, TarZstdInspector};
 use guardian_core::{
-    AuditPort, CaptureRequestError, CaptureUseCaseError, FilesystemCaptureRequest,
-    FilesystemCaptureUseCase, PayloadEntry, SecretStore, VdsProfile,
+    AuditPort, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
+    FilesystemBackupUseCase, FilesystemCaptureRequest, ManifestSigner, SealedBackup, SecretStore,
+    SshCapabilityProbePort, StoragePortError, VdsProfile,
 };
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
-    PinnedHost, PinnedSshCaptureAdapter, SecretIdentityFile, SshUser, SystemOpenSsh,
+    PinnedHost, PinnedSshCapabilityProbe, PinnedSshCaptureAdapter, SecretIdentityFile, SshUser,
+    SystemOpenSsh,
 };
+
+pub const MAX_CAPTURE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
+pub const MINIMUM_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
 pub struct FilesystemCaptureComposition<'a> {
     pub repository: &'a LocalRepository,
@@ -22,9 +28,12 @@ pub struct FilesystemCaptureComposition<'a> {
 impl FilesystemCaptureComposition<'_> {
     pub fn execute(
         &self,
-        request: &FilesystemCaptureRequest,
-    ) -> Result<PayloadEntry, CaptureUseCaseError> {
-        self.validate_profile(request)?;
+        request: FilesystemBackupRequest,
+        signer: &dyn ManifestSigner,
+    ) -> Result<SealedBackup, CaptureUseCaseError> {
+        self.validate_profile(&request.capture)?;
+        self.require_preflight()?;
+        self.require_disk_budget()?;
         let host = PinnedHost::parse(
             &self.profile.endpoint.host,
             self.profile.endpoint.port,
@@ -44,12 +53,14 @@ impl FilesystemCaptureComposition<'_> {
             host: &host,
             user: &user,
             identity_file: identity_file.path(),
+            maximum_output_bytes: MAX_CAPTURE_BYTES,
         };
         let inspector = TarZstdInspector::new(self.archive_limits);
-        FilesystemCaptureUseCase {
+        FilesystemBackupUseCase {
             capture: &capture,
             storage: &storage,
             inspector: &inspector,
+            signer,
             audit: self.audit,
         }
         .execute(request)
@@ -67,6 +78,29 @@ impl FilesystemCaptureComposition<'_> {
         self.profile
             .validate()
             .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))
+    }
+
+    fn require_preflight(&self) -> Result<(), CaptureUseCaseError> {
+        let capabilities = PinnedSshCapabilityProbe {
+            ssh: self.ssh,
+            credentials: self.credentials,
+        }
+        .probe(self.profile)
+        .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
+        capabilities
+            .tar_zstd
+            .then_some(())
+            .ok_or(CaptureUseCaseError::Request(
+                CaptureRequestError::PreflightFailed,
+            ))
+    }
+
+    fn require_disk_budget(&self) -> Result<(), CaptureUseCaseError> {
+        let available = available_space(self.repository.root())
+            .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
+        (available >= MINIMUM_FREE_BYTES.saturating_add(MAX_CAPTURE_BYTES))
+            .then_some(())
+            .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
     }
 }
 
@@ -105,7 +139,7 @@ mod tests {
             payload_path: PayloadPath::parse("filesystem.tar.zst")?,
         };
         assert!(matches!(
-            composition.execute(&request),
+            composition.validate_profile(&request),
             Err(CaptureUseCaseError::Request(
                 CaptureRequestError::ProfileMismatch
             ))

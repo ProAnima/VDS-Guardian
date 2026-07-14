@@ -12,6 +12,7 @@ guardian-archive.workspace = true
 guardian-core.workspace = true
 guardian-local-repository.workspace = true
 guardian-ssh.workspace = true
+fs2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -24,8 +24,9 @@ mod storage;
 pub use archive::{ArchiveInspectionPort, ArchiveInspectionPortError};
 pub use audit::{AuditPort, CaptureAuditCode};
 pub use capture::{
-    CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemCapturePort,
-    FilesystemCaptureRequest, FilesystemCaptureUseCase,
+    CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
+    FilesystemBackupUseCase, FilesystemCapturePort, FilesystemCaptureRequest,
+    FilesystemCaptureUseCase,
 };
 pub use database::{
     DatabaseCapability, DatabaseCapabilityProbeError, DatabaseCapabilityProbePort, DatabaseEngine,
@@ -68,4 +69,4 @@ pub use secret::{SecretStore, SecretStoreError, SecretValue};
 pub use signature::{ManifestSigner, ManifestVerifier, SignatureEnvelope, SigningError};
 pub use state::BackupState;
 pub use status::FoundationStatus;
-pub use storage::{BackupStoragePort, StoragePortError};
+pub use storage::{BackupStoragePort, SealedBackup, StoragePortError};

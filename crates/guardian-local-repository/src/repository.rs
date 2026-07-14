@@ -1,9 +1,9 @@
 use crate::RepositoryError;
-use crate::filesystem::{atomic_write, ensure_directory, sync_parent};
+use crate::filesystem::{atomic_write, ensure_directory, sync_parent, write_new};
 use crate::process_lock::ProcessLock;
 use crate::staging::StagingBackup;
 use fs2::FileExt;
-use guardian_core::{RepositoryId, RunId};
+use guardian_core::{BackupId, RepositoryId, RunId};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -187,6 +187,26 @@ impl LocalRepository {
     pub(crate) fn audit_root(&self) -> PathBuf {
         self.root.join("audit")
     }
+
+    pub fn write_capture_audit(
+        &self,
+        run_id: &RunId,
+        state: &'static str,
+        backup_id: Option<&BackupId>,
+    ) -> Result<(), RepositoryError> {
+        ensure_directory(&self.audit_root())?;
+        let record = CaptureAuditRecord {
+            state,
+            run_id,
+            backup_id,
+        };
+        let path = self
+            .audit_root()
+            .join(format!("capture-{run_id}-{state}.json"));
+        let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
+        write_new(&path, &bytes)?;
+        sync_parent(&path)
+    }
 }
 
 pub(crate) struct RepositoryLock {
@@ -199,6 +219,14 @@ pub(crate) struct RepositoryLock {
 struct RepositoryMetadata {
     format_version: u32,
     repository_id: RepositoryId,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CaptureAuditRecord<'a> {
+    state: &'static str,
+    run_id: &'a RunId,
+    backup_id: Option<&'a BackupId>,
 }
 
 #[derive(Serialize)]

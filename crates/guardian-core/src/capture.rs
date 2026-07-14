@@ -1,6 +1,6 @@
 use crate::{
-    ArchiveInspectionPort, AuditPort, BackupStoragePort, CaptureAuditCode, PayloadEntry,
-    PayloadPath, ProfileId, RunId,
+    ArchiveInspectionPort, AuditPort, BackupStoragePort, CaptureAuditCode, Manifest, ManifestError,
+    ManifestSigner, PayloadEntry, PayloadPath, ProfileId, RunId, SealedBackup, Timestamp,
 };
 use std::path::Path;
 use thiserror::Error;
@@ -11,6 +11,13 @@ pub struct FilesystemCaptureRequest {
     pub profile_id: ProfileId,
     pub roots: Vec<String>,
     pub payload_path: PayloadPath,
+}
+
+#[derive(Debug, Clone)]
+pub struct FilesystemBackupRequest {
+    pub capture: FilesystemCaptureRequest,
+    pub manifest: Manifest,
+    pub sealed_at: Timestamp,
 }
 
 impl FilesystemCaptureRequest {
@@ -48,10 +55,16 @@ impl FilesystemCaptureUseCase<'_> {
         self.storage
             .begin(&request.run_id)
             .map_err(CaptureUseCaseError::Storage)?;
-        let destination = self
-            .storage
-            .reserve(&request.payload_path)
-            .map_err(CaptureUseCaseError::Storage)?;
+        let destination = match self.storage.reserve(&request.payload_path) {
+            Ok(destination) => destination,
+            Err(error) => {
+                return self.fail(
+                    request,
+                    CaptureAuditCode::Storage,
+                    CaptureUseCaseError::Storage(error),
+                );
+            }
+        };
         if let Err(error) = self.capture.capture_to(request, &destination) {
             return self.fail(
                 request,
@@ -94,6 +107,60 @@ impl FilesystemCaptureUseCase<'_> {
     }
 }
 
+pub struct FilesystemBackupUseCase<'a> {
+    pub capture: &'a dyn FilesystemCapturePort,
+    pub storage: &'a dyn BackupStoragePort,
+    pub inspector: &'a dyn ArchiveInspectionPort,
+    pub signer: &'a dyn ManifestSigner,
+    pub audit: &'a dyn AuditPort,
+}
+
+impl FilesystemBackupUseCase<'_> {
+    pub fn execute(
+        &self,
+        request: FilesystemBackupRequest,
+    ) -> Result<SealedBackup, CaptureUseCaseError> {
+        let payload = FilesystemCaptureUseCase {
+            capture: self.capture,
+            storage: self.storage,
+            inspector: self.inspector,
+            audit: self.audit,
+        }
+        .execute(&request.capture)?;
+        let mut manifest = request.manifest;
+        if manifest.run_id != request.capture.run_id {
+            return self.fail(
+                &request.capture,
+                CaptureUseCaseError::Manifest(ManifestError::NotSealed),
+            );
+        }
+        if let Err(error) = manifest.add_payload(payload) {
+            return self.fail(&request.capture, CaptureUseCaseError::Manifest(error));
+        }
+        self.storage
+            .seal(manifest, request.sealed_at, self.signer)
+            .map_err(|error| {
+                self.audit
+                    .capture_failed(&request.capture.run_id, CaptureAuditCode::Storage);
+                let _ = self.storage.discard(&request.capture.run_id);
+                CaptureUseCaseError::Storage(error)
+            })
+    }
+
+    fn fail<T>(
+        &self,
+        request: &FilesystemCaptureRequest,
+        error: CaptureUseCaseError,
+    ) -> Result<T, CaptureUseCaseError> {
+        self.audit
+            .capture_failed(&request.run_id, CaptureAuditCode::Storage);
+        self.storage
+            .discard(&request.run_id)
+            .map_err(CaptureUseCaseError::Storage)?;
+        Err(error)
+    }
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CaptureRequestError {
     #[error("capture roots must be bounded absolute lexical paths")]
@@ -102,6 +169,8 @@ pub enum CaptureRequestError {
     ProfileMismatch,
     #[error("pinned SSH profile is invalid")]
     InvalidProfile,
+    #[error("required pinned SSH capture preflight failed")]
+    PreflightFailed,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -122,6 +191,8 @@ pub enum CaptureUseCaseError {
     Storage(#[source] crate::StoragePortError),
     #[error("captured archive violates inspection policy")]
     Archive,
+    #[error("backup manifest could not be finalized")]
+    Manifest(#[source] ManifestError),
 }
 
 fn valid_remote_root(root: &str) -> bool {

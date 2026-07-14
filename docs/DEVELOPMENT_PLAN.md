@@ -76,13 +76,17 @@ exit gate.
 
 `guardian-capture` now connects any filesystem capture transport, including the
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the
-completed tar.zst stream before computing the disk-based digest and returning a
-manifest-ready payload entry; invalid output is removed from staging. Manifest
-assembly, signing, and sealing are now available as a fail-closed use case;
-the capture composition derives the SSH target only from the matching validated
-pinned profile. A shared preflight use case now loads that profile, invokes the
+completed tar.zst stream before computing the disk-based digest. The live
+composition accepts a full backup request and signer, then registers the
+payload, finalizes the manifest, verifies the signature, and atomically seals
+the staging directory as one fail-closed operation; any capture, reserve, or
+finalization failure is audited and discarded/quarantined. The capture
+composition derives the SSH target only from the matching validated pinned
+profile. A shared preflight use case now loads that profile, invokes the
 read-only `tar --zstd` probe, and blocks unsupported hosts before capture.
-Disposable-host integration tests remain open.
+The resolved live composition invokes the same probe before staging, caps the
+compressed stream at 20 GiB, and requires a 5 GiB free-space reserve beyond
+that budget. Disposable-host integration tests remain open.
 
 The reproducible Alpine OpenSSH fixture is available through
 `npm run test:integration:ssh`; it verifies a real pinned-key capture and

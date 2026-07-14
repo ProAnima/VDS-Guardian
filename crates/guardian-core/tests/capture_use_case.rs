@@ -1,7 +1,8 @@
 use guardian_core::{
-    ArchiveInspectionPort, ArchiveInspectionPortError, AuditPort, BackupStoragePort,
+    ArchiveInspectionPort, ArchiveInspectionPortError, AuditPort, BackupId, BackupStoragePort,
     CaptureAuditCode, CapturePortError, FilesystemCapturePort, FilesystemCaptureRequest,
-    FilesystemCaptureUseCase, PayloadEntry, PayloadPath, ProfileId, RunId, StoragePortError,
+    FilesystemCaptureUseCase, Manifest, ManifestSigner, PayloadEntry, PayloadPath, ProfileId,
+    RunId, SealedBackup, StoragePortError, Timestamp,
 };
 use std::{
     path::{Path, PathBuf},
@@ -143,6 +144,20 @@ impl BackupStoragePort for FakeStorage {
             "application/zstd",
         )
         .map_err(|_| StoragePortError::Rejected)
+    }
+    fn seal(
+        &self,
+        _: Manifest,
+        _: Timestamp,
+        _: &dyn ManifestSigner,
+    ) -> Result<SealedBackup, StoragePortError> {
+        self.events
+            .lock()
+            .map_err(|_| StoragePortError::Unavailable)?
+            .push("seal");
+        Ok(SealedBackup {
+            backup_id: BackupId::parse("backup-001").map_err(|_| StoragePortError::Rejected)?,
+        })
     }
     fn discard(&self, _: &RunId) -> Result<(), StoragePortError> {
         self.events

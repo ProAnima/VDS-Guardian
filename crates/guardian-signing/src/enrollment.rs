@@ -58,6 +58,15 @@ impl SigningIdentityManager {
         self.pending_status(store)
     }
 
+    /// Loads only a previously committed identity. Unlike enrollment, this
+    /// operation never creates a credential, recovery intent, or configuration.
+    pub fn load_ready(&self, store: &dyn SecretStore) -> Result<ManagedIdentity, IdentityError> {
+        let _lock = acquire_lock(&self.root)?;
+        let config =
+            read_optional::<SigningConfig>(&self.config_path())?.ok_or(IdentityError::Missing)?;
+        self.load_committed_read_only(store, config)
+    }
+
     fn load_committed(
         &self,
         store: &dyn SecretStore,

@@ -83,6 +83,7 @@ export interface RepositoryFailure {
 }
 export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; }
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; }
+export interface CaptureJobSummary { backupId: string; }
 
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
@@ -146,6 +147,7 @@ export async function listRepositories(): Promise<RepositorySummary[]> {
 }
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
+export async function runCapturePlan(planId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId } }); }
 export async function pickSshKeyPath(): Promise<string | undefined> { return pickPath({ directory: false, filters: [{ name: "OpenSSH key", extensions: ["key", "pem"] }] }); }
 export async function pickRepositoryPath(): Promise<string | undefined> { return pickPath({ directory: true }); }
 

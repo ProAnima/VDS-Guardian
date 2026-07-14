@@ -1561,6 +1561,7 @@ name = "guardian-capture"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "fs2",
  "guardian-archive",
  "guardian-core",
  "guardian-local-repository",
@@ -4530,6 +4531,8 @@ name = "vds-guardian-desktop"
 version = "0.1.0"
 dependencies = [
  "fs2",
+ "guardian-archive",
+ "guardian-capture",
  "guardian-configuration",
  "guardian-core",
  "guardian-local-repository",
@@ -4540,6 +4543,7 @@ dependencies = [
  "rand_core",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

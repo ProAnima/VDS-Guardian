@@ -44,6 +44,22 @@ fn enrollment_commits_only_a_credential_reference() -> TestResult {
 }
 
 #[test]
+fn loading_a_ready_identity_never_enrolls_implicitly() -> TestResult {
+    let root = TestRoot::new()?;
+    let store = MemoryStore::default();
+    let manager = SigningIdentityManager::open(root.path())?;
+    assert!(matches!(
+        manager.load_ready(&store),
+        Err(IdentityError::Missing)
+    ));
+    assert!(!root.path().join("signing-enrollment.json").exists());
+    let enrolled = manager.enroll_or_load(&store)?;
+    let loaded = manager.load_ready(&store)?;
+    assert_eq!(enrolled.descriptor().key_id, loaded.descriptor().key_id);
+    Ok(())
+}
+
+#[test]
 fn status_never_starts_enrollment() -> TestResult {
     let root = TestRoot::new()?;
     let store = MemoryStore::default();

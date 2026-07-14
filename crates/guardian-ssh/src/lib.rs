@@ -131,6 +131,7 @@ pub struct PinnedSshCaptureAdapter<'a> {
     pub host: &'a PinnedHost,
     pub user: &'a SshUser,
     pub identity_file: &'a Path,
+    pub maximum_output_bytes: u64,
 }
 
 pub struct PinnedSshCapabilityProbe<'a> {
@@ -176,7 +177,14 @@ impl FilesystemCapturePort for PinnedSshCaptureAdapter<'_> {
         let plan = RemoteCapturePlan::from_roots(request.roots.clone())
             .map_err(|_| guardian_core::CapturePortError::Transport)?;
         self.ssh
-            .capture_to(self.host, self.user, self.identity_file, &plan, destination)
+            .capture_to(
+                self.host,
+                self.user,
+                self.identity_file,
+                &plan,
+                destination,
+                self.maximum_output_bytes,
+            )
             .map(|_| ())
             .map_err(|_| guardian_core::CapturePortError::Transport)
     }
@@ -229,6 +237,7 @@ impl SystemOpenSsh {
         identity_file: &Path,
         plan: &RemoteCapturePlan,
         destination: &Path,
+        maximum_output_bytes: u64,
     ) -> Result<CaptureResult, SshError> {
         self.run_to(
             host,
@@ -236,7 +245,7 @@ impl SystemOpenSsh {
             identity_file,
             plan.remote_command().into(),
             destination,
-            None,
+            Some(maximum_output_bytes),
         )
     }
 

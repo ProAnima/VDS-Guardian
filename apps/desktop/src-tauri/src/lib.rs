@@ -1,3 +1,4 @@
+mod job_commands;
 mod plan_commands;
 mod profile_commands;
 mod repository_commands;
@@ -89,6 +90,14 @@ async fn list_capture_plans(
     plan_commands::list(app).await
 }
 
+#[tauri::command]
+async fn run_capture_plan(
+    app: tauri::AppHandle,
+    request: job_commands::RunCapturePlanRequest,
+) -> Result<job_commands::CaptureJobSummary, job_commands::CaptureJobFailure> {
+    job_commands::run(app, request).await
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -103,7 +112,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             register_repository,
             list_repositories,
             save_capture_plan,
-            list_capture_plans
+            list_capture_plans,
+            run_capture_plan
         ])
         .run(tauri::generate_context!())?;
     Ok(())

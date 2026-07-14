@@ -1,5 +1,8 @@
 use crate::{LocalRepository, RepositoryError, StagingBackup};
-use guardian_core::{BackupStoragePort, PayloadEntry, PayloadPath, RunId, StoragePortError};
+use guardian_core::{
+    BackupStoragePort, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId,
+    SealedBackup as CoreSealedBackup, StoragePortError, Timestamp,
+};
 use std::{path::PathBuf, sync::Mutex};
 
 pub struct LocalRepositoryStorageAdapter<'repository> {
@@ -63,16 +66,35 @@ impl BackupStoragePort for LocalRepositoryStorageAdapter<'_> {
             .map_err(map_error)
     }
 
+    fn seal(
+        &self,
+        manifest: Manifest,
+        sealed_at: Timestamp,
+        signer: &dyn ManifestSigner,
+    ) -> Result<CoreSealedBackup, StoragePortError> {
+        let mut staging = self
+            .staging
+            .lock()
+            .map_err(|_| StoragePortError::Unavailable)?;
+        let sealed = staging
+            .take()
+            .ok_or(StoragePortError::Rejected)?
+            .seal(manifest, sealed_at, signer)
+            .map_err(map_error)?;
+        Ok(CoreSealedBackup {
+            backup_id: sealed.backup_id,
+        })
+    }
+
     fn discard(&self, _: &RunId) -> Result<(), StoragePortError> {
         let mut staging = self
             .staging
             .lock()
             .map_err(|_| StoragePortError::Unavailable)?;
-        staging
-            .take()
-            .ok_or(StoragePortError::Rejected)?
-            .discard()
-            .map_err(map_error)
+        match staging.take() {
+            Some(staging) => staging.discard().map_err(map_error),
+            None => Ok(()),
+        }
     }
 }
 

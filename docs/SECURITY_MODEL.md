@@ -69,6 +69,17 @@ adapter's fixed read-only `tar --zstd` probe uses the same pinned identity and a
 probe's success before a future capture workflow can continue; its result alone
 never authorizes a backup.
 
+The filesystem capture composition does not expose a manifest-ready payload as
+a successful backup result. It holds the staging handle through archive
+inspection, payload registration, manifest finalization, signature verification,
+and atomic seal. Reserve and finalization failures are audited and invoke the
+same discard/quarantine path; a sealed backup is the only successful result.
+Before it creates staging, that composition runs the same pinned read-only
+`tar --zstd` preflight itself; a UI check cannot authorize or bypass a live
+capture. Its OpenSSH stream has a 20 GiB compressed-output cap and requires at
+least that budget plus a 5 GiB free-space reserve on the destination filesystem.
+The capture is rejected before opening staging if the reserve is unavailable.
+
 The desktop enrollment screen follows the same boundary: the operator supplies
 an absolute path to a dedicated unencrypted OpenSSH key and explicitly confirms
 that the pasted host key was verified out-of-band. The application validates

@@ -179,6 +179,7 @@ fn failed_launch_removes_the_partial_capture() -> Result<(), Box<dyn std::error:
         Path::new("C:/keys/backup.key"),
         &RemoteCapturePlan::from_roots(["/srv/app".to_owned()])?,
         &destination,
+        1_024,
     );
     assert!(result.is_err());
     assert!(!destination.exists());
