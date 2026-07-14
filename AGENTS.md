@@ -10,11 +10,12 @@ Milestone 1: domain and local repository. Simulated-source repository and
 signing slices implement isolated staging, SHA-256 verification, golden manifest
 fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
 atomic seal, journaled signing enrollment, verified whole-directory retention,
-and a desktop signing-identity setup screen. Live SSH backup and restore are
-not implemented and must not be represented as production-ready. Retention
-power-loss reconciliation and a streaming tar.zst archive inspector are
-implemented, but extraction, full archive hostility coverage, and restore drills
-remain open. The signing screen shows status and requires an
+and a desktop signing-identity setup screen. A low-level pinned system-OpenSSH
+capture adapter exists, but no live SSH backup workflow or restore workflow is
+implemented and neither may be represented as production-ready. Retention
+power-loss reconciliation, a deterministic tar.zst writer, and a streaming
+tar.zst archive inspector are implemented, but extraction, full archive
+hostility coverage, and restore drills remain open. The signing screen shows status and requires an
 explicit action plus acknowledgement before it invokes enrollment; it never
 creates an identity automatically or implicitly.
 

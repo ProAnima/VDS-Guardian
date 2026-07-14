@@ -8,6 +8,7 @@ members = [
   "crates/guardian-local-repository",
   "crates/guardian-os-keyring",
   "crates/guardian-signing",
+  "crates/guardian-ssh",
 ]
 
 [workspace.package]
@@ -19,6 +20,7 @@ repository = "https://github.com/ProAnima/VDS-Guardian"
 
 [workspace.dependencies]
 guardian-core = { path = "crates/guardian-core" }
+base64 = "0.22"
 tar = "0.4"
 ed25519-dalek = { version = "2.2", features = ["rand_core"] }
 fs2 = "0.4"
@@ -28,6 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+tempfile = "3"
 zeroize = "1.8"
 zstd = "0.13"
 

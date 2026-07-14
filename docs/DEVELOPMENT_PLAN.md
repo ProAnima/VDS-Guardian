@@ -37,8 +37,9 @@ directory seal. Whole-directory retention now re-verifies every sealed backup,
 creates deterministic snapshot-bound dry runs, requires exact approval, and
 records append-only audit evidence. A streaming tar.zst inspector now validates
 paths, rejects links and special entry types, and enforces entry, per-file, and
-expanded-stream limits. Full schemas, archive writer/extraction coverage, and
-the restore-drill gate remain open. The initial hostile archive path corpus now
+expanded-stream limits. A deterministic tar.zst writer emits normalized archive
+headers for validated paths. Full schemas, extraction coverage, and the
+restore-drill gate remain open. The initial hostile archive path corpus now
 pins a fail-closed cross-platform path contract. Retention now
 records a durable, non-secret transaction intent: reopening rolls back a
 partially moved deletion set, or resumes only a cleanup phase that was durably
@@ -60,6 +61,14 @@ acknowledgement before enrollment. Explicit rotation remains open.
 
 Exit gate: capture from a disposable Linux host is repeatable and cannot escape
 the plan or repository under adversarial filenames/output.
+
+Foundation implemented: `guardian-ssh` builds direct system-OpenSSH argv for a
+validated user and a temporary exact pinned `known_hosts` entry, with strict
+host-key checking, password/keyboard-interactive authentication disabled, and a
+reviewed read-only tar capture template. It deletes a partial local stream when
+OpenSSH cannot launch or returns failure. It is not connected to credentials,
+profiles, staging, archive inspection, or an SSH integration fixture; those
+items remain required for this milestone's exit gate.
 
 ## Milestone 3 — Docker and database consistency (P0)
 

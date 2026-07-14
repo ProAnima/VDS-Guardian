@@ -6,8 +6,9 @@ metadata, quarantine, atomic seal, and a byte-exact format-v1 golden fixture.
 The fixture now prevents silent serialization drift. A fixture corpus also pins
 the fail-closed archive-entry path contract. The `guardian-archive` adapter now
 inspects tar.zst streams before any extraction: it accepts only regular files
-and directories, validates every path, and applies entry and byte limits. Full
-plan/item schemas, archive writer and extraction behavior, key rotation
+and directories, validates every path, and applies entry and byte limits. It
+also emits deterministic tar.zst headers for validated paths; capture wiring and
+extraction behavior remain unimplemented. Full plan/item schemas, key rotation
 fixtures, and restore compatibility evidence are still required before this
 contract is declared stable.
 

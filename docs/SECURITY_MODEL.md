@@ -49,6 +49,15 @@
   encoding. Do not upload and execute unversioned shell text from the UI.
 - Capability discovery is read-only and becomes part of the backup plan.
 
+The current `guardian-ssh` foundation accepts an exact pinned public host key,
+writes it to a temporary `known_hosts` file, and invokes the system OpenSSH
+client through direct local argv with `StrictHostKeyChecking=yes`, noninteractive
+authentication, and global known-host lookup disabled. It accepts only a
+validated backup user and an allowlisted read-only tar command template; remote
+path arguments are independently shell-quoted. It is not yet connected to a
+profile, credential reference, timeout/cancellation policy, capability probe,
+or repository seal workflow, so it is not a production backup feature.
+
 ### Repository isolation
 
 - Each run writes to `<repository>/staging/<run-id>` on the same filesystem as
@@ -77,7 +86,7 @@ snapshot-bound whole-directory deletion. Retention deletion now writes a
 durable non-secret intent outside its temporary quarantine directory. On the
 next repository open, a move-phase interruption is rolled back; a durable
 cleanup-ready phase is resumed idempotently. Orphaned or malformed retention
-state fails closed. Read-only hardening, archive limits, key rotation, and
+state fails closed. Read-only hardening, key rotation, integration tests, and
 clean-room restore drills remain mandatory before production use.
 
 Signing configuration tampering cannot silently select a replacement identity:

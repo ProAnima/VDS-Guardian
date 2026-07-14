@@ -1,9 +1,13 @@
 //! Streaming tar.zst validation. This crate inspects archives but never extracts them.
 
+mod writer;
+
 use guardian_core::ArchivePath;
 use std::io::{self, Read};
 use tar::Archive;
 use thiserror::Error;
+
+pub use writer::{ArchiveWriteError, TarZstdWriter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArchiveLimits {

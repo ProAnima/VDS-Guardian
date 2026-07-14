@@ -1614,6 +1614,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "guardian-ssh"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -42,18 +42,22 @@ events/       bounded job events consumed by GUI and CLI
 
 Adapters will be added by capability, not bundled into the domain crate:
 
-- SSH/SFTP transport with host-key pinning and keepalive/cancellation.
+- SSH/SFTP transport with host-key pinning and keepalive/cancellation. The
+  initial `guardian-ssh` adapter uses system OpenSSH through direct argv,
+  temporary exact `known_hosts` input, and non-interactive strict host-key
+  checking for read-only archive capture; it is not wired to a backup use case.
 - Local repository with staging, atomic seal, read-only best-effort flags, and
   whole-directory retention.
 - Secret storage backed by Windows Credential Manager and Linux Secret Service.
 - Tar/Zstandard archive writer and hostile-input-safe reader. The initial
-  `guardian-archive` adapter performs streaming tar.zst inspection; archive
-  writing and extraction remain later capabilities.
+  `guardian-archive` adapter emits deterministic tar.zst streams and performs
+  streaming inspection; extraction remains a later capability.
 - Database adapters for PostgreSQL/MySQL and Docker-aware discovery/export.
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 
-Implemented Milestone 1 adapters are split into `guardian-local-repository`,
-`guardian-signing`, and `guardian-os-keyring`. The signing crate depends only on
+Implemented adapters are split into `guardian-local-repository`,
+`guardian-signing`, `guardian-os-keyring`, `guardian-archive`, and
+`guardian-ssh`. The signing crate depends only on
 the core secret-store port; platform credential APIs remain isolated from domain
 and repository code. Its application service serializes enrollment with a
 cross-process lock and uses a durable intent to reconcile a keyring write that
