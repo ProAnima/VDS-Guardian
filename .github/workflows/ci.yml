@@ -32,3 +32,6 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm ci
       - run: npm run verify
+      - name: Run disposable SSH integration gate
+        if: runner.os == 'Linux'
+        run: npm run test:integration:ssh

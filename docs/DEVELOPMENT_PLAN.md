@@ -82,7 +82,8 @@ disposable-host integration tests remain open.
 The reproducible Alpine OpenSSH fixture is available through
 `npm run test:integration:ssh`; it verifies a real pinned-key capture and
 changed-key rejection. Rust-level adapter assertions and CI scheduling remain
-open.
+open. The Linux CI job runs this Docker gate after the canonical verification
+suite; Windows retains the same canonical suite without requiring Docker.
 
 ## Milestone 3 — Docker and database consistency (P0)
 
