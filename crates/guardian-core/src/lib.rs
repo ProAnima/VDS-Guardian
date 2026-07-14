@@ -9,8 +9,8 @@ mod state;
 mod status;
 
 pub use identifiers::{
-    BackupId, CredentialId, IdentifierError, PayloadPath, PlanId, ProfileId, RepositoryId, RunId,
-    Timestamp,
+    ArchivePath, BackupId, CredentialId, IdentifierError, PayloadPath, PlanId, ProfileId,
+    RepositoryId, RunId, Timestamp,
 };
 pub use manifest::{
     ConsistencyLevel, Manifest, ManifestError, PayloadEntry, PlanReference, Producer,

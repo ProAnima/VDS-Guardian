@@ -34,14 +34,14 @@ change. Do not silently let implementation drift from the documents.
 Before declaring any non-trivial change complete, run:
 
 ```text
-npm run doctor
 npm run verify
 ```
 
-On Windows PowerShell use `npm.cmd`. `verify` is the central gate and includes
-formatting, lint, strict type checks, frontend tests/build, Rust formatting,
-Clippy, and Rust tests. Use individual commands only to diagnose a failed gate.
-Never claim the whole repository is green after running only a focused test.
+On Windows PowerShell use `npm.cmd`. `verify` is the single canonical gate: it
+runs the environment doctor, formatting, lint, strict type checks, frontend
+tests/build, Rust Clippy, and Rust tests. Use individual commands only to
+diagnose a failed gate. Never claim the whole repository is green after running
+only a focused test.
 
 Changes to backup/restore, archive parsing, storage lifecycle, remote command
 construction, secret handling, or retention also require security tests and the

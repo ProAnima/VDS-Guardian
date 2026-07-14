@@ -81,7 +81,6 @@ desktop shell; the headless CLI does not need them.
 
 ```powershell
 npm.cmd install
-npm.cmd run doctor
 npm.cmd run verify
 npm.cmd run dev
 ```
@@ -90,7 +89,6 @@ Linux:
 
 ```bash
 npm install
-npm run doctor
 npm run verify
 npm run dev
 ```

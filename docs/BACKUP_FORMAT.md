@@ -3,9 +3,11 @@
 Status: Milestone 1 draft. The local repository slice implements the directory
 boundary, validated payload paths, SHA-256 verification, Ed25519 signature
 metadata, quarantine, atomic seal, and a byte-exact format-v1 golden fixture.
-The fixture now prevents silent serialization drift. Full plan/item schemas,
-key rotation fixtures, archive hostility tests, and restore compatibility
-evidence are still required before this contract is declared stable.
+The fixture now prevents silent serialization drift. A fixture corpus also pins
+the fail-closed archive-entry path contract before an archive reader is added.
+Full plan/item schemas, archive entry-type and resource-limit tests, key
+rotation fixtures, and restore compatibility evidence are still required before
+this contract is declared stable.
 
 ## Directory layout
 

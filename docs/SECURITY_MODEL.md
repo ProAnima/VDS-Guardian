@@ -100,6 +100,9 @@ clears that acknowledgement.
 
 ### Hostile backup content
 
+- Archive entry names use a dedicated cross-platform relative-path type that
+  rejects absolute paths, traversal, empty segments, Windows separators/drive
+  syntax, alternate streams, and NUL bytes before extraction exists.
 - Verification hashes bytes without executing or previewing them.
 - Archive readers reject absolute paths, `..`, Windows drive/UNC paths, device
   nodes, unexpected hardlinks, and links escaping the restore root.

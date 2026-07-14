@@ -5,6 +5,7 @@ const npmEntry = process.env.npm_execpath;
 const npmCommand = npmEntry ? process.execPath : "npm";
 const npmArgs = (args) => npmEntry ? [npmEntry, ...args] : args;
 const steps = [
+  ["Environment doctor", process.execPath, ["scripts/doctor.mjs"]],
   ["Rust formatting", "cargo", ["fmt", "--all", "--check"]],
   ["Frontend lint", npmCommand, npmArgs(["run", "lint", "--workspace", "@vds-guardian/desktop"])],
   ["Frontend types", npmCommand, npmArgs(["run", "check:types", "--workspace", "@vds-guardian/desktop"])],

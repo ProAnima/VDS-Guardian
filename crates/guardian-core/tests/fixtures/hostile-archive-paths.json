@@ -1,0 +1,15 @@
+[
+  {"path":"srv/app/config.yaml","accepted":true},
+  {"path":"var/lib/postgresql/data/base/1","accepted":true},
+  {"path":"../escape","accepted":false},
+  {"path":"./relative","accepted":false},
+  {"path":"/etc/shadow","accepted":false},
+  {"path":"C:/Windows/System32","accepted":false},
+  {"path":"\\\\server\\share\\payload","accepted":false},
+  {"path":"nested\\windows-separator","accepted":false},
+  {"path":"a//double-slash","accepted":false},
+  {"path":"safe/../escape","accepted":false},
+  {"path":"safe/./dot","accepted":false},
+  {"path":"safe:alternate-stream","accepted":false},
+  {"path":"nul\u0000byte","accepted":false}
+]

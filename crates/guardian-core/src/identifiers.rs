@@ -78,6 +78,39 @@ impl PayloadPath {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct ArchivePath(String);
+
+impl ArchivePath {
+    pub fn parse(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        let value = value.into();
+        let segments_valid = value
+            .split('/')
+            .all(|segment| !segment.is_empty() && !matches!(segment, "." | ".."));
+        let syntax_valid =
+            !value.starts_with('/') && !value.contains(['\\', ':', '\0']) && value.len() <= 1_024;
+        (segments_valid && syntax_valid)
+            .then_some(Self(value))
+            .ok_or(IdentifierError::InvalidArchivePath)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ArchivePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(serde::de::Error::custom)
+    }
+}
+
 impl<'de> Deserialize<'de> for PayloadPath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -176,13 +209,15 @@ pub enum IdentifierError {
     Invalid { kind: &'static str },
     #[error("payload path must be a safe slash-separated relative path")]
     InvalidPayloadPath,
+    #[error("archive path must be a safe slash-separated relative path")]
+    InvalidArchivePath,
     #[error("timestamp must use UTC second precision: YYYY-MM-DDTHH:MM:SSZ")]
     InvalidTimestamp,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{BackupId, PayloadPath, Timestamp};
+    use super::{ArchivePath, BackupId, PayloadPath, Timestamp};
 
     #[test]
     fn identifiers_reject_path_syntax() {
@@ -197,6 +232,14 @@ mod tests {
             assert!(PayloadPath::parse(hostile).is_err(), "accepted {hostile}");
         }
         assert!(PayloadPath::parse("payload/filesystem-000.tar.zst").is_ok());
+    }
+
+    #[test]
+    fn archive_paths_fail_closed() {
+        for hostile in ["../x", "/root", "C:/x", r"dir\x", "a//b", "./x"] {
+            assert!(ArchivePath::parse(hostile).is_err(), "accepted {hostile}");
+        }
+        assert!(ArchivePath::parse("srv/app/config.yaml").is_ok());
     }
 
     #[test]
