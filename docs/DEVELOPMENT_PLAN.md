@@ -80,7 +80,9 @@ assembly, signing, and sealing are now available as a fail-closed use case;
 disposable-host integration tests remain open.
 
 The reproducible Alpine OpenSSH fixture is available through
-`npm run test:integration:ssh`; real capture assertions are the next slice.
+`npm run test:integration:ssh`; it verifies a real pinned-key capture and
+changed-key rejection. Rust-level adapter assertions and CI scheduling remain
+open.
 
 ## Milestone 3 — Docker and database consistency (P0)
 
