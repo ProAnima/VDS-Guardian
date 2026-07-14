@@ -75,8 +75,22 @@ fn inspect_tar<R: Read>(
             )?;
         }
     }
+    drain_expanded_stream(&mut source)?;
     inspection.expanded_bytes = source.consumed;
     Ok(inspection)
+}
+
+fn drain_expanded_stream(source: &mut impl Read) -> Result<(), ArchiveError> {
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        if source
+            .read(&mut buffer)
+            .map_err(|_| ArchiveError::Invalid)?
+            == 0
+        {
+            return Ok(());
+        }
+    }
 }
 
 fn inspect_entry<R: Read>(

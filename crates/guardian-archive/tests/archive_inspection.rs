@@ -77,6 +77,25 @@ fn inspection_rejects_invalid_compressed_input() {
     ));
 }
 
+#[test]
+fn inspection_rejects_concatenated_expanded_data_after_tar_end()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut payload = archive(&[("srv/app/config", EntryType::Regular, b"safe")])?;
+    payload.extend(zstd::stream::encode_all(
+        vec![0_u8; 1_048_576].as_slice(),
+        0,
+    )?);
+    let limits = ArchiveLimits {
+        max_expanded_bytes: 4_096,
+        ..ArchiveLimits::conservative()
+    };
+    assert!(matches!(
+        inspect_tar_zstd(payload.as_slice(), limits),
+        Err(ArchiveError::Invalid)
+    ));
+    Ok(())
+}
+
 fn archive(entries: &[(&str, EntryType, &[u8])]) -> Result<Vec<u8>, io::Error> {
     let mut tar = Vec::new();
     for (path, kind, bytes) in entries {
