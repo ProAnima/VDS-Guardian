@@ -1,6 +1,6 @@
 //! Narrow system-OpenSSH adapter for pinned, read-only archive capture.
 
-use guardian_core::HostPin;
+use guardian_core::{FilesystemCapturePort, FilesystemCaptureRequest, HostPin};
 use std::{
     ffi::OsString,
     fs::{self, OpenOptions},
@@ -110,6 +110,28 @@ impl RemoteCapturePlan {
 #[derive(Debug, Clone)]
 pub struct SystemOpenSsh {
     binary: PathBuf,
+}
+
+pub struct PinnedSshCaptureAdapter<'a> {
+    pub ssh: &'a SystemOpenSsh,
+    pub host: &'a PinnedHost,
+    pub user: &'a SshUser,
+    pub identity_file: &'a Path,
+}
+
+impl FilesystemCapturePort for PinnedSshCaptureAdapter<'_> {
+    fn capture_to(
+        &self,
+        request: &FilesystemCaptureRequest,
+        destination: &Path,
+    ) -> Result<(), guardian_core::CapturePortError> {
+        let plan = RemoteCapturePlan::from_roots(request.roots.clone())
+            .map_err(|_| guardian_core::CapturePortError::Transport)?;
+        self.ssh
+            .capture_to(self.host, self.user, self.identity_file, &plan, destination)
+            .map(|_| ())
+            .map_err(|_| guardian_core::CapturePortError::Transport)
+    }
 }
 
 impl Default for SystemOpenSsh {
