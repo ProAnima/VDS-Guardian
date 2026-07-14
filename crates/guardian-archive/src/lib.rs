@@ -4,7 +4,7 @@ mod writer;
 
 use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError, ArchivePath};
 use std::{
-    fs::File,
+    fs::{self, File, OpenOptions},
     io::{self, Read},
     path::Path,
 };
@@ -75,6 +75,122 @@ pub fn inspect_tar_zstd(
 ) -> Result<ArchiveInspection, ArchiveError> {
     let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
     inspect_tar(ReadBudget::new(decoder, limits.max_expanded_bytes), limits)
+}
+
+/// Extracts a validated archive into a newly created empty directory.
+/// Existing destinations are rejected so extraction can never merge with a live target.
+pub fn extract_tar_zstd(
+    source: impl Read,
+    destination: &Path,
+    limits: ArchiveLimits,
+) -> Result<ArchiveInspection, ArchiveError> {
+    fs::create_dir(destination).map_err(|_| ArchiveError::Invalid)?;
+    let result = extract_new_tar_zstd(source, destination, limits);
+    if result.is_err() {
+        let _ = fs::remove_dir_all(destination);
+    }
+    result
+}
+
+fn extract_new_tar_zstd(
+    source: impl Read,
+    destination: &Path,
+    limits: ArchiveLimits,
+) -> Result<ArchiveInspection, ArchiveError> {
+    let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
+    let mut source = ReadBudget::new(decoder, limits.max_expanded_bytes);
+    let mut inspection = ArchiveInspection {
+        entries: 0,
+        regular_files: 0,
+        directories: 0,
+        expanded_bytes: 0,
+    };
+    {
+        let mut archive = Archive::new(&mut source);
+        for entry in archive.entries().map_err(|_| ArchiveError::Invalid)? {
+            extract_entry(
+                entry.map_err(|_| ArchiveError::Invalid)?,
+                destination,
+                limits,
+                &mut inspection,
+            )?;
+        }
+    }
+    drain_expanded_stream(&mut source)?;
+    inspection.expanded_bytes = source.consumed;
+    Ok(inspection)
+}
+
+fn extract_entry<R: Read>(
+    mut entry: tar::Entry<'_, R>,
+    destination: &Path,
+    limits: ArchiveLimits,
+    inspection: &mut ArchiveInspection,
+) -> Result<(), ArchiveError> {
+    let header = entry.header();
+    let path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
+    let path = ArchivePath::parse(path.to_string_lossy().into_owned())
+        .map_err(|_| ArchiveError::UnsafePath)?;
+    inspection.entries = inspection
+        .entries
+        .checked_add(1)
+        .ok_or(ArchiveError::Invalid)?;
+    if inspection.entries > limits.max_entries {
+        return Err(ArchiveError::Invalid);
+    }
+    let output = destination.join(path.as_str());
+    let parent = output.parent().ok_or(ArchiveError::UnsafePath)?;
+    if !parent.is_dir() {
+        return Err(ArchiveError::UnsafePath);
+    }
+    if header.entry_type().is_dir() {
+        fs::create_dir(&output).map_err(|_| ArchiveError::Invalid)?;
+        restrict_directory(&output)?;
+        inspection.directories = inspection
+            .directories
+            .checked_add(1)
+            .ok_or(ArchiveError::Invalid)?;
+        return Ok(());
+    }
+    if !header.entry_type().is_file() {
+        return Err(ArchiveError::UnsupportedEntryType);
+    }
+    let size = header.size().map_err(|_| ArchiveError::Invalid)?;
+    if size > limits.max_file_bytes {
+        return Err(ArchiveError::Invalid);
+    }
+    let mut output_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output)
+        .map_err(|_| ArchiveError::Invalid)?;
+    let copied = io::copy(&mut entry, &mut output_file).map_err(|_| ArchiveError::Invalid)?;
+    output_file.sync_all().map_err(|_| ArchiveError::Invalid)?;
+    if copied != size {
+        return Err(ArchiveError::Invalid);
+    }
+    restrict_file(&output)?;
+    inspection.regular_files = inspection
+        .regular_files
+        .checked_add(1)
+        .ok_or(ArchiveError::Invalid)?;
+    Ok(())
+}
+
+fn restrict_file(path: &Path) -> Result<(), ArchiveError> {
+    let _ = path;
+    #[cfg(unix)]
+    fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+        .map_err(|_| ArchiveError::Invalid)?;
+    Ok(())
+}
+
+fn restrict_directory(path: &Path) -> Result<(), ArchiveError> {
+    let _ = path;
+    #[cfg(unix)]
+    fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+        .map_err(|_| ArchiveError::Invalid)?;
+    Ok(())
 }
 
 fn inspect_tar<R: Read>(

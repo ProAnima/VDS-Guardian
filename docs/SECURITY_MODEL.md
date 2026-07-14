@@ -162,8 +162,11 @@ clears that acknowledgement.
   type except regular files and directories, including links, device nodes, and
   other special files. It enforces entry-count, declared per-file, and expanded
   stream-byte limits before extraction exists.
-- A future extractor will add depth and expansion-ratio limits, safe ownership
-  and permission handling, and destination-root containment checks.
+- The initial extractor accepts only a new destination it creates itself, uses
+  validated relative paths rather than archive-provided extraction helpers,
+  requires listed parent directories, never preserves ownership or permissions,
+  and removes its partial destination on failure. Depth and expansion-ratio
+  limits remain required before general-purpose restore support.
 - Restores never preserve setuid/setgid bits by default and use an explicit
   ownership mapping policy.
 - Optional antivirus integration is an adapter with timeout and clear
