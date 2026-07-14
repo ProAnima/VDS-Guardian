@@ -1,5 +1,6 @@
 //! Platform-independent domain contracts and use cases for VDS Guardian.
 
+mod audit;
 mod capture;
 mod identifiers;
 mod manifest;
@@ -9,7 +10,9 @@ mod secret;
 mod signature;
 mod state;
 mod status;
+mod storage;
 
+pub use audit::{AuditPort, CaptureAuditCode};
 pub use capture::{
     CapturePortError, CaptureRequestError, CapturedStream, FilesystemCapturePort,
     FilesystemCaptureRequest,
@@ -28,3 +31,4 @@ pub use secret::{SecretStore, SecretStoreError, SecretValue};
 pub use signature::{ManifestSigner, ManifestVerifier, SignatureEnvelope, SigningError};
 pub use state::BackupState;
 pub use status::FoundationStatus;
+pub use storage::{BackupStoragePort, StoragePortError};
