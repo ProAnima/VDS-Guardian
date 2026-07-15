@@ -1,8 +1,9 @@
 use guardian_capture::FilesystemCaptureComposition;
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, FilesystemBackupRequest, FilesystemCaptureRequest, Manifest, PayloadPath,
-    PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity, Timestamp,
+    BackupId, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest, FilesystemCaptureRequest,
+    Manifest, PayloadPath, PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity,
+    Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
@@ -99,6 +100,7 @@ fn run_blocking(
             sha256: plan.sha256,
         },
     );
+    let database_path = plan.plan.database_path;
     let request = FilesystemBackupRequest {
         capture: FilesystemCaptureRequest {
             run_id: run_id.clone(),
@@ -109,6 +111,16 @@ fn run_blocking(
         },
         manifest,
         sealed_at: created_at,
+    };
+    let database = match database_path {
+        Some(database_path) => Some(EmbeddedDatabaseCaptureRequest {
+            run_id: run_id.clone(),
+            profile_id: profile.profile_id.clone(),
+            database_path,
+            payload_path: PayloadPath::parse("payload/database-000.sqlite.zst.enc")
+                .map_err(|_| CaptureJobFailure::internal())?,
+        }),
+        None => None,
     };
     repository
         .write_capture_audit(&run_id, "started", None)
@@ -122,7 +134,7 @@ fn run_blocking(
         audit: &audit,
         archive_limits: guardian_archive::ArchiveLimits::conservative(),
     };
-    let sealed = match composition.execute(request, &identity) {
+    let sealed = match composition.execute(request, database, &identity) {
         Ok(sealed) => sealed,
         Err(_) => {
             let _ = repository.write_capture_audit(&run_id, "failed", None);

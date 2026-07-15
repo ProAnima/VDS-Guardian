@@ -139,14 +139,19 @@ The lightweight embedded-database snapshot adapter now exists end to end
 (ADR 0005): a fixed `sqlite3 .backup` plus `zstd` remote command produces a
 consistent, WAL-safe snapshot of one operator-configured absolute database
 file, gated by a narrow `sqlite3` presence probe. The captured stream is
-encrypted like any other payload, validated by a new bounded zstd-stream
-inspector, and sealed as its own independently restorable backup rather than
-combined into a unified multi-payload plan yet. Restore decrypts and
-zstd-decompresses that payload directly into `database.sqlite` at the
-restore destination, alongside the existing filesystem payload when both are
-present. No fixture-drill evidence or CLI/desktop UI to trigger a database
-capture exists yet; PostgreSQL/MySQL server adapters remain intentionally
-deferred rather than release blockers.
+encrypted like any other payload and validated by a new bounded zstd-stream
+inspector. The desktop's capture-plan flow now offers an optional database
+file path alongside the filesystem roots: a plan with one set captures both
+into one sealed backup from a single run, since restoring or deploying a
+database-only backup is not supported by this codebase (both require exactly
+one filesystem payload) and unifying needed no change to either. The
+standalone, independently-sealed database-only capture path remains
+available in `guardian-capture` for potential future use, just not what the
+desktop UI calls. Restore decrypts and zstd-decompresses the database
+payload directly into `database.sqlite` at the restore destination,
+alongside the filesystem payload. No fixture-drill evidence or CLI trigger
+for a database capture exists yet; PostgreSQL/MySQL server adapters remain
+intentionally deferred rather than release blockers.
 
 ## Milestone 4 — restore engine (P0)
 

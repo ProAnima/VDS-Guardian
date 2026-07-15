@@ -58,6 +58,18 @@ impl EmbeddedDatabaseCaptureUseCase<'_> {
         self.storage
             .begin(&request.run_id)
             .map_err(CaptureUseCaseError::Storage)?;
+        self.execute_within_staging(request)
+    }
+
+    /// Same capture/inspect/register sequence as `execute`, but assumes the
+    /// caller already opened the staging run — used when this payload is
+    /// captured as the second of two into one combined backup, since
+    /// `BackupStoragePort::begin` fails if called twice for the same run.
+    pub fn execute_within_staging(
+        &self,
+        request: &EmbeddedDatabaseCaptureRequest,
+    ) -> Result<PayloadEntry, CaptureUseCaseError> {
+        request.validate().map_err(CaptureUseCaseError::Request)?;
         let destination = match self.storage.reserve(&request.payload_path) {
             Ok(destination) => destination,
             Err(error) => {

@@ -11,6 +11,8 @@ pub struct FilesystemCapturePlan {
     pub profile_id: ProfileId,
     pub repository_id: RepositoryId,
     pub roots: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub database_path: Option<String>,
 }
 
 impl FilesystemCapturePlan {
@@ -18,7 +20,11 @@ impl FilesystemCapturePlan {
         let roots_valid = !self.roots.is_empty()
             && self.roots.len() <= 32
             && self.roots.iter().all(|root| valid_remote_root(root));
-        (self.version > 0 && roots_valid)
+        let database_path_valid = self
+            .database_path
+            .as_deref()
+            .is_none_or(|path| path != "/" && valid_remote_root(path));
+        (self.version > 0 && roots_valid && database_path_valid)
             .then_some(())
             .ok_or(CapturePlanError::Invalid)
     }

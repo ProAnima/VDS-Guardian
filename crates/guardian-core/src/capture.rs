@@ -175,6 +175,8 @@ pub enum CaptureRequestError {
     InvalidPayloadPath,
     #[error("embedded database path must be a bounded absolute lexical path")]
     InvalidDatabasePath,
+    #[error("embedded database capture request does not match the filesystem capture request")]
+    DatabaseRequestMismatch,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

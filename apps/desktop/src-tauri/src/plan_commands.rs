@@ -12,6 +12,7 @@ pub struct SavePlanRequest {
     profile_id: String,
     repository_id: String,
     roots: Vec<String>,
+    database_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -21,6 +22,7 @@ pub struct PlanSummary {
     pub profile_id: String,
     pub repository_id: String,
     pub roots: Vec<String>,
+    pub database_path: Option<String>,
     pub sha256: String,
 }
 
@@ -73,6 +75,7 @@ fn save_blocking(root: PathBuf, request: SavePlanRequest) -> Result<PlanSummary,
         profile_id,
         repository_id,
         roots: request.roots,
+        database_path: request.database_path,
     };
     let stored = StoredCapturePlan::new(plan).map_err(|_| PlanFailure::invalid())?;
     CapturePlanStore::at(root.join("plans"))
@@ -119,6 +122,7 @@ impl From<&StoredCapturePlan> for PlanSummary {
             profile_id: value.plan.profile_id.as_str().to_owned(),
             repository_id: value.plan.repository_id.as_str().to_owned(),
             roots: value.plan.roots.clone(),
+            database_path: value.plan.database_path.clone(),
             sha256: value.sha256.clone(),
         }
     }

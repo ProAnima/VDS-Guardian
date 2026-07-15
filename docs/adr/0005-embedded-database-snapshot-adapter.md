@@ -72,3 +72,59 @@ include.
 - Non-SQLite embedded engines, PostgreSQL/MySQL dump/restore, and a unified
   multi-payload backup plan remain future work and are not weakened or
   precluded by this design.
+
+## Amendment (2026-07-15): unified into the filesystem capture plan, desktop UI added
+
+The "follow-up change" this ADR deferred above has landed, resolving it
+directly rather than leaving the database adapter unreachable from any
+surface. Before wiring a "run" action to *any* surface, research surfaced a
+blocker with the obvious approach (a standalone `DatabaseCapturePlan`, saved
+and run independently): a database-only sealed backup (one payload,
+`logical_role: "database"`, zero `application/zstd` filesystem payload)
+cannot be restored or deployed by this codebase. Both `RestorePlan::build`
+and `DeploymentPlan::build` (ADR 0007) call a shared
+`guardian-core::manifest::select_payloads` that hard-requires exactly one
+filesystem payload — proven by the existing
+`deploy_plan_rejects_a_backup_with_no_filesystem_payload` test. Shipping a
+"run snapshot" button producing a validly-signed, permanently unrestorable
+backup would be exactly the gap `docs/DEVELOPMENT_PLAN.md`'s own "Definition
+of production-ready" section exists to prevent.
+
+Decision: `FilesystemCapturePlan` (`guardian-core/src/plan.rs`) gains an
+optional `database_path: Option<String>` (last field, append-only,
+`skip_serializing_if` none, so an existing plan's canonical hash is
+unaffected). Running a plan with a database path captures the filesystem
+root(s) *and* the database file into **one** sealed backup with both
+payloads — a shape restore/deploy already fully support today, so neither
+needed any change. Rejected alternative: keep the database capture
+standalone and instead relax `select_payloads`/`RestorePlan`/`DeploymentPlan`
+to accept a database-only manifest (making `filesystem_payload` optional,
+symmetric with the already-optional `database_payload`). That would touch
+the two most security-reviewed flows in the project for the benefit of a
+narrower use case; unifying needed zero changes there. Accepted tradeoff: an
+operator can no longer take a lightweight database-only snapshot on its own
+cadence between full filesystem backups through this flow. The standalone
+`EmbeddedDatabaseCaptureComposition`/`EmbeddedDatabaseBackupUseCase` path
+this ADR originally introduced is unchanged and still available for
+potential future direct use — it is simply not what the desktop UI calls.
+
+Mechanically: `BackupStoragePort::begin` fails if called twice for the same
+run, so capturing two payloads into one staging run before one seal needed a
+"begin-less" entry point — `EmbeddedDatabaseCaptureUseCase::execute` was
+split into itself (begin, then delegate) plus a new
+`execute_within_staging` (no begin), used only when a database payload is
+the second of two captured together.
+`FilesystemCaptureComposition::execute` (`guardian-capture`) gained an
+`Option<EmbeddedDatabaseCaptureRequest>` parameter: when absent, behavior is
+byte-for-byte identical to before (a separate code path, not a conditional
+inside the same function); when present, it captures both payloads into the
+same staging run, adds both entries to one manifest, and seals once, with
+composition-level fail-closed handling mirroring the existing use-case-level
+pattern.
+
+The desktop's existing capture-plan save/run commands and `CapturePlanPanel`
+now expose one additional optional field ("Файл базы данных на сервере") —
+no new Tauri commands, no new panel, since the plan itself is what unified.
+No CLI trigger was added (symmetric with today: filesystem capture-plan
+execution is desktop-only, no `guardian-cli` capture/plan/job command exists
+for either kind).

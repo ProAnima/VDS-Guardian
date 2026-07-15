@@ -3,17 +3,20 @@
 mod embedded_database;
 
 use fs2::available_space;
-use guardian_archive::{ArchiveLimits, TarZstdInspector};
+use guardian_archive::{ArchiveLimits, TarZstdInspector, ZstdFileInspector};
 use guardian_core::{
-    AuditPort, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
-    FilesystemBackupUseCase, FilesystemCaptureRequest, ManifestSigner, SealedBackup, SecretStore,
-    SshCapabilityProbePort, StoragePortError, VdsProfile,
+    AuditPort, BackupStoragePort, CaptureAuditCode, CaptureRequestError, CaptureUseCaseError,
+    EmbeddedDatabaseCaptureRequest, EmbeddedDatabaseCaptureUseCase, FilesystemBackupRequest,
+    FilesystemBackupUseCase, FilesystemCaptureRequest, FilesystemCaptureUseCase, ManifestError,
+    ManifestSigner, PayloadEntry, RunId, SealedBackup, SecretStore, SshCapabilityProbePort,
+    StoragePortError, VdsProfile,
 };
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
-    PinnedHost, PinnedSshCapabilityProbe, PinnedSshCaptureAdapter, SecretIdentityFile, SshUser,
-    SystemOpenSsh,
+    PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, PinnedSshCapabilityProbe,
+    PinnedSshCaptureAdapter, SecretIdentityFile, SshUser, SystemOpenSsh,
 };
+use std::path::Path;
 
 pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
 
@@ -33,25 +36,29 @@ impl FilesystemCaptureComposition<'_> {
     pub fn execute(
         &self,
         request: FilesystemBackupRequest,
+        database: Option<EmbeddedDatabaseCaptureRequest>,
+        signer: &dyn ManifestSigner,
+    ) -> Result<SealedBackup, CaptureUseCaseError> {
+        match database {
+            Some(database) => self.execute_combined(request, database, signer),
+            None => self.execute_filesystem_only(request, signer),
+        }
+    }
+
+    /// Unchanged from before `database` existed: exactly today's single-
+    /// payload capture, delegating wholesale to `FilesystemBackupUseCase`.
+    fn execute_filesystem_only(
+        &self,
+        request: FilesystemBackupRequest,
         signer: &dyn ManifestSigner,
     ) -> Result<SealedBackup, CaptureUseCaseError> {
         self.validate_profile(&request.capture)?;
         self.require_encrypted_payload_path(&request.capture)?;
         self.require_preflight()?;
-        self.require_disk_budget()?;
-        let host = PinnedHost::parse(
-            &self.profile.endpoint.host,
-            self.profile.endpoint.port,
-            &self.profile.endpoint.host_pin.algorithm,
-            &self.profile.endpoint.host_pin.public_key_base64,
-        )
-        .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))?;
-        let user = SshUser::parse(&self.profile.endpoint.user)
-            .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))?;
-        let identity_file =
-            SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id).map_err(
-                |_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential),
-            )?;
+        self.require_disk_budget(false)?;
+        let host = self.pinned_host()?;
+        let user = self.ssh_user()?;
+        let identity_file = self.identity_file()?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
             request.manifest.backup_id.clone(),
@@ -73,6 +80,162 @@ impl FilesystemCaptureComposition<'_> {
             audit: self.audit,
         }
         .execute(request)
+    }
+
+    /// Captures the filesystem payload, then (in the same staging run, since
+    /// `BackupStoragePort::begin` fails if called twice) the database
+    /// payload, before sealing once with both entries in one manifest.
+    fn execute_combined(
+        &self,
+        request: FilesystemBackupRequest,
+        database: EmbeddedDatabaseCaptureRequest,
+        signer: &dyn ManifestSigner,
+    ) -> Result<SealedBackup, CaptureUseCaseError> {
+        self.validate_profile(&request.capture)?;
+        self.require_encrypted_payload_path(&request.capture)?;
+        self.require_preflight()?;
+        self.require_matching_database_request(&request.capture, &database)?;
+        self.require_disk_budget(true)?;
+        let host = self.pinned_host()?;
+        let user = self.ssh_user()?;
+        let identity_file = self.identity_file()?;
+        self.require_sqlite3(&host, &user, identity_file.path())?;
+        let storage = LocalRepositoryStorageAdapter::encrypted(
+            self.repository,
+            request.manifest.backup_id.clone(),
+            self.credentials,
+        );
+        let capture = PinnedSshCaptureAdapter {
+            ssh: self.ssh,
+            host: &host,
+            user: &user,
+            identity_file: identity_file.path(),
+            maximum_output_bytes: MAX_CAPTURE_BYTES,
+        };
+        let inspector = TarZstdInspector::new(self.archive_limits);
+        let filesystem_payload = FilesystemCaptureUseCase {
+            capture: &capture,
+            storage: &storage,
+            inspector: &inspector,
+            audit: self.audit,
+        }
+        .execute(&request.capture)?;
+        let database_capture = PinnedEmbeddedDatabaseCaptureAdapter {
+            ssh: self.ssh,
+            host: &host,
+            user: &user,
+            identity_file: identity_file.path(),
+            maximum_output_bytes: MAX_DATABASE_SNAPSHOT_BYTES,
+        };
+        let database_inspector =
+            ZstdFileInspector::new(ArchiveLimits::conservative().max_expanded_bytes);
+        let database_payload = EmbeddedDatabaseCaptureUseCase {
+            capture: &database_capture,
+            storage: &storage,
+            inspector: &database_inspector,
+            audit: self.audit,
+        }
+        .execute_within_staging(&database)?;
+        self.seal_combined(
+            &storage,
+            request,
+            filesystem_payload,
+            database_payload,
+            signer,
+        )
+    }
+
+    fn seal_combined(
+        &self,
+        storage: &LocalRepositoryStorageAdapter<'_>,
+        request: FilesystemBackupRequest,
+        filesystem_payload: PayloadEntry,
+        database_payload: PayloadEntry,
+        signer: &dyn ManifestSigner,
+    ) -> Result<SealedBackup, CaptureUseCaseError> {
+        let mut manifest = request.manifest;
+        let run_id = request.capture.run_id;
+        if manifest.run_id != run_id {
+            return self.fail_combined(
+                &run_id,
+                storage,
+                CaptureUseCaseError::Manifest(ManifestError::NotSealed),
+            );
+        }
+        if let Err(error) = manifest.add_payload(filesystem_payload) {
+            return self.fail_combined(&run_id, storage, CaptureUseCaseError::Manifest(error));
+        }
+        if let Err(error) = manifest.add_payload(database_payload) {
+            return self.fail_combined(&run_id, storage, CaptureUseCaseError::Manifest(error));
+        }
+        storage
+            .seal(manifest, request.sealed_at, signer)
+            .map_err(|error| {
+                self.audit
+                    .capture_failed(&run_id, CaptureAuditCode::Storage);
+                let _ = storage.discard(&run_id);
+                CaptureUseCaseError::Storage(error)
+            })
+    }
+
+    fn fail_combined<T>(
+        &self,
+        run_id: &RunId,
+        storage: &LocalRepositoryStorageAdapter<'_>,
+        error: CaptureUseCaseError,
+    ) -> Result<T, CaptureUseCaseError> {
+        self.audit.capture_failed(run_id, CaptureAuditCode::Storage);
+        storage
+            .discard(run_id)
+            .map_err(CaptureUseCaseError::Storage)?;
+        Err(error)
+    }
+
+    fn pinned_host(&self) -> Result<PinnedHost, CaptureUseCaseError> {
+        PinnedHost::parse(
+            &self.profile.endpoint.host,
+            self.profile.endpoint.port,
+            &self.profile.endpoint.host_pin.algorithm,
+            &self.profile.endpoint.host_pin.public_key_base64,
+        )
+        .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))
+    }
+
+    fn ssh_user(&self) -> Result<SshUser, CaptureUseCaseError> {
+        SshUser::parse(&self.profile.endpoint.user)
+            .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))
+    }
+
+    fn identity_file(&self) -> Result<SecretIdentityFile, CaptureUseCaseError> {
+        SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id)
+            .map_err(|_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential))
+    }
+
+    fn require_matching_database_request(
+        &self,
+        request: &FilesystemCaptureRequest,
+        database: &EmbeddedDatabaseCaptureRequest,
+    ) -> Result<(), CaptureUseCaseError> {
+        (database.run_id == request.run_id && database.profile_id == request.profile_id)
+            .then_some(())
+            .ok_or(CaptureUseCaseError::Request(
+                CaptureRequestError::DatabaseRequestMismatch,
+            ))
+    }
+
+    fn require_sqlite3(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+    ) -> Result<(), CaptureUseCaseError> {
+        let available = self
+            .ssh
+            .probe_sqlite3(host, user, identity_file)
+            .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
+        available.then_some(()).ok_or(CaptureUseCaseError::Request(
+            CaptureRequestError::PreflightFailed,
+        ))
     }
 
     fn validate_profile(
@@ -118,10 +281,14 @@ impl FilesystemCaptureComposition<'_> {
             ))
     }
 
-    fn require_disk_budget(&self) -> Result<(), CaptureUseCaseError> {
+    fn require_disk_budget(&self, include_database: bool) -> Result<(), CaptureUseCaseError> {
         let available = available_space(self.repository.root())
             .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
-        (available >= MINIMUM_FREE_BYTES.saturating_add(MAX_CAPTURE_BYTES))
+        let mut required = MINIMUM_FREE_BYTES.saturating_add(MAX_CAPTURE_BYTES);
+        if include_database {
+            required = required.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES);
+        }
+        (available >= required)
             .then_some(())
             .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
     }
@@ -195,6 +362,54 @@ mod tests {
             composition.require_encrypted_payload_path(&request),
             Err(CaptureUseCaseError::Request(
                 CaptureRequestError::InvalidPayloadPath
+            ))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn combined_capture_rejects_a_database_request_for_a_different_run_before_touching_ssh()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-003")?)?;
+        let profile = profile()?;
+        let audit = NoopAudit;
+        let composition = FilesystemCaptureComposition {
+            repository: &repository,
+            ssh: &SystemOpenSsh::default(),
+            profile: &profile,
+            credentials: &NoopCredentialStore,
+            audit: &audit,
+            archive_limits: ArchiveLimits::conservative(),
+        };
+        let request = FilesystemCaptureRequest {
+            run_id: RunId::parse("run-003")?,
+            profile_id: profile.profile_id.clone(),
+            roots: vec!["/srv/app".to_owned()],
+            payload_path: PayloadPath::parse("filesystem.tar.zst")?,
+        };
+        let mismatched_run = guardian_core::EmbeddedDatabaseCaptureRequest {
+            run_id: RunId::parse("a-different-run")?,
+            profile_id: profile.profile_id.clone(),
+            database_path: "/srv/app/app.sqlite".to_owned(),
+            payload_path: PayloadPath::parse("database.sqlite.zst")?,
+        };
+        assert!(matches!(
+            composition.require_matching_database_request(&request, &mismatched_run),
+            Err(CaptureUseCaseError::Request(
+                CaptureRequestError::DatabaseRequestMismatch
+            ))
+        ));
+        let mismatched_profile = guardian_core::EmbeddedDatabaseCaptureRequest {
+            run_id: request.run_id.clone(),
+            profile_id: ProfileId::parse("a-different-profile")?,
+            database_path: "/srv/app/app.sqlite".to_owned(),
+            payload_path: PayloadPath::parse("database.sqlite.zst")?,
+        };
+        assert!(matches!(
+            composition.require_matching_database_request(&request, &mismatched_profile),
+            Err(CaptureUseCaseError::Request(
+                CaptureRequestError::DatabaseRequestMismatch
             ))
         ));
         Ok(())
