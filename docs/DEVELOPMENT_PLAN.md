@@ -38,14 +38,19 @@ creates deterministic snapshot-bound dry runs, requires exact approval, and
 records append-only audit evidence. A streaming tar.zst inspector now validates
 paths, rejects links and special entry types, and enforces entry, per-file, and
 expanded-stream limits. A deterministic tar.zst writer emits normalized archive
-headers for validated paths. Full schemas, extraction coverage, and the
-restore-drill gate remain open: no independent schema-definition artifact
-exists for any type (Rust struct shape plus serde attributes is the only
-"schema" today), no job schema or persisted job history exists at all (only
-capture-plan documents and audit files), retention/audit records are not
-themselves version-tagged, extraction has materially thinner test coverage
-than inspection, and no automated clean-room restore drill exists anywhere
-(only a manual runbook procedure). The initial hostile archive path corpus now
+headers for validated paths. Full schemas and extraction coverage remain open:
+no independent schema-definition artifact exists for any type (Rust struct
+shape plus serde attributes is the only "schema" today), no job schema or
+persisted job history exists at all (only capture-plan documents and audit
+files), retention/audit records are not themselves version-tagged, and
+extraction has materially thinner test coverage than inspection. An automated
+clean-room restore drill now exists (`crates/guardian-capture/tests/
+clean_room_drill.rs`, run via `npm run test:integration:drill`): it captures a
+real filesystem-plus-database backup over a real SSH round trip against a
+disposable container, seals it, restores it locally, and byte-verifies the
+result — closing the "only a manual runbook procedure" gap for that one
+fixture stack. It does not yet cover every supported stack type and does not
+touch rollback, which is unbuilt (Milestone 4). The initial hostile archive path corpus now
 pins a fail-closed cross-platform path contract. Retention now
 records a durable, non-secret transaction intent: reopening rolls back a
 partially moved deletion set, or resumes only a cleanup phase that was durably
@@ -119,13 +124,19 @@ The reproducible Alpine OpenSSH fixture is available through
 `npm run test:integration:ssh`; it verifies a real pinned-key capture and
 changed-key rejection against a normal, well-behaved server — a distinct
 compromised/adversarial-server fixture suite does not exist yet (only
-scattered adversarial unit tests elsewhere cover hostile input). Rust-level
-adapter assertions against this container also remain open: the fixture
-script drives a hand-built `ssh` invocation directly and never calls the
-compiled `guardian-ssh` adapter, so no test connects the real adapter code
-to a live network round-trip. CI scheduling is done: the Linux CI job runs
-this Docker gate after the canonical verification suite; Windows retains
-the same canonical suite without requiring Docker.
+scattered adversarial unit tests elsewhere cover hostile input), and that
+fixture script itself still drives a hand-built `ssh` invocation directly
+rather than the compiled `guardian-ssh` adapter. A separate clean-room drill
+fixture (`npm run test:integration:drill`) now does connect real compiled
+adapter code to a live network round trip: it drives the actual
+`guardian-ssh`/`guardian-capture`/`guardian-local-repository`/`guardian-deploy`
+composition roots against disposable containers for a real capture, local
+restore, and remote deploy. This closes the "no test connects the real
+adapter code to a live network round-trip" gap for that path specifically —
+it does not add a compromised-server scenario, which remains open. CI
+scheduling is done: the Linux CI job runs both Docker gates after the
+canonical verification suite; Windows retains the same canonical suite
+without requiring Docker.
 
 ## Milestone 3 — Docker and database consistency (P0)
 
@@ -197,8 +208,13 @@ standalone, independently-sealed database-only capture path remains
 available in `guardian-capture` for potential future use, just not what the
 desktop UI calls. Restore decrypts and zstd-decompresses the database
 payload directly into `database.sqlite` at the restore destination,
-alongside the filesystem payload. No fixture-drill evidence or CLI trigger
-for a database capture exists yet; PostgreSQL/MySQL server adapters remain
+alongside the filesystem payload. Fixture-drill evidence for a database
+capture now exists (`npm run test:integration:drill`): the clean-room drill
+seeds a real SQLite database in a disposable container, captures and
+restores it locally with a byte-exact check, and separately deploys it to a
+second disposable container where a real `PRAGMA integrity_check` and a
+row-level `SELECT` verify the deployed database over SSH. No CLI trigger for
+a database capture exists yet; PostgreSQL/MySQL server adapters remain
 intentionally deferred rather than release blockers.
 
 ## Milestone 4 — restore engine (P0)
@@ -228,13 +244,24 @@ remote command so an interrupted push never leaves a partial target. Each
 payload's manifest signature is re-verified immediately before that payload
 is pushed. Every attempt is recorded to the repository's audit log. A
 desktop Deploy view now previews and executes the same plan against an
-enrolled target profile, mirroring the CLI. Diff/dry-run file-level preview,
-a pre-restore/deploy safety backup of an existing target (today both simply
-refuse to run against a non-absent target instead of backing it up first),
-staged switch-over, restore/deploy rollback (distinct from retention's own
-whole-backup-deletion rollback, which already exists), a signed report,
-service stop/start orchestration, and database-aware live cutover remain
-open.
+enrolled target profile, mirroring the CLI. An automated clean-room drill
+now exists (`npm run test:integration:drill`, closing part of this
+milestone's own exit gate): it proves that real capture, local restore, and
+remote deploy round-trip a filesystem-plus-database backup correctly
+against disposable fixtures, and records elapsed time and a
+machine-readable report per `OPERATIONS_RUNBOOK.md`. It does not prove
+rollback for any stack type, since restore/deploy rollback itself is not
+implemented yet (below) — its own report records this explicitly rather
+than silently passing over it, so the exit gate remains not met. This is
+test infrastructure only: it calls already-shipped, already-reviewed
+composition roots (ADR 0004/0005/0006/0007) from a new test and changes no
+production behavior, so it did not need a new ADR of its own. Diff/dry-run
+file-level preview, a pre-restore/deploy safety backup of an existing
+target (today both simply refuse to run against a non-absent target
+instead of backing it up first), staged switch-over, restore/deploy
+rollback (distinct from retention's own whole-backup-deletion rollback,
+which already exists), a signed report, service stop/start orchestration,
+and database-aware live cutover remain open.
 
 ## Milestone 5 — desktop product and scheduling (P1)
 

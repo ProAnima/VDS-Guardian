@@ -35,3 +35,11 @@ jobs:
       - name: Run disposable SSH integration gate
         if: runner.os == 'Linux'
         run: npm run test:integration:ssh
+      - name: Reclaim disk space for the clean-room drill
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Run clean-room restore/deploy drill
+        if: runner.os == 'Linux'
+        run: npm run test:integration:drill

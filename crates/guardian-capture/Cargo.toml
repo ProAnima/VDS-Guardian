@@ -18,6 +18,11 @@ thiserror.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+ed25519-dalek.workspace = true
+guardian-deploy = { path = "../guardian-deploy" }
+guardian-vault = { path = "../guardian-vault" }
+serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

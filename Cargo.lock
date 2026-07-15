@@ -1606,11 +1606,16 @@ name = "guardian-capture"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ed25519-dalek",
  "fs2",
  "guardian-archive",
  "guardian-core",
+ "guardian-deploy",
  "guardian-local-repository",
  "guardian-ssh",
+ "guardian-vault",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
 ]
