@@ -1628,6 +1628,7 @@ dependencies = [
  "guardian-profile-store",
  "guardian-signing",
  "guardian-ssh",
+ "guardian-vault",
  "serde",
  "serde_json",
  "tempfile",
@@ -1750,6 +1751,21 @@ dependencies = [
  "guardian-core",
  "tempfile",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "guardian-vault"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "guardian-core",
+ "guardian-encryption",
+ "rand_core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "zeroize",
 ]
 
 [[package]]

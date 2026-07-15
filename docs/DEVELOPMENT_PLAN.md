@@ -51,6 +51,12 @@ and Tauri bridge commands; the desktop setup UI requires a separate explicit
 acknowledgement before enrollment. Explicit rotation remains open.
 Staging payloads can now be reserved exclusively for streaming adapters and are
 registered only after a regular-file check and disk-based SHA-256 calculation.
+A headless node without a usable OS credential store can now opt into
+`guardian-vault` (ADR 0006), a local AES-256-GCM-CHUNKED-encrypted file store
+implementing the same `SecretStore` contract, selected explicitly per
+invocation via `--vault-dir` on `guardian-cli credential`/`restore`/`signing`;
+`vault init`/`vault status` bootstrap and inspect it. Vault key rotation and a
+credential migration tool between backends remain open.
 
 ## Milestone 2 — secure SSH capture (P0)
 

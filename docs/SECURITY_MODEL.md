@@ -40,6 +40,28 @@
 - Prefer a dedicated backup account with least privilege and reviewed `sudo`
   commands over unrestricted root login.
 
+### Encrypted local vault fallback
+
+- A headless node with no usable OS credential store (typically Linux with no
+  logged-in session bus for Secret Service) can opt into `guardian-vault`, a
+  local encrypted file store implementing the same `SecretStore` contract
+  (ADR 0006). Selection is explicit and per-invocation via `--vault-dir` on
+  `credential`/`restore`/`signing`; omitting the flag keeps the OS store as
+  the default, and a vault that fails to open is a hard failure, never a
+  silent fallback to the OS store.
+- Each credential is its own AES-256-GCM-CHUNKED-encrypted file, reusing the
+  existing payload envelope unchanged. Associated data binds a fixed domain
+  constant and the credential id, so ciphertexts cannot be silently swapped
+  between credentials. A single master key file, owner-only permissioned
+  (Unix `0600` at creation; Windows ACL hardening via the same pattern used
+  for the SSH identity temp file), protects every entry — no passphrase,
+  since unattended scheduling is the reason this fallback exists.
+- `vault init` never regenerates an existing master key; `vault status` is
+  read-only and never creates the directory, key, or canary as a side
+  effect. Owner-level filesystem read access to the vault directory
+  discloses everything in it — the same blast radius the OS credential store
+  already has within one account, not a new weakness.
+
 ### SSH
 
 - First connection shows the fingerprint and requires explicit trust.

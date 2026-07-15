@@ -1,3 +1,4 @@
+use crate::secret_store::resolve_store;
 use fs2::FileExt;
 use guardian_core::{CredentialId, SecretStore, SecretValue};
 use guardian_ssh::SecretIdentityFile;
@@ -9,8 +10,12 @@ use std::{
     process::ExitCode,
 };
 
-pub(super) fn run(arguments: &[OsString], store: &dyn SecretStore) -> ExitCode {
-    match parse(arguments).and_then(|command| execute(command, store)) {
+pub(super) fn run(arguments: &[OsString]) -> ExitCode {
+    match parse(arguments).and_then(|command| {
+        let store =
+            resolve_store(command.vault_dir.as_deref()).map_err(|_| CredentialFailure::store())?;
+        execute(command, &store)
+    }) {
         Ok(output) => write_success(&output),
         Err(error) => write_error(&error),
     }
@@ -22,6 +27,7 @@ fn parse(arguments: &[OsString]) -> Result<ImportCommand, CredentialFailure> {
     }
     let mut credential_id = None;
     let mut input = None;
+    let mut vault_dir = None;
     let mut json = false;
     let mut index = 1;
     while index < arguments.len() {
@@ -34,6 +40,10 @@ fn parse(arguments: &[OsString]) -> Result<ImportCommand, CredentialFailure> {
                 index += 1;
                 input = arguments.get(index).map(PathBuf::from);
             }
+            Some("--vault-dir") => {
+                index += 1;
+                vault_dir = arguments.get(index).map(PathBuf::from);
+            }
             Some("--json") => json = true,
             _ => return Err(CredentialFailure::usage()),
         }
@@ -43,12 +53,13 @@ fn parse(arguments: &[OsString]) -> Result<ImportCommand, CredentialFailure> {
         .ok_or_else(CredentialFailure::usage)
         .and_then(|value| CredentialId::parse(value).map_err(|_| CredentialFailure::usage()))?;
     let input = input.ok_or_else(CredentialFailure::usage)?;
-    if !json || !input.is_absolute() {
+    if !json || !input.is_absolute() || vault_dir.as_deref().is_some_and(|dir| !dir.is_absolute()) {
         return Err(CredentialFailure::usage());
     }
     Ok(ImportCommand {
         credential_id,
         input,
+        vault_dir,
     })
 }
 
@@ -166,6 +177,7 @@ fn write_error(error: &CredentialFailure) -> ExitCode {
 struct ImportCommand {
     credential_id: CredentialId,
     input: PathBuf,
+    vault_dir: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -199,7 +211,7 @@ impl CredentialFailure {
         Self {
             code: "invalid_arguments",
             message: "The command arguments are invalid.",
-            usage: "guardian-cli credential import-ssh-key --credential-id <id> --input <absolute-key-path> --json",
+            usage: "guardian-cli credential import-ssh-key --credential-id <id> --input <absolute-key-path> [--vault-dir <absolute-path>] --json",
         }
     }
 
@@ -280,6 +292,24 @@ mod tests {
     }
 
     #[test]
+    fn a_relative_vault_dir_is_rejected() {
+        let values = [
+            "import-ssh-key",
+            "--credential-id",
+            "credential-001",
+            "--input",
+            "/key",
+            "--vault-dir",
+            "relative",
+            "--json",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+        assert_eq!(parse(&values).err(), Some(CredentialFailure::usage()));
+    }
+
+    #[test]
     fn import_writes_once_and_never_overwrites_an_existing_credential()
     -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
@@ -288,12 +318,14 @@ mod tests {
         let command = ImportCommand {
             credential_id: CredentialId::parse("credential-001")?,
             input,
+            vault_dir: None,
         };
         let store = Store::default();
         execute(command, &store).map_err(|_| std::io::Error::other("key import failed"))?;
         let repeat = ImportCommand {
             credential_id: CredentialId::parse("credential-001")?,
             input: root.path().join("backup.key"),
+            vault_dir: None,
         };
         assert_eq!(
             execute(repeat, &store).err(),
@@ -350,6 +382,7 @@ mod tests {
                 credential_id: CredentialId::parse("credential-race")
                     .map_err(|_| CredentialFailure::usage())?,
                 input,
+                vault_dir: None,
             },
             store,
             &locks,

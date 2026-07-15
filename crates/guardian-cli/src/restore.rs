@@ -1,3 +1,4 @@
+use crate::secret_store::resolve_store;
 use guardian_configuration::RepositoryStore;
 use guardian_core::{BackupId, RepositoryId, RestorePlan, SecretStore};
 use guardian_local_repository::{LocalRepository, TrustedBackup};
@@ -5,8 +6,12 @@ use guardian_signing::SigningIdentityManager;
 use serde::Serialize;
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
-pub(super) fn run(arguments: &[OsString], secrets: &dyn SecretStore) -> ExitCode {
-    match parse(arguments).and_then(|command| execute(command, secrets)) {
+pub(super) fn run(arguments: &[OsString]) -> ExitCode {
+    match parse(arguments).and_then(|command| {
+        let store =
+            resolve_store(command.vault_dir.as_deref()).map_err(|_| RestoreFailure::storage())?;
+        execute(command, &store)
+    }) {
         Ok(output) => write_success(&output),
         Err(error) => write_error(&error),
     }
@@ -25,6 +30,7 @@ fn parse(arguments: &[OsString]) -> Result<RestoreCommand, RestoreFailure> {
     let mut backup_id = None;
     let mut destination = None;
     let mut confirmation = None;
+    let mut vault_dir = None;
     let mut json = false;
     let mut index = 1;
     while index < arguments.len() {
@@ -54,6 +60,10 @@ fn parse(arguments: &[OsString]) -> Result<RestoreCommand, RestoreFailure> {
                 index += 1;
                 confirmation = arguments.get(index).and_then(|value| value.to_str());
             }
+            Some("--vault-dir") => {
+                index += 1;
+                vault_dir = arguments.get(index).map(PathBuf::from);
+            }
             _ => return Err(RestoreFailure::usage()),
         }
         index += 1;
@@ -63,7 +73,11 @@ fn parse(arguments: &[OsString]) -> Result<RestoreCommand, RestoreFailure> {
     let repository_id = repository_id
         .map(str::to_owned)
         .ok_or_else(RestoreFailure::usage)?;
-    if !json || !repositories_dir.is_absolute() || !config_dir.is_absolute() {
+    if !json
+        || !repositories_dir.is_absolute()
+        || !config_dir.is_absolute()
+        || vault_dir.as_deref().is_some_and(|dir| !dir.is_absolute())
+    {
         return Err(RestoreFailure::usage());
     }
     let (backup_id, destination) = match action {
@@ -91,6 +105,7 @@ fn parse(arguments: &[OsString]) -> Result<RestoreCommand, RestoreFailure> {
         backup_id,
         destination,
         confirmation,
+        vault_dir,
     })
 }
 
@@ -187,6 +202,7 @@ struct RestoreCommand {
     backup_id: Option<String>,
     destination: Option<PathBuf>,
     confirmation: Option<String>,
+    vault_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy)]
@@ -264,7 +280,7 @@ impl RestoreFailure {
         Self {
             code: "invalid_arguments",
             message: "The command arguments are invalid.",
-            usage: "guardian-cli restore <list|plan|execute> --repositories-dir <absolute-path> --config-dir <absolute-path> --repository-id <id> [--backup-id <id> --destination <absolute-path>] [--confirmation <phrase>] --json",
+            usage: "guardian-cli restore <list|plan|execute> --repositories-dir <absolute-path> --config-dir <absolute-path> --repository-id <id> [--backup-id <id> --destination <absolute-path>] [--confirmation <phrase>] [--vault-dir <absolute-path>] --json",
         }
     }
 
@@ -365,6 +381,26 @@ mod tests {
     }
 
     #[test]
+    fn a_relative_vault_dir_is_rejected() {
+        let values = [
+            "list",
+            "--repositories-dir",
+            "/r",
+            "--config-dir",
+            "/n",
+            "--repository-id",
+            "repository-001",
+            "--vault-dir",
+            "relative",
+            "--json",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+        assert_eq!(parse(&values).err(), Some(RestoreFailure::usage()));
+    }
+
+    #[test]
     fn exact_restore_actions_are_distinct() -> Result<(), Box<dyn std::error::Error>> {
         let root = std::env::current_dir()?;
         let options = |action: &str, extra: &[&str]| {
@@ -410,6 +446,7 @@ mod tests {
             backup_id: None,
             destination: None,
             confirmation: None,
+            vault_dir: None,
         };
         let result = execute(command, &MemoryStore::default());
         assert_eq!(result.err(), Some(RestoreFailure::input()));
@@ -446,6 +483,7 @@ mod tests {
             backup_id: None,
             destination: None,
             confirmation: None,
+            vault_dir: None,
         };
         let output =
             execute(command, &secrets).map_err(|_| std::io::Error::other("restore list failed"))?;

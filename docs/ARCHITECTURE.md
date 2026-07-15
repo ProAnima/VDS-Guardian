@@ -50,7 +50,9 @@ Adapters will be added by capability, not bundled into the domain crate:
   whole-directory retention. Staging can reserve an exclusive payload path for
   a streaming adapter, then registers the regular file and hashes it from disk
   before it can enter a manifest.
-- Secret storage backed by Windows Credential Manager and Linux Secret Service.
+- Secret storage backed by Windows Credential Manager and Linux Secret Service,
+  with an encrypted local file vault (`guardian-vault`) as an explicit,
+  opt-in fallback for headless nodes without a usable OS credential store.
 - Tar/Zstandard archive writer and hostile-input-safe reader. The
   `guardian-archive` adapter emits deterministic tar.zst streams, performs
   streaming inspection, and extracts only into a new directory after path,
@@ -61,8 +63,8 @@ Adapters will be added by capability, not bundled into the domain crate:
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 
 Implemented adapters are split into `guardian-local-repository`,
-`guardian-signing`, `guardian-os-keyring`, `guardian-archive`, and
-`guardian-ssh`. The signing crate depends only on
+`guardian-signing`, `guardian-os-keyring`, `guardian-vault`, `guardian-archive`,
+and `guardian-ssh`. The signing crate depends only on
 the core secret-store port; platform credential APIs remain isolated from domain
 and repository code. Its application service serializes enrollment with a
 cross-process lock and uses a durable intent to reconcile a keyring write that

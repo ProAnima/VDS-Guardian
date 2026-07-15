@@ -109,13 +109,40 @@ pub fn decrypt_reader_to(
     if &header.nonce != expected_nonce {
         return Err(EncryptionError::Failed);
     }
+    decrypt_frames_to(key, &header.nonce, input, output, associated_data)
+}
+
+/// Decrypts an envelope with no independently-authenticated nonce record to
+/// cross-check (unlike `decrypt_reader_to`, which verifies the header's nonce
+/// against a value from a separately-signed source such as a backup
+/// manifest). Trusts the embedded header's nonce outright; only safe for
+/// callers whose associated data alone provides the identity binding they
+/// need (for example a per-credential secret vault, where each entry is its
+/// own independent file and there is no external record to compare against).
+pub fn decrypt_self_describing_reader_to(
+    key: &PayloadKey,
+    input: &mut impl Read,
+    output: &mut impl Write,
+    associated_data: &[u8],
+) -> Result<(), EncryptionError> {
+    let header = read_header(input)?;
+    decrypt_frames_to(key, &header.nonce, input, output, associated_data)
+}
+
+fn decrypt_frames_to(
+    key: &PayloadKey,
+    nonce: &[u8; NONCE_BYTES],
+    input: &mut impl Read,
+    output: &mut impl Write,
+    associated_data: &[u8],
+) -> Result<(), EncryptionError> {
     let cipher = cipher(key)?;
     let mut index = 0_u32;
     loop {
         let (final_frame, ciphertext) = read_frame(input)?;
         let plaintext = decrypt_frame(
             &cipher,
-            &header.nonce,
+            nonce,
             index,
             final_frame,
             &ciphertext,
@@ -267,7 +294,10 @@ pub enum EncryptionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{EncryptionError, PayloadKey, decrypt_reader_to, encrypt_reader_to};
+    use super::{
+        EncryptionError, PayloadKey, decrypt_reader_to, decrypt_self_describing_reader_to,
+        encrypt_reader_to,
+    };
     use std::io::Cursor;
 
     #[test]
@@ -306,6 +336,68 @@ mod tests {
                 &mut Vec::new(),
                 b"aad",
                 &header.nonce
+            ),
+            Err(EncryptionError::Failed)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn self_describing_round_trip_authenticates_associated_data() -> Result<(), EncryptionError> {
+        let key = PayloadKey::generate();
+        let mut ciphertext = Vec::new();
+        encrypt_reader_to(
+            &key,
+            &mut Cursor::new(b"vault-secret"),
+            &mut ciphertext,
+            b"vault|id",
+        )?;
+        let mut plaintext = Vec::new();
+        decrypt_self_describing_reader_to(
+            &key,
+            &mut Cursor::new(ciphertext),
+            &mut plaintext,
+            b"vault|id",
+        )?;
+        assert_eq!(plaintext, b"vault-secret");
+        Ok(())
+    }
+
+    #[test]
+    fn self_describing_decrypt_rejects_the_same_tampering_as_decrypt_reader_to()
+    -> Result<(), EncryptionError> {
+        let key = PayloadKey::generate();
+        let mut altered_ciphertext = Vec::new();
+        encrypt_reader_to(
+            &key,
+            &mut Cursor::new(b"vault-secret"),
+            &mut altered_ciphertext,
+            b"aad",
+        )?;
+        let last = altered_ciphertext.len() - 1;
+        altered_ciphertext[last] ^= 1;
+        assert!(matches!(
+            decrypt_self_describing_reader_to(
+                &key,
+                &mut Cursor::new(altered_ciphertext),
+                &mut Vec::new(),
+                b"aad"
+            ),
+            Err(EncryptionError::Failed)
+        ));
+        let mut wrong_aad_ciphertext = Vec::new();
+        encrypt_reader_to(
+            &key,
+            &mut Cursor::new(b"vault-secret"),
+            &mut wrong_aad_ciphertext,
+            b"aad",
+        )?;
+        assert!(matches!(
+            decrypt_self_describing_reader_to(
+                &key,
+                &mut Cursor::new(wrong_aad_ciphertext),
+                &mut Vec::new(),
+                b"different-aad"
             ),
             Err(EncryptionError::Failed)
         ));

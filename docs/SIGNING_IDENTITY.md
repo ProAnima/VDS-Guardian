@@ -21,9 +21,9 @@ verification key.
 - Linux desktop backend: Secret Service over the user session.
 
 A missing, locked, malformed, or unavailable credential store fails closed.
-Headless Linux nodes without a usable Secret Service need the separately
-reviewed encrypted-vault fallback described in ADR 0002; plaintext seed files
-are not an accepted fallback.
+Headless Linux nodes without a usable Secret Service use the encrypted-vault
+fallback described in ADR 0006 (`guardian-vault`, selected explicitly via
+`--vault-dir`); plaintext seed files are not an accepted fallback.
 
 ## Lifecycle
 
@@ -67,6 +67,5 @@ buffers use zeroization on drop. Errors are typed and never include credential
 contents or platform error payloads.
 
 Rotation will enroll a new credential ID and preserve old public verification
-keys. It must never overwrite manifests or sealed backups. Explicit rotation,
-trusted-public-key registry, and encrypted-vault fallback are not implemented
-in this slice.
+keys. It must never overwrite manifests or sealed backups. Explicit rotation
+and a trusted-public-key registry are not implemented in this slice.

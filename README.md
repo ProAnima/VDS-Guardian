@@ -55,7 +55,7 @@ mandatory cloud service.
   backup, with a versioned manifest. Database-aware adapters use native dump
   tools instead of copying live database files.
 - **Secrets:** Windows Credential Manager / Secret Service-compatible keyring,
-  with optional encrypted local vault as a later fallback.
+  with an encrypted local vault fallback for headless nodes without one.
 
 The architecture decision and rejected alternatives are documented in
 [`docs/adr/0001-platform-and-stack.md`](docs/adr/0001-platform-and-stack.md).
@@ -68,6 +68,7 @@ crates/guardian-core/  Domain model and use cases; no UI or Tauri dependency
 crates/guardian-local-repository/  Cross-platform staging and seal adapter
 crates/guardian-signing/  Ed25519 backup-node identity lifecycle
 crates/guardian-os-keyring/  Windows/Linux secure credential-store adapter
+crates/guardian-vault/  Encrypted local file vault fallback for headless nodes
 crates/guardian-cli/   Headless Linux/Windows entrypoint
 docs/                  Architecture, security, backup format, and roadmap
 scripts/               Canonical doctor and verification entrypoints
@@ -104,8 +105,15 @@ guardian-cli signing status --config-dir D:\VDSGuardian\node --json
 guardian-cli signing enroll --config-dir D:\VDSGuardian\node --json
 ```
 
-On headless Linux, enrollment fails closed unless a supported Secret Service is
-available; the encrypted-vault fallback remains future work.
+On headless Linux without a usable Secret Service, opt into the encrypted
+local vault fallback instead (ADR 0006). It must be initialized once, then
+selected explicitly on every command that needs a credential store:
+
+```powershell
+guardian-cli vault init --vault-dir D:\VDSGuardian\vault --json
+guardian-cli vault status --vault-dir D:\VDSGuardian\vault --json
+guardian-cli signing enroll --config-dir D:\VDSGuardian\node --vault-dir D:\VDSGuardian\vault --json
+```
 
 Pinned VDS profiles are also enrolled through explicit JSON commands. The input
 document contains public endpoint data, a credential reference, and an already

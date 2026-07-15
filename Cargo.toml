@@ -15,6 +15,7 @@ members = [
   "crates/guardian-os-keyring",
   "crates/guardian-signing",
   "crates/guardian-ssh",
+  "crates/guardian-vault",
 ]
 
 [workspace.package]

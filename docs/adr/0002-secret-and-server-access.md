@@ -25,4 +25,5 @@ of one node does not automatically compromise all nodes.
 - First-run enrollment has an explicit secret-store and host-trust workflow.
 - Portable settings exports cannot silently migrate credentials.
 - Headless Linux installations need a documented Secret Service or encrypted
-  vault fallback before unattended scheduling is production-ready.
+  vault fallback before unattended scheduling is production-ready. Delivered
+  by ADR 0006's `guardian-vault`, selected explicitly via `--vault-dir`.
