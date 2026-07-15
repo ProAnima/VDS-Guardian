@@ -1,3 +1,4 @@
+mod deploy_commands;
 mod job_commands;
 mod plan_commands;
 mod profile_commands;
@@ -123,6 +124,22 @@ async fn execute_restore(
     restore_commands::execute(app, request).await
 }
 
+#[tauri::command]
+async fn preview_deploy(
+    app: tauri::AppHandle,
+    request: deploy_commands::DeployRequest,
+) -> Result<deploy_commands::DeploymentPreview, deploy_commands::DeployFailure> {
+    deploy_commands::preview(app, request).await
+}
+
+#[tauri::command]
+async fn execute_deploy(
+    app: tauri::AppHandle,
+    request: deploy_commands::DeployRequest,
+) -> Result<deploy_commands::DeploymentPreview, deploy_commands::DeployFailure> {
+    deploy_commands::execute(app, request).await
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -141,7 +158,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             run_capture_plan,
             list_backups,
             preview_restore,
-            execute_restore
+            execute_restore,
+            preview_deploy,
+            execute_deploy
         ])
         .run(tauri::generate_context!())?;
     Ok(())

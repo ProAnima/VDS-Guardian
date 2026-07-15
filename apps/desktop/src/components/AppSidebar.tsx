@@ -1,5 +1,5 @@
 import {
-  Activity, Archive, LayoutDashboard, RotateCcw, Server, Settings,
+  Activity, Archive, LayoutDashboard, Rocket, RotateCcw, Server, Settings,
   type LucideIcon,
 } from "lucide-react";
 import type { MessageKey } from "../i18n/messages-primary";
@@ -18,6 +18,7 @@ const primaryNav: NavItem[] = [
   { key: "navServers", icon: Server },
   { key: "navBackups", icon: Archive },
   { key: "navRestore", icon: RotateCcw, view: "restore" },
+  { key: "navDeploy", icon: Rocket, view: "deploy" },
   { key: "navActivity", icon: Activity },
 ];
 

@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { AppSidebar } from "./components/AppSidebar";
 import { Dashboard } from "./components/Dashboard";
+import { DeployPanel } from "./components/DeployPanel";
 import { RestorePanel } from "./components/RestorePanel";
 import { getFoundationStatus, previewStatus, type FoundationStatus } from "./shared/commands";
 import { usePreferences } from "./shared/usePreferences";
 
-export type ViewId = "overview" | "restore";
+export type ViewId = "overview" | "restore" | "deploy";
 
 export function App() {
   const preferences = usePreferences();
@@ -24,8 +25,10 @@ export function App() {
         <AppHeader preferences={preferences} version={status.version} />
         {view === "overview" ? (
           <Dashboard status={status} t={preferences.t} />
-        ) : (
+        ) : view === "restore" ? (
           <RestorePanel t={preferences.t} />
+        ) : (
+          <DeployPanel t={preferences.t} />
         )}
       </div>
     </div>

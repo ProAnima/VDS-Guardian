@@ -173,10 +173,11 @@ over the existing reviewed SSH invocation, guarded by a target-profile/host
 self-overwrite check, an exact confirmation phrase, and an atomic-rename
 remote command so an interrupted push never leaves a partial target. Each
 payload's manifest signature is re-verified immediately before that payload
-is pushed. Every attempt is recorded to the repository's audit log. Diff/dry
--run file-level preview, staged switch-over, rollback, a signed report,
-service stop/start orchestration, database-aware live cutover, and desktop
-UI remain open.
+is pushed. Every attempt is recorded to the repository's audit log. A
+desktop Deploy view now previews and executes the same plan against an
+enrolled target profile, mirroring the CLI. Diff/dry-run file-level preview,
+staged switch-over, rollback, a signed report, service stop/start
+orchestration, and database-aware live cutover remain open.
 
 ## Milestone 5 — desktop product and scheduling (P1)
 
@@ -190,19 +191,21 @@ Exit gate: non-technical operator can configure, schedule, verify, and drill a
 backup without terminal use; UI never bypasses core policies.
 
 Initial desktop slice implemented: the Overview now offers a single SSH server
-enrollment form. It generates opaque profile and credential references, stores
-only the public profile locally, places the selected supported key in the OS
-credential store, requires explicit host-key verification acknowledgement, and
-performs a fixed pinned SSH connection probe and a read-only `tar --zstd`
-capability preflight after enrollment. A native key-file picker, enrollment
-recovery/credential cleanup, repository and plan setup, scheduling, and all
-backup/restore UI remain open.
-
-The desktop can now register a single selected local backup folder as an
-isolated `LocalRepository`. Registration creates the repository's own atomic
-staging/sealed layout and stores only the canonical path, label, and repository
-ID in the local application registry. It does not make a capture plan or enable
-backup creation.
+enrollment form backed by a native key-file picker. It generates opaque
+profile and credential references, stores only the public profile locally,
+places the selected supported key in the OS credential store, requires
+explicit host-key verification acknowledgement, and performs a fixed pinned
+SSH connection probe and a read-only `tar --zstd` capability preflight after
+enrollment. The Overview also registers a single selected local folder as its
+own isolated `LocalRepository` (atomic staging/sealed layout; only the
+canonical path, label, and repository ID are stored in the local application
+registry), and saves/runs a capture plan end to end against an enrolled
+server and registered repository. Separate Restore and Deploy views preview a
+plan, require the exact typed confirmation phrase, and execute it — against
+the local repository, or a different pinned target profile over SSH,
+respectively — mirroring `guardian-cli restore`/`deploy` in the GUI.
+Enrollment recovery/credential cleanup, scheduling, and a browsable
+backup/activity timeline with warnings and verification state remain open.
 
 ## Milestone 6 — release hardening (P1)
 

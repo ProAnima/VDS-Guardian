@@ -90,6 +90,10 @@ export interface RestoreRequest { repositoryId: string; backupId: string; destin
 export interface RestorePreview { backupId: string; destination: string; confirmation: string; payload: string; }
 export interface RestoreFailure { code: string; message: string; remediation: string; }
 
+export interface DeployRequest { repositoryId: string; backupId: string; targetProfileId: string; targetPath: string; confirmation?: string; }
+export interface DeploymentPreview { backupId: string; targetProfileId: string; targetProfileLabel: string; targetPath: string; confirmation: string; filesystemPayload: string; databasePayload?: string; }
+export interface DeployFailure { code: string; message: string; remediation: string; }
+
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
@@ -156,6 +160,8 @@ export async function runCapturePlan(planId: string): Promise<CaptureJobSummary>
 export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
 export async function previewRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("preview_restore", { request }); }
 export async function executeRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("execute_restore", { request }); }
+export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
+export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
 // OpenSSH commonly stores private identities without a conventional extension
 // (for example `id_rsa` or an operator-provided `id_rsa.priv`). File type is
 // validated by the desktop command after selection, never by this UI filter.

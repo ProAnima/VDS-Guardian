@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   enrollSigningIdentity,
   enrollSshProfile,
+  executeDeploy,
   executeRestore,
   getFoundationStatus,
   getSigningIdentityStatus,
   listBackups,
   listSshProfiles,
+  previewDeploy,
   previewRestore,
 } from "./commands";
 
@@ -42,5 +44,16 @@ describe("foundation bridge", () => {
     const request = { repositoryId: "repository-001", backupId: "backup-001", destination: "C:/restore" };
     await expect(previewRestore(request)).rejects.toThrow("desktop runtime");
     await expect(executeRestore(request)).rejects.toThrow("desktop runtime");
+  });
+
+  it("never previews or deploys a backup from the browser preview", async () => {
+    const request = {
+      repositoryId: "repository-001",
+      backupId: "backup-001",
+      targetProfileId: "profile-target",
+      targetPath: "/srv/app",
+    };
+    await expect(previewDeploy(request)).rejects.toThrow("desktop runtime");
+    await expect(executeDeploy(request)).rejects.toThrow("desktop runtime");
   });
 });
