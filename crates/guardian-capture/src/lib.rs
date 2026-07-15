@@ -19,6 +19,7 @@ use guardian_ssh::{
 use std::path::Path;
 
 pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
+use embedded_database::{probe_remote_disk_budget, remote_disk_budget_is_sufficient};
 
 pub const MAX_CAPTURE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 pub const MINIMUM_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -99,6 +100,12 @@ impl FilesystemCaptureComposition<'_> {
         let host = self.pinned_host()?;
         let user = self.ssh_user()?;
         let identity_file = self.identity_file()?;
+        self.require_remote_disk_budget(
+            &host,
+            &user,
+            identity_file.path(),
+            &database.database_path,
+        )?;
         self.require_sqlite3(&host, &user, identity_file.path())?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
@@ -236,6 +243,18 @@ impl FilesystemCaptureComposition<'_> {
         available.then_some(()).ok_or(CaptureUseCaseError::Request(
             CaptureRequestError::PreflightFailed,
         ))
+    }
+
+    fn require_remote_disk_budget(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        database_path: &str,
+    ) -> Result<(), CaptureUseCaseError> {
+        let (size, free_kb) =
+            probe_remote_disk_budget(self.ssh, host, user, identity_file, database_path)?;
+        remote_disk_budget_is_sufficient(size, free_kb)
     }
 
     fn validate_profile(

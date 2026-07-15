@@ -333,6 +333,25 @@ impl SystemOpenSsh {
         )
     }
 
+    pub fn probe_database_disk_budget_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        database_path: &str,
+        destination: &Path,
+        maximum_output_bytes: u64,
+    ) -> Result<CaptureResult, SshError> {
+        self.run_to(
+            host,
+            user,
+            identity_file,
+            database_disk_budget_probe_command(database_path).into(),
+            destination,
+            Some(maximum_output_bytes),
+        )
+    }
+
     pub fn probe_database_server_to(
         &self,
         host: &PinnedHost,
@@ -832,6 +851,23 @@ impl SystemOpenSsh {
     }
 
     #[must_use]
+    pub fn database_disk_budget_probe_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        database_path: &str,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            database_disk_budget_probe_command(database_path).into(),
+        )
+    }
+
     pub fn sqlite3_probe_arguments(
         &self,
         host: &PinnedHost,
@@ -989,6 +1025,13 @@ fn sqlite_snapshot_command(database_path: &str) -> String {
     let path = shell_quote(database_path);
     format!(
         "[ -f {path} ] || exit 1; tmp=$(mktemp) || exit 1; sqlite3 {path} \".backup '$tmp'\" && zstd -q -c \"$tmp\"; status=$?; rm -f \"$tmp\"; exit $status"
+    )
+}
+
+fn database_disk_budget_probe_command(database_path: &str) -> String {
+    let path = shell_quote(database_path);
+    format!(
+        "size=$(stat -c%s {path} 2>/dev/null) && [ -n \"$size\" ] && free=$(df -Pk {path} | tail -n 1 | awk '{{print $4}}') && printf '%s %s\\n' \"$size\" \"$free\""
     )
 }
 

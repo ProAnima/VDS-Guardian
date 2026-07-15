@@ -212,6 +212,47 @@ fn sqlite3_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
+fn database_disk_budget_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().database_disk_budget_probe_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app/app.sqlite",
+    );
+    let rendered = arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("StrictHostKeyChecking=yes"));
+    assert!(rendered.contains("size=$(stat -c%s '/srv/app/app.sqlite' 2>/dev/null)"));
+    assert!(rendered.contains("free=$(df -Pk '/srv/app/app.sqlite' | tail -n 1 | awk"));
+    assert!(rendered.contains("printf '%s %s\\n' \"$size\" \"$free\""));
+    assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
+fn database_disk_budget_probe_command_safely_quotes_a_path_containing_a_single_quote()
+-> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().database_disk_budget_probe_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app's data/app.sqlite",
+    );
+    let rendered = arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains(r#"'/srv/app'"'"'s data/app.sqlite'"#));
+    Ok(())
+}
+
+#[test]
 fn pin_and_capture_plan_fail_closed_on_untrusted_input() {
     assert!(PinnedHost::parse("vds.example", 22, "ssh-ed25519", "not base64!").is_err());
     assert!(PinnedHost::parse("vds.example", 22, "ssh-rsa", "c3NoLXJzYQ==").is_err());

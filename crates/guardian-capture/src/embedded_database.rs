@@ -13,10 +13,13 @@ use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
     PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh,
 };
-use std::path::Path;
+use std::{fs, path::Path};
+use tempfile::tempdir;
 
 pub const MAX_DATABASE_SNAPSHOT_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 pub const MINIMUM_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+pub(crate) const MAX_DISK_BUDGET_PROBE_BYTES: usize = 256;
+pub(crate) const REMOTE_DATABASE_DISK_MARGIN_BYTES: u64 = 256 * 1024 * 1024;
 
 pub struct EmbeddedDatabaseCaptureComposition<'a> {
     pub repository: &'a LocalRepository,
@@ -48,6 +51,12 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
             SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id).map_err(
                 |_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential),
             )?;
+        self.require_remote_disk_budget(
+            &host,
+            &user,
+            identity_file.path(),
+            &request.capture.database_path,
+        )?;
         self.require_sqlite3(&host, &user, identity_file.path())?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
@@ -126,11 +135,99 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
             .then_some(())
             .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
     }
+
+    /// The `.backup` snapshot command writes a full uncompressed copy of the
+    /// source database to a remote scratch file before compressing it — a
+    /// large database on a nearly-full remote disk can otherwise fail
+    /// minutes into a capture for a reason this cheap upfront check catches
+    /// immediately.
+    fn require_remote_disk_budget(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        database_path: &str,
+    ) -> Result<(), CaptureUseCaseError> {
+        let (size, free_kb) =
+            probe_remote_disk_budget(self.ssh, host, user, identity_file, database_path)?;
+        remote_disk_budget_is_sufficient(size, free_kb)
+    }
+}
+
+pub(crate) fn probe_remote_disk_budget(
+    ssh: &SystemOpenSsh,
+    host: &PinnedHost,
+    user: &SshUser,
+    identity_file: &Path,
+    database_path: &str,
+) -> Result<(u64, u64), CaptureUseCaseError> {
+    let temporary =
+        tempdir().map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
+    let destination = temporary.path().join("database-disk-budget.txt");
+    let maximum_output_bytes = u64::try_from(MAX_DISK_BUDGET_PROBE_BYTES)
+        .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
+    ssh.probe_database_disk_budget_to(
+        host,
+        user,
+        identity_file,
+        database_path,
+        &destination,
+        maximum_output_bytes,
+    )
+    .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
+    let bytes = fs::read(&destination)
+        .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
+    parse_disk_budget_probe(&bytes)
+}
+
+pub(crate) fn remote_disk_budget_is_sufficient(
+    size_bytes: u64,
+    free_kb: u64,
+) -> Result<(), CaptureUseCaseError> {
+    let required_kb = size_bytes
+        .saturating_add(REMOTE_DATABASE_DISK_MARGIN_BYTES)
+        .div_ceil(1024);
+    (free_kb >= required_kb)
+        .then_some(())
+        .ok_or(CaptureUseCaseError::Request(
+            CaptureRequestError::PreflightFailed,
+        ))
+}
+
+/// Parses the fixed probe's `"<size-bytes> <free-1k-blocks>"` stdout into
+/// the two integers it reports; fails closed on anything else, including a
+/// missing free-space value or extra trailing content.
+pub(crate) fn parse_disk_budget_probe(bytes: &[u8]) -> Result<(u64, u64), CaptureUseCaseError> {
+    if bytes.len() > MAX_DISK_BUDGET_PROBE_BYTES {
+        return Err(CaptureUseCaseError::Request(
+            CaptureRequestError::PreflightFailed,
+        ));
+    }
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
+    let mut parts = text.trim().split_ascii_whitespace();
+    let preflight_failed = || CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed);
+    let size = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(preflight_failed)?;
+    let free_kb = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(preflight_failed)?;
+    if parts.next().is_some() {
+        return Err(preflight_failed());
+    }
+    Ok((size, free_kb))
 }
 
 #[cfg(test)]
 mod tests {
     use super::EmbeddedDatabaseCaptureComposition;
+    use super::{
+        REMOTE_DATABASE_DISK_MARGIN_BYTES, parse_disk_budget_probe,
+        remote_disk_budget_is_sufficient,
+    };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use guardian_core::{AuditPort, CaptureAuditCode};
     use guardian_core::{
@@ -140,6 +237,32 @@ mod tests {
     };
     use guardian_local_repository::LocalRepository;
     use guardian_ssh::SystemOpenSsh;
+
+    #[test]
+    fn parse_disk_budget_probe_reads_the_fixed_two_integer_format() {
+        assert_eq!(
+            parse_disk_budget_probe(b"12345 67890\n"),
+            Ok((12345, 67890))
+        );
+        assert_eq!(parse_disk_budget_probe(b"0 0"), Ok((0, 0)));
+    }
+
+    #[test]
+    fn parse_disk_budget_probe_fails_closed_on_malformed_output() {
+        assert!(parse_disk_budget_probe(b"").is_err());
+        assert!(parse_disk_budget_probe(b"not-a-number 123").is_err());
+        assert!(parse_disk_budget_probe(b"123").is_err());
+        assert!(parse_disk_budget_probe(b"123 456 789").is_err());
+        assert!(parse_disk_budget_probe(&vec![b'1'; 300]).is_err());
+    }
+
+    #[test]
+    fn remote_disk_budget_is_sufficient_requires_the_file_size_plus_margin() {
+        let size_bytes = 10 * 1024 * 1024 * 1024_u64;
+        let exactly_enough_kb = (size_bytes + REMOTE_DATABASE_DISK_MARGIN_BYTES).div_ceil(1024);
+        assert!(remote_disk_budget_is_sufficient(size_bytes, exactly_enough_kb).is_ok());
+        assert!(remote_disk_budget_is_sufficient(size_bytes, exactly_enough_kb - 1).is_err());
+    }
 
     #[test]
     fn capture_rejects_a_request_for_a_different_profile() -> Result<(), Box<dyn std::error::Error>>

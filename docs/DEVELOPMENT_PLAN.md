@@ -83,8 +83,17 @@ repository writes through its shared atomic-write primitive — closing the
 one gap found when this line was checked against current code: the staging
 payload, holding arbitrary captured content in plaintext until encryption,
 previously had no permission restriction on any platform. Capability
-discovery, encrypted-key/agent support, and a complete cancellation policy
-remain required for this milestone's exit gate.
+discovery remains narrow and single-purpose (tar/zstd and sqlite3 presence,
+database version parity) rather than one unified host-capability report, but
+now also covers the one concrete gap that mattered in practice: the
+embedded-database snapshot command needs a remote scratch copy of the whole
+database file, so a fixed read-only probe reports the remote host's free
+space and the capture fails closed rather than mid-stream if it would not
+cover the file. Filesystem capture needs no equivalent check — its `tar
+--zstd` template streams to stdout with no remote scratch file. OS/distro
+detection and a single aggregated capability report remain open, alongside
+encrypted-key/agent support and a complete cancellation policy, for this
+milestone's exit gate.
 
 `guardian-capture` now connects any filesystem capture transport, including the
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the

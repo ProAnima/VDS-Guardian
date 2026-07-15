@@ -13,11 +13,11 @@ guardian-core.workspace = true
 guardian-local-repository.workspace = true
 guardian-ssh.workspace = true
 fs2.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

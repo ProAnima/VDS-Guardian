@@ -267,6 +267,15 @@ clears that acknowledgement.
 - Residual risk: the backup account needs read access to the configured
   database file and a working `sqlite3` binary on the remote host; capture
   fails closed if either is missing, but neither is otherwise verified.
+- Before that snapshot command runs, a second fixed read-only probe
+  (`stat -c%s` plus `df -Pk` on the same already-validated path) reports the
+  database file's exact size and the containing filesystem's free space;
+  capture fails closed if free space would not cover the file size plus a
+  fixed margin. This exists because `.backup` writes a full uncompressed
+  copy to a remote `mktemp` scratch file before compression — without this
+  check, a large database on a nearly-full remote disk would only fail
+  minutes into a capture, not immediately. The probe's two integers are
+  parsed in Rust, never compared via remote shell arithmetic.
 
 ### Restore safety
 
