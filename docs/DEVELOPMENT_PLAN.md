@@ -102,8 +102,12 @@ database file, so a fixed read-only probe reports the remote host's free
 space and the capture fails closed rather than mid-stream if it would not
 cover the file. Filesystem capture needs no equivalent check — its `tar
 --zstd` template streams to stdout with no remote scratch file. OS/distro
-detection and a single aggregated capability report remain open, alongside
-a complete cancellation policy, for this milestone's exit gate.
+detection and a single aggregated capability report remain open for this
+milestone's exit gate. Operator-triggered cancellation (ADR 0010) is now
+implemented for capture: the desktop app's Cancel affordance and a per-job
+registry signal a cross-thread handle the transport polls between reads,
+and the spawned child is isolated into its own process group so only that
+cooperative signal ends it.
 Encrypted-key/agent support (ADR 0009) is now implemented: a passphrase-
 protected key already loaded in an OS SSH agent is used through a `.pub`-
 only identity file, resolved from a self-describing public-key marker

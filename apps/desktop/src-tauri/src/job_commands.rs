@@ -1,9 +1,10 @@
+use crate::job_registry::JobRegistry;
 use guardian_capture::FilesystemCaptureComposition;
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest, FilesystemCaptureRequest,
-    Manifest, PayloadPath, PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity,
-    Timestamp,
+    BackupId, CancellationHandle, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest,
+    FilesystemCaptureRequest, Manifest, PayloadPath, PlanReference, Producer, ProfileStorePort,
+    RunId, SourceIdentity, Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
@@ -22,6 +23,7 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub struct RunCapturePlanRequest {
     plan_id: String,
+    run_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,7 +48,15 @@ pub async fn run(
         .path()
         .app_config_dir()
         .map_err(|_| CaptureJobFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || run_blocking(root, request))
+    let run_id = RunId::parse(&request.run_id).map_err(|_| CaptureJobFailure::internal())?;
+    let handle = CancellationHandle::new();
+    // Registered here, before `spawn_blocking`, specifically so a
+    // concurrent `cancel_job` call fired while this job is still running
+    // can find it -- registering inside `run_blocking` itself would be too
+    // late for that race.
+    let registry = app.state::<JobRegistry>();
+    let _registration = registry.register(run_id.clone(), handle.clone());
+    tauri::async_runtime::spawn_blocking(move || run_blocking(root, request, run_id, handle))
         .await
         .map_err(|_| CaptureJobFailure::internal())?
 }
@@ -54,6 +64,8 @@ pub async fn run(
 fn run_blocking(
     root: PathBuf,
     request: RunCapturePlanRequest,
+    run_id: RunId,
+    handle: CancellationHandle,
 ) -> Result<CaptureJobSummary, CaptureJobFailure> {
     let plan = CapturePlanStore::at(root.join("plans"))
         .list()
@@ -75,7 +87,6 @@ fn run_blocking(
         .map_err(|_| CaptureJobFailure::signing())?
         .load_ready(&OsCredentialStore)
         .map_err(|_| CaptureJobFailure::signing())?;
-    let run_id = RunId::parse(random_id("run")).map_err(|_| CaptureJobFailure::internal())?;
     let backup_id =
         BackupId::parse(random_id("backup")).map_err(|_| CaptureJobFailure::internal())?;
     let created_at = now_timestamp()?;
@@ -126,9 +137,10 @@ fn run_blocking(
         .write_capture_audit(&run_id, "started", None)
         .map_err(|_| CaptureJobFailure::repository())?;
     let audit = NoopAudit;
+    let ssh = SystemOpenSsh::default().with_cancellation(handle.clone());
     let composition = FilesystemCaptureComposition {
         repository: &repository,
-        ssh: &SystemOpenSsh::default(),
+        ssh: &ssh,
         profile: &profile,
         credentials: &OsCredentialStore,
         audit: &audit,
@@ -136,6 +148,10 @@ fn run_blocking(
     };
     let sealed = match composition.execute(request, database, &identity) {
         Ok(sealed) => sealed,
+        Err(_) if handle.is_cancelled() => {
+            let _ = repository.write_capture_audit(&run_id, "cancelled", None);
+            return Err(CaptureJobFailure::cancelled());
+        }
         Err(_) => {
             let _ = repository.write_capture_audit(&run_id, "failed", None);
             return Err(CaptureJobFailure::capture());
@@ -224,6 +240,13 @@ impl CaptureJobFailure {
             code: "capture_failed",
             message: "The backup did not pass the verified capture lifecycle.",
             remediation: "Review the pinned SSH preflight, free-space reserve, and server access.",
+        }
+    }
+    fn cancelled() -> Self {
+        Self {
+            code: "capture_cancelled",
+            message: "The backup was cancelled by the operator.",
+            remediation: "Start a new backup run if it should still happen.",
         }
     }
     fn storage() -> Self {

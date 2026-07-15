@@ -1,8 +1,8 @@
 use crate::secret_store::resolve_store;
 use guardian_configuration::RepositoryStore;
 use guardian_core::{
-    BackupId, DeploymentPlan, ProfileId, ProfileStorePort, RemoteTargetPath, RunId, SecretStore,
-    VdsProfile,
+    BackupId, CancellationHandle, DeploymentPlan, ProfileId, ProfileStorePort, RemoteTargetPath,
+    RunId, SecretStore, VdsProfile,
 };
 use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;
@@ -14,10 +14,17 @@ use serde::Serialize;
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
 pub(super) fn run(arguments: &[OsString]) -> ExitCode {
+    let cancellation = CancellationHandle::new();
+    let handler_cancellation = cancellation.clone();
+    // Best-effort: installing a second handler in the same process would be
+    // a programming error, not a runtime condition worth aborting the whole
+    // command over — cancellation is an operational enhancement, and today's
+    // status quo (no cancellation at all) already works without it.
+    let _ = ctrlc::set_handler(move || handler_cancellation.cancel());
     match parse(arguments).and_then(|command| {
         let store =
             resolve_store(command.vault_dir.as_deref()).map_err(|_| DeployFailure::storage())?;
-        execute(command, &store)
+        execute(command, &store, &cancellation)
     }) {
         Ok(output) => write_success(&output),
         Err(error) => write_error(&error),
@@ -128,6 +135,7 @@ fn parse(arguments: &[OsString]) -> Result<DeployCommand, DeployFailure> {
 fn execute(
     command: DeployCommand,
     secrets: &dyn SecretStore,
+    cancellation: &CancellationHandle,
 ) -> Result<DeploymentPlanSummary, DeployFailure> {
     let repository_id = guardian_core::RepositoryId::parse(&command.repository_id)
         .map_err(|_| DeployFailure::input())?;
@@ -149,7 +157,7 @@ fn execute(
         .map_err(|_| DeployFailure::storage())?
         .ok_or_else(DeployFailure::input)?;
     let target_path = command.target_path;
-    let ssh = SystemOpenSsh::default();
+    let ssh = SystemOpenSsh::default().with_cancellation(cancellation.clone());
     let composition = DeploymentComposition {
         repository: &repository,
         ssh: &ssh,
@@ -167,9 +175,9 @@ fn execute(
             &composition,
             &backup_id,
             &target_profile_id,
-            &target_profile,
             target_path,
             command.confirmation.as_deref(),
+            cancellation,
         ),
     }
 }
@@ -179,9 +187,9 @@ fn execute_deploy(
     composition: &DeploymentComposition<'_>,
     backup_id: &BackupId,
     target_profile_id: &ProfileId,
-    target_profile: &VdsProfile,
     target_path: RemoteTargetPath,
     confirmation: Option<&str>,
+    cancellation: &CancellationHandle,
 ) -> Result<DeploymentPlanSummary, DeployFailure> {
     let confirmation = confirmation.ok_or_else(DeployFailure::usage)?;
     let run_id = random_run_id()?;
@@ -193,7 +201,12 @@ fn execute_deploy(
             repository
                 .write_deploy_audit(&run_id, "completed", backup_id, target_profile_id)
                 .map_err(|_| DeployFailure::storage())?;
-            Ok(summarize(&plan, target_profile))
+            Ok(summarize(&plan, composition.target_profile))
+        }
+        Err(_) if cancellation.is_cancelled() => {
+            let _ =
+                repository.write_deploy_audit(&run_id, "cancelled", backup_id, target_profile_id);
+            Err(DeployFailure::cancelled())
         }
         Err(_) => {
             let _ = repository.write_deploy_audit(&run_id, "failed", backup_id, target_profile_id);
@@ -340,6 +353,14 @@ impl DeployFailure {
         }
     }
 
+    fn cancelled() -> Self {
+        Self {
+            code: "deploy_cancelled",
+            message: "The deploy was cancelled by the operator.",
+            usage: "Re-run guardian-cli deploy execute if the deploy should still happen.",
+        }
+    }
+
     fn serialization() -> Self {
         Self {
             code: "serialization_failed",
@@ -351,7 +372,7 @@ impl DeployFailure {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeployAction, DeployFailure, execute, parse};
+    use super::{DeployAction, DeployFailure, execute, execute_deploy, parse};
     use guardian_signing::SigningIdentityManager;
     use std::ffi::OsString;
 
@@ -545,10 +566,77 @@ mod tests {
             vault_dir: None,
         };
         assert_eq!(
-            execute(command, &secrets).err(),
+            execute(command, &secrets, &guardian_core::CancellationHandle::new()).err(),
             Some(DeployFailure::input())
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_cancelled_handle_reports_cancelled_instead_of_rejected_on_failure()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository_path = root.path().join("repository");
+        let repository_id = guardian_core::RepositoryId::parse("repository-001")?;
+        let repository = guardian_local_repository::LocalRepository::open(
+            &repository_path,
+            repository_id.clone(),
+        )?;
+        let config_dir = root.path().join("node");
+        let secrets = MemoryStore::default();
+        let identity = guardian_signing::SigningIdentityManager::open(&config_dir)?
+            .enroll_or_load(&secrets)?;
+        let target_profile_id = guardian_core::ProfileId::parse("profile-target")?;
+        let target_profile = guardian_core::VdsProfile {
+            profile_id: target_profile_id.clone(),
+            label: "Target".to_owned(),
+            credential_id: guardian_core::CredentialId::parse("credential-target")?,
+            endpoint: guardian_core::SshEndpoint {
+                host: "target.example".to_owned(),
+                port: 22,
+                user: "backup".to_owned(),
+                host_pin: pin()?,
+            },
+        };
+        let ssh = guardian_ssh::SystemOpenSsh::with_binary(root.path().join("missing-ssh"));
+        let composition = guardian_deploy::DeploymentComposition {
+            repository: &repository,
+            ssh: &ssh,
+            target_profile: &target_profile,
+            credentials: &secrets,
+            verifier: &identity,
+        };
+        // No backup was ever sealed into this repository, so
+        // `composition.execute` fails deep inside `load_verified_manifest`
+        // regardless of cancellation -- this isolates the
+        // cancelled-vs-rejected branch itself, not a real network failure.
+        let backup_id = guardian_core::BackupId::parse("backup-missing")?;
+        let target_path = guardian_core::RemoteTargetPath::parse("/srv/app")?;
+        let cancellation = guardian_core::CancellationHandle::new();
+        cancellation.cancel();
+        let result = execute_deploy(
+            &repository,
+            &composition,
+            &backup_id,
+            &target_profile_id,
+            target_path,
+            Some("irrelevant"),
+            &cancellation,
+        );
+        assert_eq!(result.err(), Some(DeployFailure::cancelled()));
+        Ok(())
+    }
+
+    fn pin() -> Result<guardian_core::HostPin, Box<dyn std::error::Error>> {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&11_u32.to_be_bytes());
+        blob.extend_from_slice(b"ssh-ed25519");
+        blob.push(1);
+        Ok(guardian_core::HostPin::parse(
+            "ssh-ed25519",
+            STANDARD.encode(blob),
+        )?)
     }
 
     #[derive(Default)]

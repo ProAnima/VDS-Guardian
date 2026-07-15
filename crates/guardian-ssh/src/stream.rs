@@ -1,3 +1,4 @@
+use guardian_core::CancellationHandle;
 use std::{
     fs::File,
     io::{Read, Write},
@@ -109,6 +110,7 @@ pub(super) fn wait_for_stream(
     idle_timeout: Duration,
     activity: &Receiver<()>,
     failed: &AtomicBool,
+    cancelled: &CancellationHandle,
 ) -> Result<ExitStatus, StreamWaitError> {
     let started = Instant::now();
     let mut last_activity = started;
@@ -118,6 +120,9 @@ pub(super) fn wait_for_stream(
         }
         if failed.load(Ordering::Relaxed) {
             return stop(child, StreamWaitError::Failed);
+        }
+        if cancelled.is_cancelled() {
+            return stop(child, StreamWaitError::Cancelled);
         }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
@@ -239,17 +244,20 @@ fn stop(mut child: Child, error: StreamWaitError) -> Result<ExitStatus, StreamWa
 pub(super) enum StreamWaitError {
     TimedOut,
     IdleTimedOut,
+    Cancelled,
     Failed,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CapturePump, PushCopyError, PushPump, StreamWaitError, wait_for_stream};
+    use guardian_core::CancellationHandle;
     use std::{
         fs::File,
         io::Write,
         process::Command,
         sync::{Arc, atomic::AtomicBool, mpsc},
+        thread,
         time::Duration,
     };
 
@@ -266,8 +274,36 @@ mod tests {
                 Duration::from_millis(10),
                 &activity,
                 &failed,
+                &CancellationHandle::new(),
             ),
             Err(StreamWaitError::IdleTimedOut)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cancelling_from_another_thread_kills_a_still_running_stream()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = sleeper();
+        let child = command.spawn()?;
+        let (_, activity) = mpsc::sync_channel(1);
+        let failed = Arc::new(AtomicBool::new(false));
+        let handle = CancellationHandle::new();
+        let cancel_handle = handle.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            cancel_handle.cancel();
+        });
+        assert_eq!(
+            wait_for_stream(
+                child,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+                &activity,
+                &failed,
+                &handle,
+            ),
+            Err(StreamWaitError::Cancelled)
         );
         Ok(())
     }
@@ -291,6 +327,7 @@ mod tests {
                 Duration::from_secs(1),
                 pump.activity(),
                 pump.failed(),
+                &CancellationHandle::new(),
             ),
             Err(StreamWaitError::Failed)
         );
@@ -317,6 +354,7 @@ mod tests {
             Duration::from_secs(2),
             pump.activity(),
             pump.failed(),
+            &CancellationHandle::new(),
         );
         assert!(matches!(status, Ok(status) if status.success()));
         assert_eq!(pump.finish(), Ok(()));
@@ -341,6 +379,7 @@ mod tests {
             Duration::from_secs(2),
             pump.activity(),
             pump.failed(),
+            &CancellationHandle::new(),
         );
         assert_eq!(pump.finish(), Err(PushCopyError::ByteCountMismatch));
         Ok(())
@@ -364,6 +403,7 @@ mod tests {
             Duration::from_secs(2),
             pump.activity(),
             pump.failed(),
+            &CancellationHandle::new(),
         );
         assert_eq!(pump.finish(), Err(PushCopyError::ByteCountMismatch));
         Ok(())
@@ -397,6 +437,7 @@ mod tests {
             Duration::from_millis(200),
             pump.activity(),
             pump.failed(),
+            &CancellationHandle::new(),
         );
         assert_eq!(result, Err(StreamWaitError::IdleTimedOut));
         assert!(pump.finish().is_err());

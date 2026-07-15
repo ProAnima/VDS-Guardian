@@ -17,6 +17,7 @@ guardian-profile-store = { path = "../guardian-profile-store" }
 guardian-signing = { path = "../guardian-signing" }
 guardian-ssh.workspace = true
 guardian-vault = { path = "../guardian-vault" }
+ctrlc.workspace = true
 fs2.workspace = true
 rand_core.workspace = true
 serde.workspace = true

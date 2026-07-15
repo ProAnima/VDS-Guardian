@@ -195,10 +195,16 @@ recovery journal, never private key material.
 - Retention writes a durable non-secret intent outside its temporary quarantine
   directory. Opening a repository reconciles interrupted moves by rollback or
   resumes a durably marked cleanup; contradictory state fails closed.
-- Jobs have cooperative cancellation; process trees and remote commands receive
-  bounded shutdown before forced termination.
+- Operator-triggered cancellation (ADR 0010) covers SSH-backed capture and
+  deploy: the CLI installs a Ctrl+C handler and the desktop app tracks
+  in-flight jobs in a per-run registry with a Cancel affordance, both setting
+  a cross-thread handle the transport polls between reads. The spawned child
+  is isolated into its own process group so only that cooperative signal,
+  never a raw OS interrupt racing it, ends the process. Local restore
+  extraction has no cancellation path yet.
 - Every external call has connect, idle, and total timeouts.
-- Event queues are bounded so verbose remote output cannot exhaust memory.
+- Capture and push streams enforce a maximum byte ceiling so a runaway or
+  hostile remote command cannot exhaust local disk or memory.
 
 ## Compatibility
 

@@ -1,3 +1,4 @@
+use guardian_core::CancellationHandle;
 use std::{
     process::{Child, ExitStatus},
     thread,
@@ -7,15 +8,17 @@ use std::{
 pub(super) fn wait_for_exit(
     mut child: Child,
     total_timeout: Duration,
+    cancelled: &CancellationHandle,
 ) -> Result<ExitStatus, WaitError> {
     let started = Instant::now();
     loop {
+        if cancelled.is_cancelled() {
+            return stop(child, WaitError::Cancelled);
+        }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) if started.elapsed() >= total_timeout => {
-                child.kill().map_err(|_| WaitError::Failed)?;
-                child.wait().map_err(|_| WaitError::Failed)?;
-                return Err(WaitError::TimedOut);
+                return stop(child, WaitError::TimedOut);
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
             Err(_) => return Err(WaitError::Failed),
@@ -23,24 +26,50 @@ pub(super) fn wait_for_exit(
     }
 }
 
+fn stop(mut child: Child, error: WaitError) -> Result<ExitStatus, WaitError> {
+    child.kill().map_err(|_| WaitError::Failed)?;
+    child.wait().map_err(|_| WaitError::Failed)?;
+    Err(error)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum WaitError {
     TimedOut,
+    Cancelled,
     Failed,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{WaitError, wait_for_exit};
-    use std::{process::Command, time::Duration};
+    use guardian_core::CancellationHandle;
+    use std::{process::Command, thread, time::Duration};
 
     #[test]
     fn deadline_kills_a_process_that_does_not_exit() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = sleeper();
         let child = command.spawn()?;
         assert_eq!(
-            wait_for_exit(child, Duration::from_millis(10)),
+            wait_for_exit(child, Duration::from_millis(10), &CancellationHandle::new()),
             Err(WaitError::TimedOut)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cancelling_from_another_thread_kills_a_still_running_process()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = sleeper();
+        let child = command.spawn()?;
+        let handle = CancellationHandle::new();
+        let cancel_handle = handle.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            cancel_handle.cancel();
+        });
+        assert_eq!(
+            wait_for_exit(child, Duration::from_secs(5), &handle),
+            Err(WaitError::Cancelled)
         );
         Ok(())
     }

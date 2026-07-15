@@ -58,7 +58,11 @@ The probe creates no remote files and receives no operator-controlled command or
 path. SSH has a 30-second connect timeout and a 15-minute total deadline by
 default. Capture streams have a five-minute idle-byte deadline: no received
 archive bytes within that period terminates local SSH and removes the partial
-file. Cooperative process-tree cancellation remains open work.
+file. Operator-triggered cancellation (ADR 0010) now stops a capture in
+progress: the desktop app's Cancel affordance signals a cross-thread handle
+this loop polls between reads, and the spawned child is placed in its own
+process group so only that cooperative signal, not a raw OS interrupt
+racing it, ends it.
 
 ## Docker inventory command
 
@@ -79,8 +83,8 @@ The output destination is created exclusively. Each OpenSSH invocation has a
 bounded total runtime (15 minutes by default, configurable only by the
 composition root). If OpenSSH cannot start, exceeds that deadline, or exits
 unsuccessfully, its local process is killed where needed and the partial stream
-is removed. This is not yet the complete connect/idle/cancellation policy or a
-process-tree guarantee required for production capture. The capture composition
+is removed. Operator-triggered cancellation now covers capture (ADR 0010) on
+top of this deadline-based termination. The capture composition
 inspects the completed tar.zst stream, hashes it from disk, and registers it
 with staging; manifest finalization and sealing remain separate fail-closed use
 cases.

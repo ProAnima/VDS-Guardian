@@ -46,6 +46,7 @@ thiserror = "2"
 tempfile = "3"
 zeroize = "1.8"
 zstd = "0.13"
+ctrlc = "3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

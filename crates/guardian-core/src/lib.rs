@@ -2,6 +2,7 @@
 
 mod archive;
 mod audit;
+mod cancellation;
 mod capture;
 mod database;
 mod database_connection;
@@ -26,6 +27,7 @@ mod storage;
 
 pub use archive::{ArchiveInspectionPort, ArchiveInspectionPortError};
 pub use audit::{AuditPort, CaptureAuditCode};
+pub use cancellation::CancellationHandle;
 pub use capture::{
     CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
     FilesystemBackupUseCase, FilesystemCapturePort, FilesystemCaptureRequest,

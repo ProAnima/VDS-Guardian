@@ -1,12 +1,15 @@
+use crate::job_registry::JobRegistry;
 use guardian_configuration::RepositoryStore;
-use guardian_core::{BackupId, ProfileId, ProfileStorePort, RemoteTargetPath, RepositoryId, RunId};
+use guardian_core::{
+    BackupId, CancellationHandle, ProfileId, ProfileStorePort, RemoteTargetPath, RepositoryId,
+    RunId,
+};
 use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
 use guardian_signing::{ManagedIdentity, SigningIdentityManager};
 use guardian_ssh::SystemOpenSsh;
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
@@ -19,6 +22,7 @@ pub struct DeployRequest {
     target_profile_id: String,
     target_path: String,
     confirmation: Option<String>,
+    run_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,7 +66,18 @@ pub async fn execute(
         .path()
         .app_config_dir()
         .map_err(|_| DeployFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || execute_blocking(root, request))
+    let run_id = request
+        .run_id
+        .as_deref()
+        .ok_or_else(DeployFailure::storage)
+        .and_then(|value| RunId::parse(value).map_err(|_| DeployFailure::storage()))?;
+    let handle = CancellationHandle::new();
+    // Registered before `spawn_blocking`, before the run_id moves into the
+    // blocking closure, so a concurrent `cancel_job` call can find it while
+    // this deploy is still in flight.
+    let registry = app.state::<JobRegistry>();
+    let _registration = registry.register(run_id.clone(), handle.clone());
+    tauri::async_runtime::spawn_blocking(move || execute_blocking(root, request, run_id, handle))
         .await
         .map_err(|_| DeployFailure::storage())?
 }
@@ -89,6 +104,8 @@ fn plan_blocking(
 fn execute_blocking(
     root: PathBuf,
     request: DeployRequest,
+    run_id: RunId,
+    handle: CancellationHandle,
 ) -> Result<DeploymentPreview, DeployFailure> {
     let confirmation = request
         .confirmation
@@ -96,7 +113,7 @@ fn execute_blocking(
         .ok_or_else(DeployFailure::confirmation)?;
     let (inputs, backup_id, target_path) = resolve(&root, &request)?;
     let target_profile_id = inputs.target_profile.profile_id.clone();
-    let ssh = SystemOpenSsh::default();
+    let ssh = SystemOpenSsh::default().with_cancellation(handle.clone());
     let composition = DeploymentComposition {
         repository: &inputs.repository,
         ssh: &ssh,
@@ -104,7 +121,6 @@ fn execute_blocking(
         credentials: &OsCredentialStore,
         verifier: &inputs.identity,
     };
-    let run_id = random_run_id()?;
     inputs
         .repository
         .write_deploy_audit(&run_id, "attempted", &backup_id, &target_profile_id)
@@ -116,6 +132,15 @@ fn execute_blocking(
                 .write_deploy_audit(&run_id, "completed", &backup_id, &target_profile_id)
                 .map_err(|_| DeployFailure::storage())?;
             Ok(summary(plan, &inputs.target_profile))
+        }
+        Err(_) if handle.is_cancelled() => {
+            let _ = inputs.repository.write_deploy_audit(
+                &run_id,
+                "cancelled",
+                &backup_id,
+                &target_profile_id,
+            );
+            Err(DeployFailure::cancelled())
         }
         Err(_) => {
             let _ = inputs.repository.write_deploy_audit(
@@ -189,16 +214,6 @@ fn summary(
     }
 }
 
-fn random_run_id() -> Result<RunId, DeployFailure> {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    let suffix = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    RunId::parse(format!("deploy-{suffix}")).map_err(|_| DeployFailure::storage())
-}
-
 impl DeployFailure {
     fn rejected() -> Self {
         Self {
@@ -212,6 +227,13 @@ impl DeployFailure {
             code: "deploy_confirmation_required",
             message: "Exact deploy confirmation is required.",
             remediation: "Copy the confirmation phrase from the preview before deploying.",
+        }
+    }
+    fn cancelled() -> Self {
+        Self {
+            code: "deploy_cancelled",
+            message: "The deploy was cancelled by the operator.",
+            remediation: "Start a new deploy if it should still happen.",
         }
     }
     fn storage() -> Self {

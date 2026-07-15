@@ -101,12 +101,16 @@ the decrypted key and perform the signature. VDS Guardian never prompts
 for, stores, or otherwise sees the passphrase. Limited today to
 `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521` identities, registered only
 through `guardian-cli credential register-agent-key`; desktop enrollment
-UI is not wired up yet. Cooperative process-tree cancellation remains
-incomplete — today, only automatic timeouts stop a stuck capture, never an
-operator-triggered cancel. Capture
-streams have a five-minute idle-byte deadline that kills local SSH and
-discards the partial stream; that deadline is not a substitute for full
-cancellation. The
+UI is not wired up yet. Operator-triggered cancellation (ADR 0010) now
+covers capture and deploy: the CLI installs a Ctrl+C handler and the
+desktop app exposes a Cancel affordance backed by a per-job registry, both
+setting a cross-thread handle the transport polls between reads; the
+spawned child is placed in its own process group so only that cooperative
+signal, not a raw OS interrupt racing it, ends it. Local restore extraction
+has no cancellation path yet. Capture
+streams also have a five-minute idle-byte deadline that kills local SSH and
+discards the partial stream regardless of whether cancellation was
+requested. The
 adapter's fixed read-only `tar --zstd` probe uses the same pinned identity and a
 30-second SSH connect timeout. The shared preflight use case requires that
 probe's success before a future capture workflow can continue; its result alone

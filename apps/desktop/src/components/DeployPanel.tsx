@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Check, CircleAlert, Eye, LoaderCircle, Rocket } from "lucide-react";
 import type { Translate } from "../i18n";
 import {
-  executeDeploy, hasTauriRuntime, listBackups, listRepositories, listSshProfiles, previewDeploy,
+  cancelJob, executeDeploy, hasTauriRuntime, listBackups, listRepositories, listSshProfiles, previewDeploy,
   type BackupSummary, type DeployFailure, type DeploymentPreview, type RepositorySummary, type SshProfileSummary,
 } from "../shared/commands";
 
@@ -115,9 +115,12 @@ async function submitDeploy(
   state: DeployActionState,
   setters: DeployActionSetters,
   setDeploying: (value: boolean) => void,
+  setRunId: (value: string | undefined) => void,
   t: Translate,
 ): Promise<void> {
   if (!state.plan) return;
+  const runId = crypto.randomUUID();
+  setRunId(runId);
   setDeploying(true);
   setters.setFailure(undefined);
   try {
@@ -127,6 +130,7 @@ async function submitDeploy(
       targetProfileId: state.targetProfileId,
       targetPath: state.targetPath,
       confirmation: state.confirmationInput,
+      runId,
     });
     setters.setResult(`${t("deploySuccess")} ${deployed.targetProfileLabel}:${deployed.targetPath}`);
     setters.setPlan(undefined);
@@ -135,6 +139,7 @@ async function submitDeploy(
     setters.setFailure(errorText(error, t));
   } finally {
     setDeploying(false);
+    setRunId(undefined);
   }
 }
 
@@ -143,16 +148,18 @@ function useDeployActions(t: Translate, repositoryId: string, backupId: string, 
   const [confirmationInput, setConfirmationInput] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [runId, setRunId] = useState<string>();
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
   const setters = { setPlan, setConfirmationInput, setResult, setFailure };
   const state = { repositoryId, backupId, targetProfileId, targetPath, plan, confirmationInput };
 
   const preview = (event: FormEvent) => void submitPreview(event, state, setters, setPreviewing, t);
-  const deploy = () => void submitDeploy(state, setters, setDeploying, t);
+  const deploy = () => void submitDeploy(state, setters, setDeploying, setRunId, t);
   const cancelPlan = () => { setPlan(undefined); setConfirmationInput(""); };
+  const cancelRunningDeploy = () => { if (runId) void cancelJob(runId); };
 
-  return { plan, confirmationInput, setConfirmationInput, previewing, deploying, result, failure, preview, deploy, cancelPlan };
+  return { plan, confirmationInput, setConfirmationInput, previewing, deploying, result, failure, preview, deploy, cancelPlan, cancelRunningDeploy };
 }
 
 function useDeployModel(t: Translate) {
@@ -291,6 +298,11 @@ function DeployConfirmation({ model, t }: { model: DeployModel; t: Translate }) 
           {model.deploying ? <LoaderCircle className="spin" size={16} /> : <Rocket size={16} />}
           {model.deploying ? t("deployExecuting") : t("deployExecute")}
         </button>
+        {model.deploying && (
+          <button className="button button--secondary" onClick={model.cancelRunningDeploy} type="button">
+            {t("deployCancelRunning")}
+          </button>
+        )}
       </div>
     </div>
   );

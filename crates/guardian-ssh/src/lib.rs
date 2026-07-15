@@ -21,6 +21,7 @@ use std::{
 use tempfile::NamedTempFile;
 use thiserror::Error;
 
+pub use guardian_core::CancellationHandle;
 pub use secret_identity::SshIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +126,7 @@ pub struct SystemOpenSsh {
     connect_timeout: Duration,
     idle_timeout: Duration,
     total_timeout: Duration,
+    cancellation: CancellationHandle,
 }
 
 pub struct PinnedSshCaptureAdapter<'a> {
@@ -226,6 +228,7 @@ impl Default for SystemOpenSsh {
             connect_timeout: Duration::from_secs(30),
             idle_timeout: Duration::from_secs(5 * 60),
             total_timeout: Duration::from_secs(15 * 60),
+            cancellation: CancellationHandle::default(),
         }
     }
 }
@@ -238,6 +241,7 @@ impl SystemOpenSsh {
             connect_timeout: Duration::from_secs(30),
             idle_timeout: Duration::from_secs(5 * 60),
             total_timeout: Duration::from_secs(15 * 60),
+            cancellation: CancellationHandle::default(),
         }
     }
 
@@ -256,6 +260,16 @@ impl SystemOpenSsh {
     #[must_use]
     pub fn with_idle_timeout(mut self, idle_timeout: Duration) -> Self {
         self.idle_timeout = idle_timeout;
+        self
+    }
+
+    /// Ties this adapter's remote operations to an operator-triggered
+    /// cancellation signal. Checked on every poll tick in the same wait
+    /// loops that already enforce connect/idle/total timeouts — see
+    /// `docs/adr/0010-operator-triggered-cancellation.md`.
+    #[must_use]
+    pub fn with_cancellation(mut self, cancellation: CancellationHandle) -> Self {
+        self.cancellation = cancellation;
         self
     }
 
@@ -430,7 +444,8 @@ impl SystemOpenSsh {
         target_path: &str,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = Command::new(&self.binary)
+        let child = self
+            .new_command()
             .args(self.target_absence_probe_arguments(
                 host,
                 user,
@@ -443,7 +458,8 @@ impl SystemOpenSsh {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| SshError::LaunchFailed)?;
-        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
         Ok(status.success())
     }
 
@@ -472,14 +488,16 @@ impl SystemOpenSsh {
         identity_file: &Path,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = Command::new(&self.binary)
+        let child = self
+            .new_command()
             .args(self.zstd_probe_arguments(host, user, identity_file, known_hosts.path()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| SshError::LaunchFailed)?;
-        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
         Ok(status.success())
     }
 
@@ -546,7 +564,8 @@ impl SystemOpenSsh {
         expected_bytes: u64,
     ) -> Result<PushResult, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let mut child = match Command::new(&self.binary)
+        let mut child = match self
+            .new_command()
             .args(self.arguments_for_command(
                 host,
                 user,
@@ -573,6 +592,7 @@ impl SystemOpenSsh {
             self.idle_timeout,
             pump.activity(),
             pump.failed(),
+            &self.cancellation,
         ) {
             Ok(status) => status,
             Err(stream::StreamWaitError::TimedOut) => {
@@ -582,6 +602,10 @@ impl SystemOpenSsh {
             Err(stream::StreamWaitError::IdleTimedOut) => {
                 let _ = pump.finish();
                 return Err(SshError::IdleTimedOut);
+            }
+            Err(stream::StreamWaitError::Cancelled) => {
+                let _ = pump.finish();
+                return Err(SshError::Cancelled);
             }
             Err(stream::StreamWaitError::Failed) => {
                 return Err(push_finish_error(pump.finish()));
@@ -610,7 +634,8 @@ impl SystemOpenSsh {
             Ok(output) => output,
             Err(error) => return fail_capture(destination, error),
         };
-        let mut child = match Command::new(&self.binary)
+        let mut child = match self
+            .new_command()
             .args(self.arguments_for_command(
                 host,
                 user,
@@ -640,6 +665,7 @@ impl SystemOpenSsh {
             self.idle_timeout,
             pump.activity(),
             pump.failed(),
+            &self.cancellation,
         ) {
             Ok(status) => status,
             Err(stream::StreamWaitError::TimedOut) => {
@@ -649,6 +675,10 @@ impl SystemOpenSsh {
             Err(stream::StreamWaitError::IdleTimedOut) => {
                 let _ = pump.finish();
                 return fail_capture(destination, SshError::IdleTimedOut);
+            }
+            Err(stream::StreamWaitError::Cancelled) => {
+                let _ = pump.finish();
+                return fail_capture(destination, SshError::Cancelled);
             }
             Err(stream::StreamWaitError::Failed) => {
                 let _ = pump.finish();
@@ -693,14 +723,16 @@ impl SystemOpenSsh {
         identity_file: &Path,
     ) -> Result<RemoteCapabilities, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = Command::new(&self.binary)
+        let child = self
+            .new_command()
             .args(self.capability_probe_arguments(host, user, identity_file, known_hosts.path()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| SshError::LaunchFailed)?;
-        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
         Ok(RemoteCapabilities {
             tar_zstd: status.success(),
         })
@@ -713,14 +745,16 @@ impl SystemOpenSsh {
         identity_file: &Path,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = Command::new(&self.binary)
+        let child = self
+            .new_command()
             .args(self.sqlite3_probe_arguments(host, user, identity_file, known_hosts.path()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| SshError::LaunchFailed)?;
-        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
         Ok(status.success())
     }
 
@@ -731,7 +765,8 @@ impl SystemOpenSsh {
         identity_file: &Path,
     ) -> Result<(), SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = Command::new(&self.binary)
+        let child = self
+            .new_command()
             .args(self.arguments_for_command(
                 host,
                 user,
@@ -744,7 +779,8 @@ impl SystemOpenSsh {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| SshError::LaunchFailed)?;
-        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
         status
             .success()
             .then_some(())
@@ -930,6 +966,29 @@ impl SystemOpenSsh {
             remote_command,
         ]
     }
+
+    /// A child spawned via `Command` inherits the parent's console/
+    /// foreground process group by default on both platforms, so an
+    /// operator's raw Ctrl+C would otherwise reach this child directly,
+    /// racing the cooperative `cancellation`-checked kill in
+    /// `process::wait_for_exit`/`stream::wait_for_stream`. Spawning into a
+    /// new process group (Windows) / new POSIX process group (Unix) makes
+    /// the cooperative kill path the only thing that ends this child.
+    fn new_command(&self) -> Command {
+        let mut command = Command::new(&self.binary);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        command
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,6 +1024,8 @@ pub enum SshError {
     TimedOut,
     #[error("SSH capture exceeded its idle stream time limit")]
     IdleTimedOut,
+    #[error("SSH operation was cancelled by the operator")]
+    Cancelled,
     #[error("SSH credential is unavailable")]
     CredentialUnavailable,
     #[error("SSH credential is not a supported unencrypted SSH private key")]
@@ -1002,6 +1063,7 @@ fn create_hardened_destination(destination: &Path) -> Result<fs::File, SshError>
 fn map_wait_error(error: process::WaitError) -> SshError {
     match error {
         process::WaitError::TimedOut => SshError::TimedOut,
+        process::WaitError::Cancelled => SshError::Cancelled,
         process::WaitError::Failed => SshError::LocalIo,
     }
 }
@@ -1122,7 +1184,29 @@ fn shell_quote(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::create_hardened_destination;
+    use super::{SystemOpenSsh, create_hardened_destination};
+
+    /// Not a check of the OS-level process-group semantics themselves (that
+    /// would need platform-specific introspection this codebase has no
+    /// dependency for) -- just a regression guard that the isolation flags
+    /// `new_command` applies don't break ordinary spawning, since an invalid
+    /// flag value would silently fail every SSH operation this crate makes.
+    #[test]
+    fn new_command_applies_process_group_isolation_and_still_spawns()
+    -> Result<(), Box<dyn std::error::Error>> {
+        #[cfg(windows)]
+        let ssh = SystemOpenSsh::with_binary("cmd.exe");
+        #[cfg(not(windows))]
+        let ssh = SystemOpenSsh::with_binary("sh");
+        let mut command = ssh.new_command();
+        #[cfg(windows)]
+        command.args(["/C", "exit 0"]);
+        #[cfg(not(windows))]
+        command.args(["-c", "exit 0"]);
+        let status = command.status()?;
+        assert!(status.success());
+        Ok(())
+    }
 
     #[test]
     fn create_hardened_destination_narrows_the_captured_files_permissions()

@@ -1,6 +1,7 @@
 mod deploy_commands;
 mod docker_commands;
 mod job_commands;
+mod job_registry;
 mod plan_commands;
 mod profile_commands;
 mod repository_commands;
@@ -9,6 +10,7 @@ mod signing_commands;
 
 use guardian_core::FoundationStatus;
 use guardian_signing::{SigningIdentityEnrollment, SigningIdentityFailure, SigningIdentityStatus};
+use tauri::Manager;
 
 #[tauri::command]
 fn get_foundation_status() -> FoundationStatus {
@@ -149,9 +151,24 @@ async fn execute_deploy(
     deploy_commands::execute(app, request).await
 }
 
+/// Signals cancellation for a still-running capture or deploy job, if one is
+/// registered under this run id. Synchronous and near-instant (a lock plus a
+/// flag store) — no `spawn_blocking` needed, unlike the long-running jobs it
+/// cancels. Returns whether a matching job was found, not whether it has
+/// actually stopped yet — cancellation is cooperative, checked on the job's
+/// own next poll tick.
+#[tauri::command]
+fn cancel_job(app: tauri::AppHandle, run_id: String) -> bool {
+    let Ok(run_id) = guardian_core::RunId::parse(run_id) else {
+        return false;
+    };
+    app.state::<job_registry::JobRegistry>().cancel(&run_id)
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(job_registry::JobRegistry::default())
         .invoke_handler(tauri::generate_handler![
             get_foundation_status,
             get_signing_identity_status,
@@ -170,6 +187,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             execute_restore,
             preview_deploy,
             execute_deploy,
+            cancel_job,
             list_docker_containers
         ])
         .run(tauri::generate_context!())?;
