@@ -63,7 +63,9 @@
 .repository-form__actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
 .repository-panel__success { display: flex; align-items: center; gap: 8px; margin: 17px 0 0; color: var(--accent); font-size: 0.73rem; }
 .repository-panel__items { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 17px; }
-.repository-panel__items span { max-width: 100%; overflow: hidden; padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--surface); font: 0.64rem var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.repository-panel__items span, .repository-panel__items button { max-width: 100%; overflow: hidden; padding: 7px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--surface); font: 0.64rem var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.repository-panel__items button { cursor: pointer; }
+.repository-panel__items button:hover { border-color: var(--accent); color: var(--text); }
 .signing-panel__header { display: flex; justify-content: space-between; gap: 24px; }
 .signing-panel__header .eyebrow { margin-bottom: 9px; }
 .signing-panel h2 { margin: 0; font-size: 1.1rem; letter-spacing: -0.025em; }

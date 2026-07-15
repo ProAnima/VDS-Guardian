@@ -94,6 +94,10 @@ export interface DeployRequest { repositoryId: string; backupId: string; targetP
 export interface DeploymentPreview { backupId: string; targetProfileId: string; targetProfileLabel: string; targetPath: string; confirmation: string; filesystemPayload: string; databasePayload?: string; }
 export interface DeployFailure { code: string; message: string; remediation: string; }
 
+export interface DockerMountSummary { kind: "bind" | "volume" | "tmpfs"; destination: string; capturablePath?: string; }
+export interface DockerContainerSummary { id: string; name: string; state: "created" | "running" | "paused" | "restarting" | "exited" | "dead"; mounts: DockerMountSummary[]; }
+export interface DockerCommandFailure { code: string; message: string; remediation: string; }
+
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
@@ -162,6 +166,7 @@ export async function previewRestore(request: RestoreRequest): Promise<RestorePr
 export async function executeRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("execute_restore", { request }); }
 export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
 export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
+export async function listDockerContainers(profileId: string): Promise<DockerContainerSummary[]> { requireTauriRuntime(); return invoke<DockerContainerSummary[]>("list_docker_containers", { profileId }); }
 // OpenSSH commonly stores private identities without a conventional extension
 // (for example `id_rsa` or an operator-provided `id_rsa.priv`). File type is
 // validated by the desktop command after selection, never by this UI filter.

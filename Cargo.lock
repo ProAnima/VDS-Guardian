@@ -4657,6 +4657,7 @@ dependencies = [
  "guardian-configuration",
  "guardian-core",
  "guardian-deploy",
+ "guardian-docker",
  "guardian-local-repository",
  "guardian-os-keyring",
  "guardian-profile-store",

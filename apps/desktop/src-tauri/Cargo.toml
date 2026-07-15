@@ -20,6 +20,7 @@ guardian-archive.workspace = true
 guardian-capture = { path = "../../../crates/guardian-capture" }
 guardian-configuration = { path = "../../../crates/guardian-configuration" }
 guardian-deploy = { path = "../../../crates/guardian-deploy" }
+guardian-docker = { path = "../../../crates/guardian-docker" }
 guardian-local-repository.workspace = true
 guardian-os-keyring = { path = "../../../crates/guardian-os-keyring" }
 guardian-profile-store = { path = "../../../crates/guardian-profile-store" }

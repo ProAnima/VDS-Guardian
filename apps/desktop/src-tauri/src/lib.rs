@@ -1,4 +1,5 @@
 mod deploy_commands;
+mod docker_commands;
 mod job_commands;
 mod plan_commands;
 mod profile_commands;
@@ -125,6 +126,14 @@ async fn execute_restore(
 }
 
 #[tauri::command]
+async fn list_docker_containers(
+    app: tauri::AppHandle,
+    profile_id: String,
+) -> Result<Vec<docker_commands::DockerContainerSummary>, docker_commands::DockerCommandFailure> {
+    docker_commands::list_containers(app, profile_id).await
+}
+
+#[tauri::command]
 async fn preview_deploy(
     app: tauri::AppHandle,
     request: deploy_commands::DeployRequest,
@@ -160,7 +169,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preview_restore,
             execute_restore,
             preview_deploy,
-            execute_deploy
+            execute_deploy,
+            list_docker_containers
         ])
         .run(tauri::generate_context!())?;
     Ok(())
