@@ -128,11 +128,21 @@ guardian-cli profile list --profiles-dir D:\VDSGuardian\profiles --json
 Importing a dedicated SSH key is a separate, explicit operation. The key is
 stored only in the OS credential store under the profile's credential ID; an
 existing credential is never overwritten. The current foundation accepts only
-unencrypted OpenSSH private keys, and does not yet support rotation or SSH-agent
-backed encrypted keys.
+unencrypted OpenSSH private keys, and does not yet support rotation.
 
 ```powershell
 guardian-cli credential import-ssh-key --credential-id credential-001 --input D:\VDSGuardian\backup.key --json
+```
+
+A passphrase-protected key is supported instead through an already-running
+OS SSH agent (ADR 0009): register only its public key, and keep the
+matching private key loaded in the agent at connection time. VDS Guardian
+never sees the passphrase. Limited to `ssh-ed25519`/`ecdsa-sha2-
+nistp256/384/521` identities for now; there is no desktop UI for this path
+yet.
+
+```powershell
+guardian-cli credential register-agent-key --credential-id credential-002 --public-key-file D:\VDSGuardian\backup.pub --json
 ```
 
 The pinned SSH profile is the only VDS transport boundary. The current

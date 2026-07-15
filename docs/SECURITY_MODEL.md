@@ -91,9 +91,19 @@ plaintext until it is later encrypted, a materially larger exposure than the
 identity file it sits next to. Every file the local repository writes through
 its shared atomic-write primitive (manifest, signature, verification report,
 and any payload staged via the in-memory write path) receives the same
-owner-only permissions. Encrypted-key/agent support and cooperative
-process-tree cancellation remain incomplete — today, only automatic
-timeouts stop a stuck capture, never an operator-triggered cancel. Capture
+owner-only permissions. Encrypted-key/agent support is now implemented
+(ADR 0009): a credential reference can hold a small self-describing public-
+key marker instead of raw key bytes, resolved into a `.pub`-only identity
+file with no private-key-shaped path beside it — the private key itself
+never reaches this process, relying entirely on an already-running OS SSH
+agent (or, on Windows, the OpenSSH Authentication Agent service) to hold
+the decrypted key and perform the signature. VDS Guardian never prompts
+for, stores, or otherwise sees the passphrase. Limited today to
+`ssh-ed25519`/`ecdsa-sha2-nistp256/384/521` identities, registered only
+through `guardian-cli credential register-agent-key`; desktop enrollment
+UI is not wired up yet. Cooperative process-tree cancellation remains
+incomplete — today, only automatic timeouts stop a stuck capture, never an
+operator-triggered cancel. Capture
 streams have a five-minute idle-byte deadline that kills local SSH and
 discards the partial stream; that deadline is not a substitute for full
 cancellation. The

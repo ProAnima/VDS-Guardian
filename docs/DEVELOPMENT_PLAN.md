@@ -103,8 +103,13 @@ space and the capture fails closed rather than mid-stream if it would not
 cover the file. Filesystem capture needs no equivalent check — its `tar
 --zstd` template streams to stdout with no remote scratch file. OS/distro
 detection and a single aggregated capability report remain open, alongside
-encrypted-key/agent support and a complete cancellation policy, for this
-milestone's exit gate.
+a complete cancellation policy, for this milestone's exit gate.
+Encrypted-key/agent support (ADR 0009) is now implemented: a passphrase-
+protected key already loaded in an OS SSH agent is used through a `.pub`-
+only identity file, resolved from a self-describing public-key marker
+stored under the same credential reference — registered today via
+`guardian-cli credential register-agent-key`, with no desktop UI yet and
+no RSA identities in this first slice.
 
 `guardian-capture` now connects any filesystem capture transport, including the
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the

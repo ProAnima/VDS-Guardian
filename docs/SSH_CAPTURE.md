@@ -22,8 +22,17 @@ an unencrypted PEM private key (RSA, EC, or PKCS#8), writes it to a short-lived 
 file, and deletes that file after the SSH invocation; private key bytes are
 never logged or written to repository configuration. Windows temporary identity
 files have inherited ACLs removed and grant access only to the current user.
-Support for encrypted keys through an OS SSH agent remains required before
-unattended production use.
+
+A passphrase-protected key is supported through an already-running OS SSH
+agent (ADR 0009), never by VDS Guardian handling the passphrase itself. The
+credential store holds a small self-describing public-key marker instead of
+raw key bytes for this case; the resolved identity is written only as a
+`.pub` file with no private-key-shaped path alongside it, relying on
+OpenSSH's own documented fallback (read the public key from `<path>.pub`,
+then ask the agent to sign) rather than any new SSH flag. Registered
+through `guardian-cli credential register-agent-key` today; desktop UI is
+not yet wired up. Limited to `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521`
+identities in this first slice.
 
 The only current remote command template is a read-only GNU tar stream:
 

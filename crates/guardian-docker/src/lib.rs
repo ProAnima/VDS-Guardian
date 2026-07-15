@@ -4,7 +4,7 @@ use guardian_core::{
     DockerContainer, DockerContainerState, DockerHealth, DockerInventory, DockerInventoryPort,
     DockerInventoryPortError, DockerMount, DockerMountKind, DockerNetwork, SecretStore, VdsProfile,
 };
-use guardian_ssh::{PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh};
+use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
 use serde::Deserialize;
 use std::{collections::BTreeMap, fs};
 use tempfile::tempdir;
@@ -31,7 +31,7 @@ impl DockerInventoryPort for SshDockerInventoryAdapter<'_> {
         .map_err(|_| DockerInventoryPortError::Rejected)?;
         let user = SshUser::parse(&profile.endpoint.user)
             .map_err(|_| DockerInventoryPortError::Rejected)?;
-        let identity = SecretIdentityFile::from_store(self.credentials, &profile.credential_id)
+        let identity = SshIdentity::from_store(self.credentials, &profile.credential_id)
             .map_err(|_| DockerInventoryPortError::Unavailable)?;
         let temporary = tempdir().map_err(|_| DockerInventoryPortError::Unavailable)?;
         let destination = temporary.path().join("docker-inspect.json");

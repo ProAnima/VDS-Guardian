@@ -21,7 +21,7 @@ use std::{
 use tempfile::NamedTempFile;
 use thiserror::Error;
 
-pub use secret_identity::SecretIdentityFile;
+pub use secret_identity::SshIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedHost {
@@ -157,7 +157,7 @@ impl SshCapabilityProbePort for PinnedSshCapabilityProbe<'_> {
         .map_err(|_| SshCapabilityProbeError::Rejected)?;
         let user = SshUser::parse(&profile.endpoint.user)
             .map_err(|_| SshCapabilityProbeError::Rejected)?;
-        let identity = SecretIdentityFile::from_store(self.credentials, &profile.credential_id)
+        let identity = SshIdentity::from_store(self.credentials, &profile.credential_id)
             .map_err(|_| SshCapabilityProbeError::Unavailable)?;
         let capabilities = self
             .ssh

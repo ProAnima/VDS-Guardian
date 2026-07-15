@@ -8,7 +8,7 @@ use guardian_core::{
     PayloadPath, ProfileId, RemoteTargetPath, SecretStore, VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
-use guardian_ssh::{PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh};
+use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
 use thiserror::Error;
 
 pub struct DeploymentComposition<'a> {
@@ -146,7 +146,7 @@ impl DeploymentComposition<'_> {
         let user = SshUser::parse(&self.target_profile.endpoint.user)
             .map_err(|_| DeployError::InvalidTargetProfile)?;
         let identity =
-            SecretIdentityFile::from_store(self.credentials, &self.target_profile.credential_id)
+            SshIdentity::from_store(self.credentials, &self.target_profile.credential_id)
                 .map_err(|_| DeployError::Credential)?;
         Ok(SshSession {
             host,
@@ -159,7 +159,7 @@ impl DeploymentComposition<'_> {
 struct SshSession {
     host: PinnedHost,
     user: SshUser,
-    identity: SecretIdentityFile,
+    identity: SshIdentity,
 }
 
 enum PushKind {

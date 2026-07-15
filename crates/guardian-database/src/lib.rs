@@ -6,7 +6,7 @@ use guardian_core::{
     DatabaseServerVersionProbeError, DatabaseServerVersionProbePort, DatabaseVersion, SecretStore,
     VdsProfile,
 };
-use guardian_ssh::{PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh};
+use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
 use std::fs;
 use tempfile::tempdir;
 use thiserror::Error;
@@ -33,7 +33,7 @@ impl SshDumpToolProbe<'_> {
         .map_err(|_| DumpToolProbeError::Rejected)?;
         let user =
             SshUser::parse(&profile.endpoint.user).map_err(|_| DumpToolProbeError::Rejected)?;
-        let identity = SecretIdentityFile::from_store(self.credentials, &profile.credential_id)
+        let identity = SshIdentity::from_store(self.credentials, &profile.credential_id)
             .map_err(|_| DumpToolProbeError::Unavailable)?;
         let temporary = tempdir().map_err(|_| DumpToolProbeError::Unavailable)?;
         let destination = temporary.path().join("database-tools.txt");
@@ -151,9 +151,8 @@ impl DatabaseServerVersionProbePort for SshPeerServerVersionProbe<'_> {
         .map_err(|_| DatabaseServerVersionProbeError::Rejected)?;
         let user = SshUser::parse(&self.profile.endpoint.user)
             .map_err(|_| DatabaseServerVersionProbeError::Rejected)?;
-        let identity =
-            SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id)
-                .map_err(|_| DatabaseServerVersionProbeError::Unavailable)?;
+        let identity = SshIdentity::from_store(self.credentials, &self.profile.credential_id)
+            .map_err(|_| DatabaseServerVersionProbeError::Unavailable)?;
         let temporary = tempdir().map_err(|_| DatabaseServerVersionProbeError::Unavailable)?;
         let destination = temporary.path().join("database-server-version.txt");
         self.ssh

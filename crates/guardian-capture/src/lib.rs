@@ -14,7 +14,7 @@ use guardian_core::{
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
     PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, PinnedSshCapabilityProbe,
-    PinnedSshCaptureAdapter, SecretIdentityFile, SshUser, SystemOpenSsh,
+    PinnedSshCaptureAdapter, SshIdentity, SshUser, SystemOpenSsh,
 };
 use std::path::Path;
 
@@ -213,8 +213,8 @@ impl FilesystemCaptureComposition<'_> {
             .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))
     }
 
-    fn identity_file(&self) -> Result<SecretIdentityFile, CaptureUseCaseError> {
-        SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id)
+    fn identity_file(&self) -> Result<SshIdentity, CaptureUseCaseError> {
+        SshIdentity::from_store(self.credentials, &self.profile.credential_id)
             .map_err(|_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential))
     }
 

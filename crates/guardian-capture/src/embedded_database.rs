@@ -11,7 +11,7 @@ use guardian_core::{
 };
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
-    PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh,
+    PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, SshIdentity, SshUser, SystemOpenSsh,
 };
 use std::{fs, path::Path};
 use tempfile::tempdir;
@@ -47,10 +47,10 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
         .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))?;
         let user = SshUser::parse(&self.profile.endpoint.user)
             .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))?;
-        let identity_file =
-            SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id).map_err(
-                |_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential),
-            )?;
+        let identity_file = SshIdentity::from_store(self.credentials, &self.profile.credential_id)
+            .map_err(|_| {
+                CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential)
+            })?;
         self.require_remote_disk_budget(
             &host,
             &user,

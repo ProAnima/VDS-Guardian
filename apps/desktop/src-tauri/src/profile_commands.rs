@@ -4,9 +4,7 @@ use guardian_core::{
 };
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
-use guardian_ssh::{
-    PinnedHost, PinnedSshCapabilityProbe, SecretIdentityFile, SshUser, SystemOpenSsh,
-};
+use guardian_ssh::{PinnedHost, PinnedSshCapabilityProbe, SshIdentity, SshUser, SystemOpenSsh};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -116,7 +114,7 @@ fn enroll_blocking(
         .validate()
         .map_err(|_| ProfileCommandFailure::invalid_profile())?;
     let key = read_key(Path::new(&request.key_path))?;
-    SecretIdentityFile::validate(key.expose()).map_err(|_| ProfileCommandFailure::invalid_key())?;
+    SshIdentity::validate(key.expose()).map_err(|_| ProfileCommandFailure::invalid_key())?;
     let store = OsCredentialStore;
     if store
         .load(&credential_id)
@@ -132,7 +130,7 @@ fn enroll_blocking(
         .load(&credential_id)
         .map_err(|_| ProfileCommandFailure::credential_store())?
         .ok_or_else(ProfileCommandFailure::credential_store)?;
-    SecretIdentityFile::validate(stored.expose())
+    SshIdentity::validate(stored.expose())
         .map_err(|_| ProfileCommandFailure::credential_store())?;
     EnrollProfileUseCase {
         store: &ProfileStore::at(root),
@@ -157,7 +155,7 @@ fn test_blocking(root: PathBuf, profile_id: String) -> Result<(), ProfileCommand
     .map_err(|_| ProfileCommandFailure::invalid_profile())?;
     let user = SshUser::parse(&profile.endpoint.user)
         .map_err(|_| ProfileCommandFailure::invalid_profile())?;
-    let identity = SecretIdentityFile::from_store(&OsCredentialStore, &profile.credential_id)
+    let identity = SshIdentity::from_store(&OsCredentialStore, &profile.credential_id)
         .map_err(|_| ProfileCommandFailure::credential_store())?;
     SystemOpenSsh::default()
         .probe_connection(&host, &user, identity.path())
