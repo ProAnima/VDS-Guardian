@@ -587,11 +587,10 @@ impl SystemOpenSsh {
         maximum_output_bytes: Option<u64>,
     ) -> Result<CaptureResult, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let output = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(destination)
-            .map_err(|_| SshError::DestinationUnavailable)?;
+        let output = match create_hardened_destination(destination) {
+            Ok(output) => output,
+            Err(error) => return fail_capture(destination, error),
+        };
         let mut child = match Command::new(&self.binary)
             .args(self.arguments_for_command(
                 host,
@@ -949,6 +948,21 @@ fn fail_capture(destination: &Path, error: SshError) -> Result<CaptureResult, Ss
     Err(error)
 }
 
+/// Creates the local capture destination and narrows it to the current user
+/// before any captured bytes reach it: unlike the short-lived identity file
+/// `secret_identity::restrict_permissions` also hardens, a capture stream
+/// can hold gigabytes of backup content open for minutes.
+fn create_hardened_destination(destination: &Path) -> Result<fs::File, SshError> {
+    let output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(|_| SshError::DestinationUnavailable)?;
+    secret_identity::restrict_permissions(destination)
+        .map_err(|_| SshError::DestinationUnavailable)?;
+    Ok(output)
+}
+
 fn map_wait_error(error: process::WaitError) -> SshError {
     match error {
         process::WaitError::TimedOut => SshError::TimedOut,
@@ -1061,4 +1075,46 @@ fn valid_remote_root(root: &str) -> bool {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::create_hardened_destination;
+
+    #[test]
+    fn create_hardened_destination_narrows_the_captured_files_permissions()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let destination = directory.path().join("captured.tar.zst.enc");
+        create_hardened_destination(&destination)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&destination)?.permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        #[cfg(windows)]
+        {
+            let system_root = std::env::var_os("SystemRoot")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+            let output = std::process::Command::new(system_root.join(r"System32\icacls.exe"))
+                .arg(&destination)
+                .output()?;
+            let rendered = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success());
+            assert!(!rendered.contains("(I)"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn create_hardened_destination_fails_closed_when_the_path_already_exists()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let destination = directory.path().join("captured.tar.zst.enc");
+        std::fs::write(&destination, b"existing")?;
+        assert!(create_hardened_destination(&destination).is_err());
+        Ok(())
+    }
 }

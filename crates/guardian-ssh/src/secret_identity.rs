@@ -119,7 +119,7 @@ fn read_string<'a>(cursor: &mut &'a [u8]) -> Option<&'a [u8]> {
     Some(value)
 }
 
-fn restrict_permissions(path: &Path) -> Result<(), SshError> {
+pub(crate) fn restrict_permissions(path: &Path) -> Result<(), SshError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

@@ -46,7 +46,8 @@ pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), RepositoryError
     file.write_all(bytes)
         .map_err(|source| RepositoryError::io("write new file", source))?;
     file.sync_all()
-        .map_err(|source| RepositoryError::io("sync new file", source))
+        .map_err(|source| RepositoryError::io("sync new file", source))?;
+    restrict_to_owner(path)
 }
 
 pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), RepositoryError> {
@@ -143,7 +144,33 @@ fn restrict_windows_to_owner(path: &Path) -> Result<(), RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use super::restrict_to_owner;
+    use super::{restrict_to_owner, write_new};
+
+    #[test]
+    fn write_new_narrows_the_written_files_permissions() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("payload.tar.zst");
+        write_new(&path, b"captured backup content")?;
+        #[cfg(windows)]
+        {
+            let system_root = std::env::var_os("SystemRoot")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+            let output = std::process::Command::new(system_root.join(r"System32\icacls.exe"))
+                .arg(&path)
+                .output()?;
+            let rendered = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success());
+            assert!(!rendered.contains("(I)"));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        Ok(())
+    }
 
     #[test]
     fn restrict_to_owner_narrows_a_temporary_files_permissions()

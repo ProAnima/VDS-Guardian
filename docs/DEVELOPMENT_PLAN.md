@@ -76,9 +76,15 @@ host-key checking, password/keyboard-interactive authentication disabled, and a
 reviewed read-only tar capture template. It deletes a partial local stream when
 OpenSSH cannot launch or returns failure. It resolves an enrolled profile
 credential reference through the OS credential store into a short-lived local
-identity file. Capability discovery, Windows ACL hardening, encrypted-key agent
-support, and a complete cancellation policy remain required for this milestone's
-exit gate.
+identity file. Windows ACL hardening (already covering that identity file and
+the vault) now also narrows the local capture destination the moment it is
+created, before any streamed byte reaches it, and every file the local
+repository writes through its shared atomic-write primitive — closing the
+one gap found when this line was checked against current code: the staging
+payload, holding arbitrary captured content in plaintext until encryption,
+previously had no permission restriction on any platform. Capability
+discovery, encrypted-key/agent support, and a complete cancellation policy
+remain required for this milestone's exit gate.
 
 `guardian-capture` now connects any filesystem capture transport, including the
 pinned OpenSSH transport, to an exclusive staging payload path. It inspects the

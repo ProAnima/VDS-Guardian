@@ -83,7 +83,15 @@ deadline, or nonzero exit. The capture composition resolves the profile's
 credential reference through the injected secure store, accepts only an
 unencrypted OpenSSH private-key envelope or unencrypted PEM private key, and deletes its short-lived temporary
 identity file after SSH exits. Windows temporary identity-file ACLs are reduced
-to the current user before SSH starts. Encrypted-key/agent support, cooperative
+to the current user before SSH starts. The local capture destination is
+narrowed to the current user (Unix `0600`; the same Windows ACL pattern) the
+moment it is created, before any streamed byte reaches it — a captured
+filesystem or database payload is arbitrary customer content held in
+plaintext until it is later encrypted, a materially larger exposure than the
+identity file it sits next to. Every file the local repository writes through
+its shared atomic-write primitive (manifest, signature, verification report,
+and any payload staged via the in-memory write path) receives the same
+owner-only permissions. Encrypted-key/agent support, cooperative
 process-tree cancellation, and repository seal workflow
 remain incomplete, so it is not a production backup feature. Capture streams
 have a five-minute idle-byte deadline that kills local SSH and discards the
