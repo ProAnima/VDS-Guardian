@@ -43,9 +43,12 @@ events/       bounded job events consumed by GUI and CLI
 Adapters will be added by capability, not bundled into the domain crate:
 
 - SSH/SFTP transport with host-key pinning and keepalive/cancellation. The
-  initial `guardian-ssh` adapter uses system OpenSSH through direct argv,
-  temporary exact `known_hosts` input, and non-interactive strict host-key
-  checking for read-only archive capture; it is not wired to a backup use case.
+  `guardian-ssh` adapter uses system OpenSSH through direct argv, temporary
+  exact `known_hosts` input, and non-interactive strict host-key checking;
+  it now covers read-only archive/database capture, Docker inventory
+  inspection, and (ADR 0007) pushing a sealed backup's payloads onto a new
+  host, and is wired into the full capture-to-seal use case by
+  `guardian-capture`.
 - Local repository with staging, atomic seal, read-only best-effort flags, and
   whole-directory retention. Staging can reserve an exclusive payload path for
   a streaming adapter, then registers the regular file and hashes it from disk
@@ -62,31 +65,55 @@ Adapters will be added by capability, not bundled into the domain crate:
   from the initial product.
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 
-Implemented adapters are split into `guardian-local-repository`,
-`guardian-signing`, `guardian-os-keyring`, `guardian-vault`, `guardian-archive`,
-and `guardian-ssh`. The signing crate depends only on
-the core secret-store port; platform credential APIs remain isolated from domain
-and repository code. Its application service serializes enrollment with a
-cross-process lock and uses a durable intent to reconcile a keyring write that
-completed before its public credential reference was committed.
+Implemented adapters are split by capability across `guardian-local-repository`
+(staging/seal/retention), `guardian-signing` (Ed25519 node identity),
+`guardian-os-keyring` (OS credential store) with `guardian-vault` as its
+encrypted-file fallback, `guardian-archive` (tar.zst read/write), `guardian-ssh`
+(pinned OpenSSH transport, above), `guardian-encryption` (the format-v2
+payload envelope, ADR 0004), `guardian-database` (PostgreSQL/MySQL capability
+discovery only — no dump/restore adapter yet), and `guardian-docker` (Docker
+inventory inspection and mount-to-path resolution, ADR 0008).
+`guardian-configuration` and `guardian-profile-store` hold the local,
+non-secret configuration documents (repositories, capture plans, profiles).
+Composition-root crates wire these adapters into full use cases:
+`guardian-capture` (capture-to-seal, including the embedded-database
+snapshot adapter, ADR 0005) and `guardian-deploy` (remote deploy to a new
+host, ADR 0007). `guardian-cli` and the desktop's `src-tauri` crate are the
+two surfaces that call these composition roots. The signing crate depends
+only on the core secret-store port; platform credential APIs remain
+isolated from domain and repository code. Its application service
+serializes enrollment with a cross-process lock and uses a durable intent
+to reconcile a keyring write that completed before its public credential
+reference was committed.
 
 ### Desktop
 
-React presents profiles, plans, job state, verification, and restore previews.
-It calls typed Tauri commands through one bridge module. Tauri owns window and
-OS integration only; blocking jobs run outside the UI thread and stream bounded
-events. Signing status and explicit enrollment are the first infrastructure
+React presents profiles, plans, job state, verification, and restore/deploy
+previews. It calls typed Tauri commands through one bridge module (`shared/
+commands.ts`). Tauri owns window and OS integration only; every blocking
+command (enrollment, capture, restore, deploy, Docker inventory) runs on a
+`spawn_blocking` worker outside the UI thread as a single request/response
+call — there is no progress-event stream to the frontend yet, so a
+long-running job's UI stays in a single loading state until it resolves.
+Signing status and explicit enrollment were the first infrastructure
 commands: the Overview setup panel reads status, and only calls enrollment
 after an explicit acknowledgement and final confirmation. Their Tauri functions
 only resolve the app config path and dispatch the shared signing service to a
-blocking worker.
+blocking worker. SSH profile enrollment, repository registration, capture-plan
+save/run, Docker inventory browsing, and restore/deploy preview-and-execute
+now follow the same shape.
 
 ### CLI/service
 
-The CLI exposes the same use cases for automation. Signing status/enrollment
-require JSON mode and an explicit absolute configuration path, and return
-meaningful exit codes. Service installation is an explicit command and never
-occurs simply by launching the desktop app.
+The CLI (`guardian-cli`) exposes some of the same use cases for automation
+today: `profile`, `credential`, `restore`, `vault`, `deploy`, and `signing`
+subcommands, each requiring JSON mode and an explicit absolute configuration
+path, returning meaningful exit codes. There is no `capture`/`plan`/`job`
+subcommand yet — triggering a backup (filesystem or embedded-database) is
+desktop-only. Native scheduler (systemd timer/Task Scheduler) integration and
+a service-install command are both still design intent, not implemented; when
+added, service installation should remain an explicit command, never an
+implicit side effect of launching the desktop app.
 
 ## Backup lifecycle
 

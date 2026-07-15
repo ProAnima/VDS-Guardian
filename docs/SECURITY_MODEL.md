@@ -91,11 +91,12 @@ plaintext until it is later encrypted, a materially larger exposure than the
 identity file it sits next to. Every file the local repository writes through
 its shared atomic-write primitive (manifest, signature, verification report,
 and any payload staged via the in-memory write path) receives the same
-owner-only permissions. Encrypted-key/agent support, cooperative
-process-tree cancellation, and repository seal workflow
-remain incomplete, so it is not a production backup feature. Capture streams
-have a five-minute idle-byte deadline that kills local SSH and discards the
-partial stream; that deadline is not a substitute for full cancellation. The
+owner-only permissions. Encrypted-key/agent support and cooperative
+process-tree cancellation remain incomplete — today, only automatic
+timeouts stop a stuck capture, never an operator-triggered cancel. Capture
+streams have a five-minute idle-byte deadline that kills local SSH and
+discards the partial stream; that deadline is not a substitute for full
+cancellation. The
 adapter's fixed read-only `tar --zstd` probe uses the same pinned identity and a
 30-second SSH connect timeout. The shared preflight use case requires that
 probe's success before a future capture workflow can continue; its result alone
@@ -211,8 +212,9 @@ clears that acknowledgement.
   limits remain required before general-purpose restore support.
 - Restores never preserve setuid/setgid bits by default and use an explicit
   ownership mapping policy.
-- Optional antivirus integration is an adapter with timeout and clear
-  `not-scanned` versus `clean` states. No scanner result upgrades trust by itself.
+- Optional antivirus integration (P2, not yet built) should be an adapter with
+  timeout and clear `not-scanned` versus `clean` states, so that no scanner
+  result upgrades trust by itself once it exists.
 
 ### Docker and database discovery
 

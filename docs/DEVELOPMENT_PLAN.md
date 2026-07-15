@@ -39,7 +39,13 @@ records append-only audit evidence. A streaming tar.zst inspector now validates
 paths, rejects links and special entry types, and enforces entry, per-file, and
 expanded-stream limits. A deterministic tar.zst writer emits normalized archive
 headers for validated paths. Full schemas, extraction coverage, and the
-restore-drill gate remain open. The initial hostile archive path corpus now
+restore-drill gate remain open: no independent schema-definition artifact
+exists for any type (Rust struct shape plus serde attributes is the only
+"schema" today), no job schema or persisted job history exists at all (only
+capture-plan documents and audit files), retention/audit records are not
+themselves version-tagged, extraction has materially thinner test coverage
+than inspection, and no automated clean-room restore drill exists anywhere
+(only a manual runbook procedure). The initial hostile archive path corpus now
 pins a fail-closed cross-platform path contract. Retention now
 records a durable, non-secret transaction intent: reopening rolls back a
 partially moved deletion set, or resumes only a cleanup phase that was durably
@@ -111,9 +117,15 @@ that budget. Disposable-host integration tests remain open.
 
 The reproducible Alpine OpenSSH fixture is available through
 `npm run test:integration:ssh`; it verifies a real pinned-key capture and
-changed-key rejection. Rust-level adapter assertions and CI scheduling remain
-open. The Linux CI job runs this Docker gate after the canonical verification
-suite; Windows retains the same canonical suite without requiring Docker.
+changed-key rejection against a normal, well-behaved server — a distinct
+compromised/adversarial-server fixture suite does not exist yet (only
+scattered adversarial unit tests elsewhere cover hostile input). Rust-level
+adapter assertions against this container also remain open: the fixture
+script drives a hand-built `ssh` invocation directly and never calls the
+compiled `guardian-ssh` adapter, so no test connects the real adapter code
+to a live network round-trip. CI scheduling is done: the Linux CI job runs
+this Docker gate after the canonical verification suite; Windows retains
+the same canonical suite without requiring Docker.
 
 ## Milestone 3 — Docker and database consistency (P0)
 
@@ -144,10 +156,22 @@ validated host path, or a named volume's host directory recovered from the
 same `docker inspect` response's `Source` field the parser already fetched
 but previously discarded — feeding directly into the existing filesystem-
 capture mechanism with no new capture use case. Non-`local` volume drivers,
-quiesce/consistency guarantees for a live volume, any new privilege beyond
-what the operator's own dedicated backup account already grants, and a
-discovery/selection UI to turn inventory into a capture plan all remain
-explicitly open, not silently assumed solved. Database preflight now requires matching major versions between a
+quiesce/consistency guarantees for a live volume, and any new privilege
+beyond what the operator's own dedicated backup account already grants
+remain explicitly open, not silently assumed solved. A minimal discovery
+UI now exists (Milestone 5): the desktop capture-plan flow can list a
+selected server's Docker containers and add a capturable mount's path as a
+root with one click; a fuller inventory browser (image digest, health,
+Compose project, secret references, networks — discovered but not yet
+surfaced) remains open. Quiesce hooks as "versioned application adapters"
+(the top-line scope item above) do not exist in any form: every capture is
+a point-in-time snapshot with no per-application consistency hook, for
+Docker mounts or otherwise, and only the embedded-database adapter's own
+SQLite-specific `.backup` mechanism (below) provides an analogous guarantee
+for that one case. Arbitrary remote scripts are never executed from
+captured content, as originally stated — every remote command remains a
+fixed, reviewed template regardless of what a capture contains.
+Database preflight now requires matching major versions between a
 reported PostgreSQL/MySQL server and its selected dump tool, and rejects an
 empty discovery result. `guardian-database` composes the fixed server-version
 and dump-tool probes into the core capability port, so an SSH preflight cannot
@@ -205,8 +229,12 @@ payload's manifest signature is re-verified immediately before that payload
 is pushed. Every attempt is recorded to the repository's audit log. A
 desktop Deploy view now previews and executes the same plan against an
 enrolled target profile, mirroring the CLI. Diff/dry-run file-level preview,
-staged switch-over, rollback, a signed report, service stop/start
-orchestration, and database-aware live cutover remain open.
+a pre-restore/deploy safety backup of an existing target (today both simply
+refuse to run against a non-absent target instead of backing it up first),
+staged switch-over, restore/deploy rollback (distinct from retention's own
+whole-backup-deletion rollback, which already exists), a signed report,
+service stop/start orchestration, and database-aware live cutover remain
+open.
 
 ## Milestone 5 — desktop product and scheduling (P1)
 
@@ -232,9 +260,13 @@ registry), and saves/runs a capture plan end to end against an enrolled
 server and registered repository. Separate Restore and Deploy views preview a
 plan, require the exact typed confirmation phrase, and execute it — against
 the local repository, or a different pinned target profile over SSH,
-respectively — mirroring `guardian-cli restore`/`deploy` in the GUI.
-Enrollment recovery/credential cleanup, scheduling, and a browsable
-backup/activity timeline with warnings and verification state remain open.
+respectively — mirroring `guardian-cli restore`/`deploy` in the GUI. The
+capture-plan form can also list a selected server's Docker containers and
+add a capturable bind-mount or named-volume path as a root with one click
+(container name/state/mounts only; image, health, Compose project, secret
+references, and networks are discovered but not yet surfaced). Enrollment
+recovery/credential cleanup, scheduling, and a browsable backup/activity
+timeline with warnings and verification state remain open.
 
 ## Milestone 6 — release hardening (P1)
 

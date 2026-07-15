@@ -1,6 +1,8 @@
 # Backup Format Contract
 
-Status: Milestone 1 draft. The local repository slice implements the directory
+Status: draft, reflecting Milestone 1-5 work; not yet declared stable (see
+the closing paragraph of this section for what's still required). The local
+repository slice implements the directory
 boundary, validated payload paths, SHA-256 verification, Ed25519 signature
 metadata, quarantine, atomic seal, and a byte-exact format-v1 golden fixture.
 The fixture now prevents silent serialization drift. A fixture corpus also pins
@@ -35,22 +37,39 @@ repository/
   staging/
     <run-id>/
   backups/
-    2026-07-13T120000Z_<backup-id>/
+    <backup-id>/
       manifest.json
       manifest.sig
       payload/
-        filesystem-000.tar.zst
-        postgres-main.dump.zst
-        docker-metadata.json.zst
+        filesystem-000.tar.zst.enc
+        database-000.sqlite.zst.enc
       reports/
-        capture.json
         verification.json
   quarantine/
     retention-<plan-id>/
+    <run-id>/
   audit/
     retention-<plan-id>-approved.json
     retention-<plan-id>-completed.json
+    capture-<run-id>-<state>.json
+    deploy-<run-id>-<state>.json
 ```
+
+The directory name under `backups/` is the backup ID alone, with no
+timestamp prefix. Payload filenames carry the `.enc` suffix for the current
+format-v2 encrypted case; format-v1 unencrypted backups (still readable as
+an explicit compatibility case) omit it. The database payload shown is the
+real embedded-SQLite snapshot (ADR 0005) — today's only implemented second
+payload kind; PostgreSQL/MySQL dump/restore remains out of scope for the
+first release (Milestone 3), so no such payload is ever produced. No
+Docker-metadata payload is ever written either — Docker inventory is
+discovered live for display and mount selection, never persisted into a
+backup. `reports/` only ever contains `verification.json`; there is no
+`capture.json`. `quarantine/` also receives run-ID-keyed entries for
+abandoned or failed captures, alongside plan-ID-keyed retention entries;
+`audit/` also receives per-run capture and deploy attempt records
+(`write_capture_audit`/`write_deploy_audit`), alongside the retention
+records shown above.
 
 Every backup directory is self-describing and independent. No payload depends on
 blocks stored only in another backup. Deduplication may be added only as an
@@ -75,9 +94,11 @@ independence and complicates deletion and recovery.
 - warnings and verification state
 
 The manifest uses canonical JSON for signatures. Secret values, raw environment
-files, and private key paths never appear in metadata. Payload encryption is a
-planned requirement before production release; the exact envelope receives its
-own ADR after a cryptographic review.
+files, and private key paths never appear in metadata. Payload encryption is
+implemented (format-v2, ADR 0004, AES-256-GCM-CHUNKED) and mandatory for every
+live capture, as described above; only pre-existing format-v1 backups are
+read without it, as an explicit compatibility case, never a live-capture
+option.
 
 ## Sealing rules
 
