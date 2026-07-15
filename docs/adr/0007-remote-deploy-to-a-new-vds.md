@@ -1,0 +1,238 @@
+# ADR 0007: Remote deploy — push a sealed backup onto a new/clean VDS
+
+## Status
+
+Accepted.
+
+## Context
+
+The product's stated golden path is: connect → backup → store → deploy on a
+server. Every other stage works today; deploy does not exist at all. Local
+restore (`RestorePlan`, `LocalRepository::execute_restore`) only extracts a
+sealed backup to a path on the *same machine running Guardian*. "Deploy to a
+new/different remote VDS over SSH" has exactly one four-word mention anywhere
+in the docs (`docs/DEVELOPMENT_PLAN.md`, "New-host bootstrap assistant with
+explicit prerequisites," under Milestone 4) and zero prior design.
+
+This is the single most security-sensitive feature in the project to date.
+`AGENTS.md`/`CODEX.md` flag this exact combination explicitly: SSH command
+execution together with "restore planning or remote mutation" require a
+SECURITY_MODEL.md update, adversarial tests, and — per the project's
+source-of-truth rule — a new ADR. `CODEX.md`'s standing invariant applies
+directly: *"Destructive server mutations require an explicit plan, scope
+preview, typed confirmation, audit record, and a fresh pre-restore backup
+unless waived by a recorded break-glass decision."*
+
+**Scope of this slice**: push a sealed backup's filesystem payload (and
+database payload, if present) onto an empty/absent path on a *different*,
+separately-enrolled, host-key-pinned `VdsProfile`. CLI-only — no desktop GUI
+wiring yet, matching how the embedded-database slice landed adapter-first.
+The operator provisions a fresh VDS and enrolls it exactly like a capture
+source, then picks that profile as the deploy target; no new profile schema.
+
+## Decision
+
+### Atomic rename, not a bare guard-then-extract
+
+A bare `[ ! -e path ] || exit 1; tar --extract ...` has a real problem: if
+the stream is interrupted mid-extraction (network drop, remote disk full),
+the target is left non-empty but incomplete, and a retry fails the same
+guard with no path back. Unlike capture's "delete the partial local file on
+failure" (trivial: same process, same machine), a failed deploy's partial
+state is on a third-party remote host, and any cleanup attempt needs a
+second SSH round-trip that can fail for the identical underlying reason.
+Both push commands (`guardian-ssh`'s `push_filesystem_command`/
+`push_database_command`) instead extract/write into a sibling
+`<path>.guardian-deploy-tmp` path and atomically rename into place only on
+success, using `mv -n` (no-clobber) plus a post-move absence check on the
+temp path — not a bare `mv` — so a value that raced into the target during
+the transfer is never silently clobbered. The remote shell's own control
+flow does the cleanup; no second connection is needed, because `tar`/`zstd`
+detect a truncated stream and exit non-zero on their own.
+
+The database push guards `<path>/database.sqlite` specifically, not `<path>`
+itself — the filesystem push (when present) already legitimately created
+`<path>` first, so the two pushes cannot share one guard.
+
+**Residual risk**: "target verified absent" is a check against a remote
+filesystem outside Guardian's exclusive control, not a guarantee about the
+instant of the rename. The mitigation bounds the *damage* (never clobbers
+what's really there) — it does not eliminate the race. A second residual
+risk on the write side: without a freshness/generation counter, if the
+remote host itself crashes before its own cleanup trap runs, an orphaned
+sibling temp path can be left behind (never a partial target, since the
+rename is the only way content reaches the real path).
+
+### `RemoteTargetPath`: a newtype, breaking from an existing raw-`String` precedent
+
+`valid_remote_root`-shaped validation already exists three times as a bare
+`Vec<String>` + ad hoc validator (capture roots, in `guardian-core` and
+`guardian-ssh`) — "raw validated string" is the established convention for
+remote-path-shaped values. This is the first time such a value plays the
+*same structural role*, side by side, as a local `PathBuf`
+(`RestorePlan.destination: PathBuf` next to `DeploymentPlan.target_path`) —
+exactly the mix-up a newtype should prevent. `RemoteTargetPath` (in
+`guardian-core::identifiers`) requires an absolute POSIX path and — unlike
+the capture-root validator, which explicitly allows bare `/` as a capture
+source — rejects bare `/` outright, since a deploy target must be a path
+that does not already exist, and `/` always does.
+
+This also avoids a live cross-platform bug: this project runs its CLI on
+both Windows and Linux, and `--target-path` names a POSIX path *on the
+remote Linux VDS* regardless of which OS `guardian-cli` itself runs on.
+Parsing it via `PathBuf::is_absolute()` (as `restore.rs`'s genuinely local
+`--destination` correctly does) would silently apply the host OS's own path
+semantics — wrong on Windows, where `is_absolute()` means "has a drive
+letter," to a value that is never local. `--target-path` is validated only
+through `RemoteTargetPath::parse`, at argument-parsing time, never through
+`PathBuf`.
+
+### Confirmation phrase and the self-overwrite guard
+
+`format!("DEPLOY {backup_id} TO {target_profile_id}:{target_path}")` — the
+same deterministic, no-randomness shape as `RestorePlan`'s
+`"RESTORE {backup_id} TO {destination}"`. The security-critical fields stay
+*inside* the compared string (not just displayed alongside it), so a stale
+copy-paste from a different plan fails the equality check; the human
+-readable profile label is deliberately left out of the compared string
+(labels allow parens/colons, which would be visually confusing nested inside
+the phrase) and shown as its own JSON field (`targetProfileLabel`) next to
+`confirmation` instead.
+
+`DeploymentPlan::build` blocks deploying a backup onto its own source,
+checking **both** identifiers recorded on the manifest's `SourceIdentity` —
+`profile_id` (catches re-selecting the same profile) and
+`host_key_fingerprint` (catches re-enrolling the identical physical host
+under a second, differently-named profile — the more realistic accident).
+`host_key_fingerprint` is now a shared `guardian_core::host_key_fingerprint`
+function (relocated from a private one-liner previously duplicated only in
+the Tauri desktop layer). This slice hard-blocks on either match, with no
+override flag; an explicit override is named as deferred future work below.
+
+### Audit record: a new `LocalRepository` method, not `AuditPort`
+
+`AuditPort` (`guardian-core::audit`) has exactly one method,
+`capture_failed`, and zero production implementations anywhere in the
+codebase — it exists purely as a control-flow hook so a capture use case can
+trigger `storage.discard()` on failure, not as the actual audit trail. The
+real persisted trail is `LocalRepository::write_capture_audit`, called
+directly by the Tauri layer around composition calls, writing atomically
+-named JSON under `<repository>/audit/`. Deploy has no local staging to
+discard into, so a parallel `LocalRepository::write_deploy_audit(run_id,
+state, backup_id, target_profile_id)` was added instead, mirroring
+`write_capture_audit`'s shape exactly (`deploy-{run_id}-{state}.json`, one
+record per state transition, `run_id` generated fresh per CLI invocation so
+retries of the same backup/target pair never collide with or silently
+overwrite a prior attempt's record). `guardian-cli/src/deploy.rs`'s
+`execute` wraps the composition call with `attempted` → `completed`/`failed`
+audit writes, mirroring exactly how the Tauri layer wraps capture today —
+audit-writing is the caller's responsibility, not the composition's.
+
+This satisfies CODEX.md's "fresh pre-restore backup" clause vacuously
+(nothing was there to back up) — that reasoning does not extend to the
+audit-record requirement in the same sentence, which is not conditioned on
+the break-glass waiver.
+
+### Fresh-per-payload re-verification — a deliberate divergence from `execute_restore`
+
+`execute_restore` loads and verifies the manifest once and reuses it for
+both extractions, because both are fast, local, back-to-back operations.
+Deploy's two pushes are network-bound (the existing 15-minute
+`total_timeout` precedent) — a materially larger window during which the
+sealed backup could be tampered with between the first push finishing and
+the second starting. `LocalRepository::open_deploy_payload_reader` re-runs
+manifest verification fresh on *every* call, and
+`DeploymentComposition::execute` calls it once per payload, immediately
+before that payload is pushed — never once for the whole operation. Like
+`execute_restore`, it takes primitives (`backup_id`, `payload_path`,
+`verifier`, `secrets`), never a `DeploymentPlan` value, so nothing ever
+trusts a plan object as a trust anchor from its caller.
+
+### Push mechanism (`guardian-ssh`): a new pump, reusing the direction-agnostic waiter unchanged
+
+`wait_for_stream` only touches `Child`/`Receiver<()>`/`AtomicBool`, never
+`stdout`/`File` directly, so it is reused unchanged for the push direction.
+A new `PushPump` mirrors the existing pull-side `CapturePump`: it reads a
+local, boxed `Read + Send` source in a background thread and writes into a
+`ChildStdin`, pinging the same activity-channel protocol after each
+successful write and setting the same shared `AtomicBool` on any error. The
+source is boxed (`Box<dyn Read + Send>`, not a concrete `File`) because the
+real source — a decrypted-payload reader from `guardian-local-repository` —
+may need to keep a scratch-file guard alive alongside the readable handle,
+something a bare `File` cannot represent; the public `push_filesystem_to`/
+`push_database_to` methods accept `impl Read + Send + 'static` and box it
+internally, so callers never see the boxing.
+
+Since `PayloadEntry.byte_length` is already verified against the signed
+manifest before the reader is ever opened, the push pump takes
+`expected_bytes: u64` and fails closed on an **exact** mismatch — too few
+bytes at EOF, not just too many mid-stream — stronger than the pull side's
+ceiling-only check, and it catches a local scratch-file truncation the
+ceiling alone would miss. EOF is signaled by explicitly dropping `ChildStdin`
+once the source is exhausted, on every return path (success, mismatch, or
+I/O error) — that close is what lets the remote command observe EOF and
+exit instead of blocking forever on more input.
+
+A cross-platform adversarial test (`killing_a_stalled_remote_mid_push_does_
+not_hang_the_pump`) verifies that killing a stalled remote mid-push does not
+hang the pump thread on either Windows or Linux — Unix `write()`-into-a
+-closed-pipe behavior on `child.kill()` is well understood, but the
+equivalent Windows `TerminateProcess`-vs-pending-`WriteFile` interaction was
+verified explicitly rather than assumed.
+
+### Orchestration: a new sibling crate `guardian-deploy`
+
+`guardian-capture`'s Cargo.toml already depends on both
+`guardian-local-repository` and `guardian-ssh`, so nothing in the dependency
+graph forces a new crate — the reason is reviewability. For the project's
+most security-sensitive feature, "everything capable of mutating a remote
+server" should be enumerable from one crate's directory listing, not mixed
+into a crate whose name and doc comments promise read-only, pull-direction
+behavior. This also costs no real duplication: the profile-to-(host, user,
+identity) resolution block was already copy-pasted between
+`FilesystemCaptureComposition` and `EmbeddedDatabaseCaptureComposition`,
+both in `guardian-capture` — keeping deploy there would not have saved that
+duplication either. `guardian-vault` (ADR 0006) is direct precedent for "new
+distinct capability gets its own crate."
+
+`DeploymentComposition::plan` touches the network once (a target-absence
+preflight probe) to give the operator early feedback before they ever type
+the confirmation phrase — a deliberate divergence from restore's fully
+-offline `plan_restore`, since deploy's plan step is only useful if it can
+say something about the destination. `DeploymentComposition::execute`
+re-derives the plan from scratch internally and never accepts one as
+trusted input, mirroring `execute_restore`'s own discipline.
+
+## Alternatives rejected
+
+- **Reusing `restore`'s CLI verbs** (`restore plan|execute` with a "remote"
+  mode): `restore`'s `--destination` flag is already documented and tested
+  as an absolute *local* path; overloading its meaning for a different
+  action risks real confusion. A separate `deploy` subcommand keeps both
+  contracts unambiguous.
+- **Extending `RestorePlan` with a destination enum** (local path vs. remote
+  profile+path): forces a local-only type (`PathBuf`) and a remote-only
+  concept (target profile) into one struct for two different consumers.
+  `DeploymentPlan` duplicates `RestorePlan::build`'s small (~15-line)
+  payload-selection logic via a shared `select_payloads` helper instead —
+  cheaper than the coupling a shared plan type would introduce.
+- **`scp`/`sftp`/an SSH client library** instead of piping through the
+  existing reviewed OpenSSH argv invocation: would introduce a second
+  code path for host-key pinning, timeouts, and argument construction,
+  duplicating (and risking drift from) `arguments_for_command`'s already
+  -reviewed flag set. Piping a stream into a fixed, reviewed remote command
+  over the same `SystemOpenSsh` invocation keeps one reviewed code path for
+  every remote command this project runs, pull or push.
+
+## Consequences
+
+A backup can now be pushed onto a new/clean VDS end to end (plan → typed
+confirmation → push, with a persisted audit trail), closing the last major
+gap against the product's own stated golden path.
+
+Explicitly not delivered by this slice, and not blocking it: diff/dry-run
+file-level preview, staged switch-over, rollback, signed report, service
+stop/start orchestration, database-aware live cutover, cross-version format
+compatibility, desktop UI, an explicit same-host override flag, and
+consolidating the three pre-existing `valid_remote_root`-shaped duplicates
+into a shared type now that `RemoteTargetPath` exists as a precedent.

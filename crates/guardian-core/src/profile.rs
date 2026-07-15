@@ -1,7 +1,16 @@
 use crate::{CredentialId, ProfileId};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+/// A stable, displayable fingerprint for a pinned host key, shared by every
+/// surface that needs to show or compare host identities (profile
+/// enrollment UI, and the deploy same-source-host guard).
+#[must_use]
+pub fn host_key_fingerprint(public_key_base64: &str) -> String {
+    format!("SHA256:{:x}", Sha256::digest(public_key_base64.as_bytes()))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]

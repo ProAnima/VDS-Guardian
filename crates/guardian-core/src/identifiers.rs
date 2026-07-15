@@ -112,6 +112,50 @@ impl<'de> Deserialize<'de> for ArchivePath {
     }
 }
 
+/// An absolute POSIX path on a *remote* deploy target host — deliberately not
+/// a `PathBuf`, so it can never be validated with the local host's own path
+/// semantics (relevant on Windows, where `Path::is_absolute()` means
+/// something entirely different from "absolute on the remote Linux VDS").
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct RemoteTargetPath(String);
+
+impl RemoteTargetPath {
+    pub fn parse(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        let value = value.into();
+        // The mirror image of PayloadPath's "must be relative": this path is
+        // written on a remote host, so it must be absolute, and (unlike
+        // guardian-ssh's capture-root validation) bare "/" is rejected too —
+        // a deploy target is a path that must not already exist, and "/"
+        // always does.
+        let valid = value.starts_with('/')
+            && value.len() <= 1_024
+            && !value.contains(['\0', '\n', '\r', '\\'])
+            && value
+                .split('/')
+                .skip(1)
+                .all(|segment| !matches!(segment, "" | "." | ".."));
+        valid
+            .then_some(Self(value))
+            .ok_or(IdentifierError::InvalidRemoteTargetPath)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for RemoteTargetPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(serde::de::Error::custom)
+    }
+}
+
 impl<'de> Deserialize<'de> for PayloadPath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -212,13 +256,15 @@ pub enum IdentifierError {
     InvalidPayloadPath,
     #[error("archive path must be a safe slash-separated relative path")]
     InvalidArchivePath,
+    #[error("remote target path must be a safe absolute POSIX path")]
+    InvalidRemoteTargetPath,
     #[error("timestamp must use UTC second precision: YYYY-MM-DDTHH:MM:SSZ")]
     InvalidTimestamp,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ArchivePath, BackupId, PayloadPath, Timestamp};
+    use super::{ArchivePath, BackupId, PayloadPath, RemoteTargetPath, Timestamp};
 
     #[test]
     fn identifiers_reject_path_syntax() {
@@ -253,5 +299,29 @@ mod tests {
     #[test]
     fn deserialization_cannot_bypass_path_validation() {
         assert!(serde_json::from_str::<PayloadPath>(r#""../escape""#).is_err());
+    }
+
+    #[test]
+    fn remote_target_paths_must_be_absolute_and_fail_closed() {
+        for hostile in [
+            "",
+            "relative",
+            "../x",
+            "/",
+            "//srv",
+            "/srv/",
+            "/srv/../x",
+            "/srv/./x",
+            "/srv\\app",
+            "/srv\napp",
+            "/srv\rapp",
+            "/srv\0app",
+        ] {
+            assert!(
+                RemoteTargetPath::parse(hostile).is_err(),
+                "accepted {hostile:?}"
+            );
+        }
+        assert!(RemoteTargetPath::parse("/srv/app").is_ok());
     }
 }

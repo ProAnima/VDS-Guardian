@@ -5,6 +5,7 @@ mod audit;
 mod capture;
 mod database;
 mod database_connection;
+mod deploy;
 mod docker;
 mod embedded_database;
 mod enroll_profile;
@@ -39,6 +40,7 @@ pub use database_connection::{
     DatabaseServerVersionProbeError, DatabaseServerVersionProbePort, VerifyDatabaseConnectionError,
     VerifyDatabaseConnectionUseCase,
 };
+pub use deploy::{DeploymentPlan, DeploymentPlanError};
 pub use docker::{
     DiscoverDockerInventoryError, DiscoverDockerInventoryUseCase, DockerContainer,
     DockerContainerState, DockerHealth, DockerInventory, DockerInventoryError, DockerInventoryPort,
@@ -54,7 +56,7 @@ pub use host_trust::{
 };
 pub use identifiers::{
     ArchivePath, BackupId, CredentialId, DatabaseId, IdentifierError, PayloadPath, PlanId,
-    ProfileId, RepositoryId, RunId, Timestamp,
+    ProfileId, RemoteTargetPath, RepositoryId, RunId, Timestamp,
 };
 pub use manifest::{
     ConsistencyLevel, Manifest, ManifestError, PayloadEncryption, PayloadEntry, PlanReference,
@@ -65,7 +67,7 @@ pub use preflight::{
     PreflightSshCaptureError, PreflightSshCaptureUseCase, SshCapabilityProbeError,
     SshCapabilityProbePort, SshCaptureCapabilities,
 };
-pub use profile::{HostPin, ProfileError, SshEndpoint, VdsProfile};
+pub use profile::{HostPin, ProfileError, SshEndpoint, VdsProfile, host_key_fingerprint};
 pub use profile_port::{ProfileStorePort, ProfileStorePortError};
 pub use restore::{RestorePlan, RestorePlanError};
 pub use retention::{

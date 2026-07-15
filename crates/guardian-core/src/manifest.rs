@@ -237,6 +237,42 @@ impl PayloadEntry {
     }
 }
 
+/// Selects the single required filesystem payload and the optional database
+/// payload from a manifest — shared by `RestorePlan::build` and
+/// `DeploymentPlan::build`, which apply identical selection rules to two
+/// otherwise-unrelated plan types.
+pub(crate) fn select_payloads(
+    manifest: &Manifest,
+) -> Result<(PayloadPath, Option<PayloadPath>), PayloadSelectionError> {
+    let mut filesystem_payloads = manifest
+        .payloads
+        .iter()
+        .filter(|payload| payload.media_type == "application/zstd")
+        .map(|payload| payload.path.clone())
+        .collect::<Vec<_>>();
+    if filesystem_payloads.len() != 1 {
+        return Err(PayloadSelectionError::NoFilesystemPayload);
+    }
+    let mut database_payloads = manifest
+        .payloads
+        .iter()
+        .filter(|payload| payload.logical_role == "database")
+        .map(|payload| payload.path.clone())
+        .collect::<Vec<_>>();
+    if database_payloads.len() > 1 {
+        return Err(PayloadSelectionError::AmbiguousDatabasePayload);
+    }
+    Ok((filesystem_payloads.remove(0), database_payloads.pop()))
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub(crate) enum PayloadSelectionError {
+    #[error("backup has no supported filesystem payload")]
+    NoFilesystemPayload,
+    #[error("backup has more than one database payload")]
+    AmbiguousDatabasePayload,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PayloadEncryption {

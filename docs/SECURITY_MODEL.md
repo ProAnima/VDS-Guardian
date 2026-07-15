@@ -27,6 +27,7 @@
 4. Staging directory to sealed repository.
 5. Sealed repository to restore target.
 6. Installed binary to update/release infrastructure.
+7. Sealed repository to remote deploy target (a new/different VDS).
 
 ## Mandatory controls
 
@@ -270,6 +271,26 @@ clears that acknowledgement.
 - Database restore targets a new database/container first where practical.
 - Hooks captured from the server are data, never automatically executable.
 
+### Deploy safety
+
+- Deploy targets a *different*, separately-enrolled, host-key-pinned profile
+  than the one the backup was captured from — blocked on both a matching
+  profile ID and a matching pinned host-key fingerprint (ADR 0007).
+- The remote path must be currently absent; both push commands extract or
+  write into a sibling temp path and atomically rename into place only on
+  full success, so an interrupted push never leaves a partially-written
+  target and a retry is never blocked by the push's own prior failure.
+- Each payload's manifest signature and checksums are re-verified
+  immediately before that payload is pushed, not once for the whole
+  operation, since the two pushes are network-bound and can each run for
+  minutes.
+- Requires an exact confirmation phrase, computed from the backup ID, the
+  target profile ID, and the target path together, before any push begins.
+- Every deploy attempt is recorded to the repository's audit log at
+  attempted/completed/failed states, keyed by a fresh identifier per
+  invocation so retries never collide with or silently overwrite a prior
+  attempt's record.
+
 ### UI and local API
 
 - Tauri capabilities are allowlist-based. No generic shell or filesystem plugin
@@ -295,6 +316,15 @@ signing material is never exported with ordinary settings.
   unrecoverable but checksum-valid snapshot.
 - Docker image tags are mutable; recovery plans should record digests and retain
   Compose/env material securely.
+- Deploy's "target verified absent" check is a check against a remote
+  filesystem outside Guardian's exclusive control, not a guarantee about the
+  instant of the final atomic rename; the mitigation bounds the damage
+  (never clobbers a value that raced into the path) rather than eliminating
+  the race outright.
+- If a deploy's remote host crashes before its own cleanup trap runs, an
+  orphaned sibling temp path can be left behind next to the target — never
+  a partial target itself, since the atomic rename is the only way content
+  reaches the real path.
 
 These risks are addressed operationally through independent nodes, least
 privilege, offline/off-site copies, signed releases, and regular clean-room

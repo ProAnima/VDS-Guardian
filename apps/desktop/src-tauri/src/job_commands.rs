@@ -11,7 +11,6 @@ use guardian_signing::SigningIdentityManager;
 use guardian_ssh::SystemOpenSsh;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -90,7 +89,9 @@ fn run_blocking(
         },
         SourceIdentity {
             profile_id: profile.profile_id.clone(),
-            host_key_fingerprint: fingerprint(&profile.endpoint.host_pin.public_key_base64),
+            host_key_fingerprint: guardian_core::host_key_fingerprint(
+                &profile.endpoint.host_pin.public_key_base64,
+            ),
         },
         PlanReference {
             plan_id: plan.plan.plan_id.clone(),
@@ -147,10 +148,6 @@ fn random_id(prefix: &str) -> String {
             .collect::<String>()
     )
 }
-fn fingerprint(key: &str) -> String {
-    format!("SHA256:{:x}", Sha256::digest(key.as_bytes()))
-}
-
 fn now_timestamp() -> Result<Timestamp, CaptureJobFailure> {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)

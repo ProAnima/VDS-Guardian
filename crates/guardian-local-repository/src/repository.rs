@@ -8,7 +8,8 @@ use crate::staging::{StagingBackup, associated_data};
 use fs2::FileExt;
 use guardian_archive::{ArchiveLimits, decompress_zstd_file, extract_tar_zstd};
 use guardian_core::{
-    BackupId, ManifestVerifier, PayloadPath, RepositoryId, RestorePlan, RunId, SecretStore,
+    BackupId, ManifestVerifier, PayloadPath, ProfileId, RepositoryId, RestorePlan, RunId,
+    SecretStore,
 };
 use guardian_encryption::{PayloadKey, decrypt_reader_to};
 use serde::{Deserialize, Serialize};
@@ -247,6 +248,19 @@ impl LocalRepository {
         trusted_inventory(&self.backups_root(), verifier)
     }
 
+    /// Re-verifies a sealed backup's signature and payload checksums fresh
+    /// and returns its manifest. Used by deploy planning, which — unlike
+    /// `plan_restore` — needs the full manifest (payload list, source
+    /// identity) rather than a pre-built `RestorePlan`.
+    pub fn load_verified_manifest(
+        &self,
+        backup_id: &BackupId,
+        verifier: &dyn ManifestVerifier,
+    ) -> Result<guardian_core::Manifest, RepositoryError> {
+        let _lock = self.acquire_lock()?;
+        load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)
+    }
+
     pub fn plan_restore(
         &self,
         backup_id: &BackupId,
@@ -297,6 +311,57 @@ impl LocalRepository {
             )?;
         }
         Ok(plan)
+    }
+
+    /// Opens a decrypted, still-compressed reader for one payload of one
+    /// sealed backup, for a remote deploy push. Re-verifies the manifest's
+    /// signature and checksums fresh on *every* call rather than trusting a
+    /// previously-built plan — deploy's two payload pushes are network-bound
+    /// and can each run for minutes, a materially larger time-of-check to
+    /// time-of-use window than local restore's back-to-back extractions, so
+    /// each payload gets its own fresh verification immediately before it is
+    /// read.
+    pub fn open_deploy_payload_reader(
+        &self,
+        backup_id: &BackupId,
+        payload_path: &PayloadPath,
+        verifier: &dyn ManifestVerifier,
+        secrets: &dyn SecretStore,
+    ) -> Result<impl std::io::Read + Send + use<>, RepositoryError> {
+        let _lock = self.acquire_lock()?;
+        let backup_root = self.backups_root().join(backup_id.as_str());
+        let manifest = load_verified_manifest(&backup_root, verifier)?;
+        let (payload, encryption) = resolve_payload_file(&backup_root, &manifest, payload_path)?;
+        decrypted_payload_reader(
+            &payload,
+            payload_path,
+            encryption.as_ref(),
+            &manifest.backup_id,
+            secrets,
+            &self.restore_scratch_root(),
+        )
+    }
+
+    pub fn write_deploy_audit(
+        &self,
+        run_id: &RunId,
+        state: &'static str,
+        backup_id: &BackupId,
+        target_profile_id: &ProfileId,
+    ) -> Result<(), RepositoryError> {
+        ensure_directory(&self.audit_root())?;
+        let record = DeployAuditRecord {
+            state,
+            run_id,
+            backup_id,
+            target_profile_id,
+        };
+        let path = self
+            .audit_root()
+            .join(format!("deploy-{run_id}-{state}.json"));
+        let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
+        write_new(&path, &bytes)?;
+        sync_parent(&path)
     }
 }
 
@@ -451,6 +516,15 @@ struct CaptureAuditRecord<'a> {
     state: &'static str,
     run_id: &'a RunId,
     backup_id: Option<&'a BackupId>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeployAuditRecord<'a> {
+    state: &'static str,
+    run_id: &'a RunId,
+    backup_id: &'a BackupId,
+    target_profile_id: &'a ProfileId,
 }
 
 #[derive(Serialize)]

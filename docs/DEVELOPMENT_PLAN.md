@@ -165,6 +165,18 @@ an absolute target path, and supported filesystem payloads. It generates an
 exact confirmation phrase but performs no extraction or target mutation. The
 local repository adapter creates it only after re-verifying the sealed backup's
 signature and payload checksums, and rejects an existing target path.
+The "New-host bootstrap assistant" line above is now implemented as a
+CLI-only remote deploy adapter (ADR 0007, `guardian-cli deploy plan|execute`):
+it pushes a sealed backup's filesystem and (if present) database payload onto
+an absent path on a different, separately-enrolled, host-key-pinned profile
+over the existing reviewed SSH invocation, guarded by a target-profile/host
+self-overwrite check, an exact confirmation phrase, and an atomic-rename
+remote command so an interrupted push never leaves a partial target. Each
+payload's manifest signature is re-verified immediately before that payload
+is pushed. Every attempt is recorded to the repository's audit log. Diff/dry
+-run file-level preview, staged switch-over, rollback, a signed report,
+service stop/start orchestration, database-aware live cutover, and desktop
+UI remain open.
 
 ## Milestone 5 — desktop product and scheduling (P1)
 

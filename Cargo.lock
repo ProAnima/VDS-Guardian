@@ -1623,12 +1623,14 @@ dependencies = [
  "fs2",
  "guardian-configuration",
  "guardian-core",
+ "guardian-deploy",
  "guardian-local-repository",
  "guardian-os-keyring",
  "guardian-profile-store",
  "guardian-signing",
  "guardian-ssh",
  "guardian-vault",
+ "rand_core",
  "serde",
  "serde_json",
  "tempfile",
@@ -1663,6 +1665,19 @@ name = "guardian-database"
 version = "0.1.0"
 dependencies = [
  "guardian-core",
+ "guardian-ssh",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "guardian-deploy"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "guardian-core",
+ "guardian-local-repository",
  "guardian-ssh",
  "tempfile",
  "thiserror 2.0.18",
@@ -4649,7 +4664,6 @@ dependencies = [
  "rand_core",
  "serde",
  "serde_json",
- "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

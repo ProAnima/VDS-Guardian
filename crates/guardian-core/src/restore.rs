@@ -1,3 +1,4 @@
+use crate::manifest::{PayloadSelectionError, select_payloads};
 use crate::{BackupId, Manifest, ManifestError, PayloadPath};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -23,24 +24,7 @@ impl RestorePlan {
         if !destination.is_absolute() {
             return Err(RestorePlanError::UnsafeDestination);
         }
-        let mut filesystem_payloads = manifest
-            .payloads
-            .iter()
-            .filter(|payload| payload.media_type == "application/zstd")
-            .map(|payload| payload.path.clone())
-            .collect::<Vec<_>>();
-        if filesystem_payloads.len() != 1 {
-            return Err(RestorePlanError::NoFilesystemPayload);
-        }
-        let mut database_payloads = manifest
-            .payloads
-            .iter()
-            .filter(|payload| payload.logical_role == "database")
-            .map(|payload| payload.path.clone())
-            .collect::<Vec<_>>();
-        if database_payloads.len() > 1 {
-            return Err(RestorePlanError::AmbiguousDatabasePayload);
-        }
+        let (filesystem_payload, database_payload) = select_payloads(manifest)?;
         let confirmation = format!(
             "RESTORE {} TO {}",
             manifest.backup_id.as_str(),
@@ -49,8 +33,8 @@ impl RestorePlan {
         Ok(Self {
             backup_id: manifest.backup_id.clone(),
             destination,
-            filesystem_payload: filesystem_payloads.remove(0),
-            database_payload: database_payloads.pop(),
+            filesystem_payload,
+            database_payload,
             confirmation,
         })
     }
@@ -79,4 +63,13 @@ pub enum RestorePlanError {
     AmbiguousDatabasePayload,
     #[error("exact restore confirmation is required")]
     ConfirmationRequired,
+}
+
+impl From<PayloadSelectionError> for RestorePlanError {
+    fn from(error: PayloadSelectionError) -> Self {
+        match error {
+            PayloadSelectionError::NoFilesystemPayload => Self::NoFilesystemPayload,
+            PayloadSelectionError::AmbiguousDatabasePayload => Self::AmbiguousDatabasePayload,
+        }
+    }
 }

@@ -57,7 +57,10 @@ independence and complicates deletion and recovery.
 - `formatVersion`
 - `backupId`, `runId`, `createdAt`, `sealedAt`
 - producer name/version/platform
-- source profile ID and pinned host-key fingerprint (not hostname secrets)
+- source profile ID and pinned host-key fingerprint (not hostname secrets) —
+  a frozen record of what was captured; unrelated to which profile a later
+  remote deploy targets (ADR 0007), which is supplied at deploy time and
+  explicitly checked against these two fields to block self-overwrite
 - plan ID/version/digest
 - consistency level and quiesce results
 - payload entries: logical role, relative path, byte length, SHA-256, media type

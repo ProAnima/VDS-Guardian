@@ -9,6 +9,7 @@ members = [
   "crates/guardian-core",
   "crates/guardian-configuration",
   "crates/guardian-database",
+  "crates/guardian-deploy",
   "crates/guardian-docker",
   "crates/guardian-profile-store",
   "crates/guardian-local-repository",
