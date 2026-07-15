@@ -10,9 +10,11 @@ Milestone 1: domain and local repository. Simulated-source repository and
 signing slices implement isolated staging, SHA-256 verification, golden manifest
 fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
 atomic seal, journaled signing enrollment, verified whole-directory retention,
-and a desktop signing-identity setup screen. A low-level pinned system-OpenSSH
-capture adapter exists, but no live SSH backup workflow or restore workflow is
-implemented and neither may be represented as production-ready. Retention
+and a desktop signing-identity setup screen. A pinned system-OpenSSH capture
+workflow now seals encrypted format-v2 filesystem backups, and verified
+filesystem restores can extract them into a new destination. Neither is
+production-ready: cancellation, clean-room drills, safety backup/rollback, and
+other P0 gates remain open. Retention
 power-loss reconciliation, a deterministic tar.zst writer, and a streaming
 tar.zst archive inspector are implemented, but extraction, full archive
 hostility coverage, and restore drills remain open. The signing screen shows status and requires an

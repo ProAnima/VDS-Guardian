@@ -51,10 +51,13 @@ Adapters will be added by capability, not bundled into the domain crate:
   a streaming adapter, then registers the regular file and hashes it from disk
   before it can enter a manifest.
 - Secret storage backed by Windows Credential Manager and Linux Secret Service.
-- Tar/Zstandard archive writer and hostile-input-safe reader. The initial
-  `guardian-archive` adapter emits deterministic tar.zst streams and performs
-  streaming inspection; extraction remains a later capability.
-- Database adapters for PostgreSQL/MySQL and Docker-aware discovery/export.
+- Tar/Zstandard archive writer and hostile-input-safe reader. The
+  `guardian-archive` adapter emits deterministic tar.zst streams, performs
+  streaming inspection, and extracts only into a new directory after path,
+  type, and resource-limit checks.
+- An explicit application-consistent embedded-database snapshot adapter and
+  Docker-aware discovery/export. PostgreSQL/MySQL server adapters are deferred
+  from the initial product.
 - Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
 
 Implemented adapters are split into `guardian-local-repository`,
@@ -119,10 +122,12 @@ Restore is a separate use case, not "backup in reverse":
 6. Run health probes and emit a signed restore report.
 7. Preserve the previous deployment until rollback expiry.
 
-The initial restore-planning slice accepts only a sealed manifest and an
-absolute target path. It produces an exact confirmation phrase and lists only
-supported filesystem payloads. It does not extract data or mutate a target;
-those actions remain separate, approval-gated steps.
+The initial restore slice accepts only a sealed manifest and an absolute new
+target path. It produces an exact confirmation phrase, re-verifies signature
+and payload digest at execution, and then extracts only a supported filesystem
+archive. Encrypted format-v2 payloads resolve their key through the secret-store
+port and are authenticated before extraction. Safety backup, switch-over,
+rollback, health probes, and signed restore reports remain separate gates.
 
 The local-repository adapter reloads and verifies the manifest signature and
 every payload checksum immediately before it produces this plan. It rejects an

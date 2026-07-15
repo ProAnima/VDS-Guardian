@@ -130,6 +130,51 @@ fn interrupted_staging_is_recovered_to_quarantine() -> TestResult {
 }
 
 #[test]
+fn recover_abandoned_staging_ignores_the_restore_scratch_directory() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let staging = repository.begin_staging(RunId::parse("run-abandoned")?)?;
+    drop(staging);
+    assert_eq!(repository.recover_abandoned_staging(Duration::ZERO)?, 1);
+    assert!(repository.root().join("staging/restore").is_dir());
+    Ok(())
+}
+
+#[test]
+fn list_sealed_backups_returns_only_verified_sealed_backups() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let signer = TestSigner::new();
+    assert!(repository.list_sealed_backups(&signer)?.is_empty());
+    let run_id = RunId::parse("run-list")?;
+    let staging = repository.begin_staging(run_id.clone())?;
+    let payload = staging.write_payload(
+        "filesystem",
+        PayloadPath::parse("payload/filesystem-000.tar.zst")?,
+        "application/zstd",
+        b"listed backup bytes",
+    )?;
+    let mut manifest = manifest("backup-list", run_id)?;
+    manifest.add_payload(payload)?;
+    staging.seal(manifest, timestamp("2026-07-13T12:05:00Z")?, &signer)?;
+    let inventory = repository.list_sealed_backups(&signer)?;
+    assert_eq!(inventory.len(), 1);
+    assert_eq!(inventory[0].backup_id.as_str(), "backup-list");
+    Ok(())
+}
+
+#[test]
+fn recover_abandoned_restores_removes_only_stale_scratch_files() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let scratch = repository.root().join("staging/restore");
+    fs::write(scratch.join("stale.tmp"), b"leftover plaintext")?;
+    assert_eq!(repository.recover_abandoned_restores(Duration::ZERO)?, 1);
+    assert!(!scratch.join("stale.tmp").exists());
+    Ok(())
+}
+
+#[test]
 fn payload_writes_cannot_escape_the_payload_directory() -> TestResult {
     let root = TestRoot::new()?;
     let repository = repository(&root)?;

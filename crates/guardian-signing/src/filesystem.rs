@@ -126,10 +126,22 @@ pub(crate) fn remove_regular(path: &Path) -> Result<(), IdentityError> {
 }
 
 pub(crate) fn sync_parent(_path: &Path) -> Result<(), IdentityError> {
+    let parent = _path.parent().ok_or(IdentityError::UnsafeFilesystemEntry)?;
     #[cfg(unix)]
     {
-        let parent = _path.parent().ok_or(IdentityError::UnsafeFilesystemEntry)?;
         File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|source| IdentityError::io("sync signing metadata directory", source))?;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(parent)
             .and_then(|directory| directory.sync_all())
             .map_err(|source| IdentityError::io("sync signing metadata directory", source))?;
     }

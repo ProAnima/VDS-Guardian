@@ -32,6 +32,7 @@ impl FilesystemCaptureComposition<'_> {
         signer: &dyn ManifestSigner,
     ) -> Result<SealedBackup, CaptureUseCaseError> {
         self.validate_profile(&request.capture)?;
+        self.require_encrypted_payload_path(&request.capture)?;
         self.require_preflight()?;
         self.require_disk_budget()?;
         let host = PinnedHost::parse(
@@ -47,7 +48,11 @@ impl FilesystemCaptureComposition<'_> {
             SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id).map_err(
                 |_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential),
             )?;
-        let storage = LocalRepositoryStorageAdapter::new(self.repository);
+        let storage = LocalRepositoryStorageAdapter::encrypted(
+            self.repository,
+            request.manifest.backup_id.clone(),
+            self.credentials,
+        );
         let capture = PinnedSshCaptureAdapter {
             ssh: self.ssh,
             host: &host,
@@ -78,6 +83,20 @@ impl FilesystemCaptureComposition<'_> {
         self.profile
             .validate()
             .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::InvalidProfile))
+    }
+
+    fn require_encrypted_payload_path(
+        &self,
+        request: &FilesystemCaptureRequest,
+    ) -> Result<(), CaptureUseCaseError> {
+        request
+            .payload_path
+            .as_str()
+            .ends_with(".enc")
+            .then_some(())
+            .ok_or(CaptureUseCaseError::Request(
+                CaptureRequestError::InvalidPayloadPath,
+            ))
     }
 
     fn require_preflight(&self) -> Result<(), CaptureUseCaseError> {
@@ -147,6 +166,36 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn capture_rejects_a_payload_path_without_the_encryption_suffix()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-002")?)?;
+        let profile = profile()?;
+        let audit = NoopAudit;
+        let composition = FilesystemCaptureComposition {
+            repository: &repository,
+            ssh: &SystemOpenSsh::default(),
+            profile: &profile,
+            credentials: &NoopCredentialStore,
+            audit: &audit,
+            archive_limits: ArchiveLimits::conservative(),
+        };
+        let request = FilesystemCaptureRequest {
+            run_id: RunId::parse("run-002")?,
+            profile_id: profile.profile_id.clone(),
+            roots: vec!["/srv/app".to_owned()],
+            payload_path: PayloadPath::parse("filesystem.tar.zst")?,
+        };
+        assert!(matches!(
+            composition.require_encrypted_payload_path(&request),
+            Err(CaptureUseCaseError::Request(
+                CaptureRequestError::InvalidPayloadPath
+            ))
+        ));
+        Ok(())
+    }
+
     fn profile() -> Result<VdsProfile, Box<dyn std::error::Error>> {
         let mut blob = Vec::new();
         blob.extend_from_slice(&11_u32.to_be_bytes());
@@ -179,6 +228,10 @@ mod tests {
         }
 
         fn store(&self, _: &CredentialId, _: &SecretValue) -> Result<(), SecretStoreError> {
+            Ok(())
+        }
+
+        fn delete(&self, _: &CredentialId) -> Result<(), SecretStoreError> {
             Ok(())
         }
     }

@@ -251,6 +251,15 @@ impl SecretStore for MemoryStore {
         values.insert(id.as_str().to_owned(), secret.expose().to_vec());
         Ok(())
     }
+
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+        let mut values = self
+            .values
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        values.remove(id.as_str());
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -297,6 +306,15 @@ impl SecretStore for BlockingStore {
         *value = Some(secret.expose().to_vec());
         Ok(())
     }
+
+    fn delete(&self, _id: &CredentialId) -> Result<(), SecretStoreError> {
+        let mut value = self
+            .value
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        *value = None;
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -325,6 +343,15 @@ impl SecretStore for FailReadbackOnceStore {
             .map_err(|_| SecretStoreError::OperationFailed)?;
         state.value = Some(secret.expose().to_vec());
         state.fail_next_load = true;
+        Ok(())
+    }
+
+    fn delete(&self, _id: &CredentialId) -> Result<(), SecretStoreError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        state.value = None;
         Ok(())
     }
 }

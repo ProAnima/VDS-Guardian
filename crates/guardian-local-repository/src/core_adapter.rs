@@ -1,13 +1,19 @@
 use crate::{LocalRepository, RepositoryError, StagingBackup};
 use guardian_core::{
-    BackupStoragePort, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId,
-    SealedBackup as CoreSealedBackup, StoragePortError, Timestamp,
+    BackupId, BackupStoragePort, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId,
+    SealedBackup as CoreSealedBackup, SecretStore, StoragePortError, Timestamp,
 };
 use std::{path::PathBuf, sync::Mutex};
 
 pub struct LocalRepositoryStorageAdapter<'repository> {
     repository: &'repository LocalRepository,
     staging: Mutex<Option<StagingBackup<'repository>>>,
+    encryption: Option<EncryptionContext<'repository>>,
+}
+
+struct EncryptionContext<'a> {
+    backup_id: BackupId,
+    secrets: &'a dyn SecretStore,
 }
 
 impl<'repository> LocalRepositoryStorageAdapter<'repository> {
@@ -16,6 +22,20 @@ impl<'repository> LocalRepositoryStorageAdapter<'repository> {
         Self {
             repository,
             staging: Mutex::new(None),
+            encryption: None,
+        }
+    }
+
+    #[must_use]
+    pub fn encrypted(
+        repository: &'repository LocalRepository,
+        backup_id: BackupId,
+        secrets: &'repository dyn SecretStore,
+    ) -> Self {
+        Self {
+            repository,
+            staging: Mutex::new(None),
+            encryption: Some(EncryptionContext { backup_id, secrets }),
         }
     }
 }
@@ -59,11 +79,21 @@ impl BackupStoragePort for LocalRepositoryStorageAdapter<'_> {
             .staging
             .lock()
             .map_err(|_| StoragePortError::Unavailable)?;
-        staging
-            .as_ref()
-            .ok_or(StoragePortError::Rejected)?
-            .register_payload_file(role, path, media_type)
-            .map_err(map_error)
+        let staging = staging.as_ref().ok_or(StoragePortError::Rejected)?;
+        match &self.encryption {
+            Some(context) => staging
+                .encrypt_and_register_payload_file(
+                    role,
+                    path,
+                    media_type,
+                    &context.backup_id,
+                    context.secrets,
+                )
+                .map_err(map_error),
+            None => staging
+                .register_payload_file(role, path, media_type)
+                .map_err(map_error),
+        }
     }
 
     fn seal(

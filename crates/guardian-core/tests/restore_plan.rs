@@ -14,6 +14,7 @@ fn restore_plan_requires_a_sealed_backup_and_exact_confirmation()
         byte_length: 1,
         sha256: "a".repeat(64),
         media_type: "application/zstd".to_owned(),
+        encryption: None,
     })?;
     manifest.prepare_for_seal(
         Timestamp::parse("2026-07-14T20:00:00Z")?,

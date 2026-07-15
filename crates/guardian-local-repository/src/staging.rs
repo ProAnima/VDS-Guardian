@@ -4,12 +4,15 @@ use crate::repository::{LocalRepository, RepositoryLock};
 use crate::signature_file::DiskSignature;
 use crate::verification::verify_staged_payloads;
 use guardian_core::{
-    BackupId, Manifest, ManifestSigner, PayloadEntry, PayloadPath, RunId, Timestamp,
-    VerificationState,
+    BackupId, CredentialId, Manifest, ManifestSigner, PayloadEncryption, PayloadEntry, PayloadPath,
+    RunId, SecretStore, SecretValue, Timestamp, VerificationState,
 };
+use guardian_encryption::{ALGORITHM, ENVELOPE_VERSION, PayloadKey, encrypt_reader_to};
+use rand_core::{OsRng, RngCore};
 use serde::Serialize;
-use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::{fs, fs::OpenOptions, io::BufReader};
 
 const SIGNATURE_ALGORITHM: &str = "Ed25519";
 
@@ -18,12 +21,30 @@ pub struct StagingBackup<'repository> {
     pub(crate) run_id: RunId,
     pub(crate) path: PathBuf,
     pub(crate) _lock: RepositoryLock,
+    pub(crate) payload_credentials: Mutex<Vec<(CredentialId, &'repository dyn SecretStore)>>,
 }
 
-impl StagingBackup<'_> {
+impl<'repository> StagingBackup<'repository> {
     pub fn discard(self) -> Result<(), RepositoryError> {
+        let payload_root = self.path.join("payload");
+        if payload_root.exists() {
+            fs::remove_dir_all(&payload_root)
+                .map_err(|source| RepositoryError::io("remove unsealed payloads", source))?;
+        }
+        self.delete_pending_credentials();
         self.repository.quarantine(&self.run_id, "capture_failed")?;
         Ok(())
+    }
+
+    /// Best-effort: revokes any payload encryption key registered so far in
+    /// this run so a discarded or failed-to-seal capture never leaves a live,
+    /// unreferenced key behind in the credential store.
+    fn delete_pending_credentials(&self) {
+        if let Ok(pending) = self.payload_credentials.lock() {
+            for (id, secrets) in pending.iter() {
+                let _ = secrets.delete(id);
+            }
+        }
     }
 
     pub fn write_payload(
@@ -73,6 +94,46 @@ impl StagingBackup<'_> {
         .map_err(RepositoryError::from)
     }
 
+    pub fn encrypt_and_register_payload_file(
+        &self,
+        logical_role: impl Into<String>,
+        relative_path: PayloadPath,
+        media_type: impl Into<String>,
+        backup_id: &BackupId,
+        secrets: &'repository dyn SecretStore,
+    ) -> Result<PayloadEntry, RepositoryError> {
+        let target = self.path.join(relative_path.as_str());
+        let metadata = fs::symlink_metadata(&target)
+            .map_err(|source| RepositoryError::io("inspect plaintext staged payload", source))?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(RepositoryError::UnsafeFilesystemEntry);
+        }
+        let key = PayloadKey::generate();
+        let credential_id = payload_credential_id()?;
+        secrets
+            .store(&credential_id, &SecretValue::new(key.expose().to_vec()))
+            .map_err(|_| RepositoryError::Credential)?;
+        if let Ok(mut pending) = self.payload_credentials.lock() {
+            pending.push((credential_id.clone(), secrets));
+        }
+        let temporary = target.with_extension("encrypting");
+        let header = match encrypt_payload(&target, &temporary, &key, backup_id, &relative_path) {
+            Ok(header) => header,
+            Err(error) => {
+                let _ = fs::remove_file(&temporary);
+                return Err(error);
+            }
+        };
+        fs::remove_file(&target)
+            .map_err(|source| RepositoryError::io("remove plaintext staged payload", source))?;
+        fs::rename(&temporary, &target)
+            .map_err(|source| RepositoryError::io("publish encrypted staged payload", source))?;
+        let encryption =
+            PayloadEncryption::new(ENVELOPE_VERSION, ALGORITHM, credential_id, &header.nonce)?;
+        let entry = self.register_payload_file(logical_role, relative_path, media_type)?;
+        Ok(entry.encrypted(encryption)?)
+    }
+
     pub fn seal(
         self,
         mut manifest: Manifest,
@@ -83,6 +144,7 @@ impl StagingBackup<'_> {
         match result {
             Ok(sealed) => Ok(sealed),
             Err(error) => {
+                self.delete_pending_credentials();
                 self.repository.quarantine(&self.run_id, "seal_failed")?;
                 Err(error)
             }
@@ -150,6 +212,51 @@ impl StagingBackup<'_> {
             path: destination,
         })
     }
+}
+
+fn encrypt_payload(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    key: &PayloadKey,
+    backup_id: &BackupId,
+    path: &PayloadPath,
+) -> Result<guardian_encryption::EnvelopeHeader, RepositoryError> {
+    let mut input = BufReader::new(
+        fs::File::open(source)
+            .map_err(|error| RepositoryError::io("open plaintext staged payload", error))?,
+    );
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(|error| RepositoryError::io("create encrypted staged payload", error))?;
+    let aad = associated_data(backup_id, path);
+    let header = encrypt_reader_to(key, &mut input, &mut output, &aad)
+        .map_err(|_| RepositoryError::Encryption)?;
+    output
+        .sync_all()
+        .map_err(|error| RepositoryError::io("sync encrypted staged payload", error))?;
+    Ok(header)
+}
+
+pub(crate) fn associated_data(backup_id: &BackupId, path: &PayloadPath) -> Vec<u8> {
+    format!(
+        "{}|{}|{}",
+        backup_id.as_str(),
+        path.as_str(),
+        ENVELOPE_VERSION
+    )
+    .into_bytes()
+}
+
+fn payload_credential_id() -> Result<CredentialId, RepositoryError> {
+    let mut bytes = [0_u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+    let id = bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    CredentialId::parse(format!("payload-{id}")).map_err(|_| RepositoryError::IntegrityFailure)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

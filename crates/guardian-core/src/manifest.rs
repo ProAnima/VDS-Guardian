@@ -1,9 +1,11 @@
-use crate::{BackupId, PayloadPath, PlanId, ProfileId, RunId, Timestamp};
+use crate::{BackupId, CredentialId, PayloadPath, PlanId, ProfileId, RunId, Timestamp};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use thiserror::Error;
 
 pub const CURRENT_FORMAT_VERSION: u32 = 1;
+pub const ENCRYPTED_FORMAT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +56,9 @@ impl Manifest {
         if self.payloads.iter().any(|entry| entry.path == payload.path) {
             return Err(ManifestError::DuplicatePayloadPath);
         }
+        if payload.encryption.is_some() && self.format_version == CURRENT_FORMAT_VERSION {
+            self.format_version = ENCRYPTED_FORMAT_VERSION;
+        }
         self.payloads.push(payload);
         Ok(())
     }
@@ -98,7 +103,10 @@ impl Manifest {
     }
 
     fn validate_common(&self) -> Result<(), ManifestError> {
-        if self.format_version != CURRENT_FORMAT_VERSION {
+        if !matches!(
+            self.format_version,
+            CURRENT_FORMAT_VERSION | ENCRYPTED_FORMAT_VERSION
+        ) {
             return Err(ManifestError::UnsupportedFormatVersion);
         }
         if self.payloads.is_empty() {
@@ -117,6 +125,10 @@ impl Manifest {
         }
         for entry in &self.payloads {
             entry.validate()?;
+            match (self.format_version, entry.encryption.is_some()) {
+                (CURRENT_FORMAT_VERSION, false) | (ENCRYPTED_FORMAT_VERSION, true) => {}
+                _ => return Err(ManifestError::EncryptionPolicy),
+            }
         }
         for warning in &self.warnings {
             validate_label(warning)?;
@@ -174,6 +186,8 @@ pub struct PayloadEntry {
     pub byte_length: u64,
     pub sha256: String,
     pub media_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<PayloadEncryption>,
 }
 
 impl PayloadEntry {
@@ -190,9 +204,16 @@ impl PayloadEntry {
             byte_length,
             sha256: sha256.into(),
             media_type: media_type.into(),
+            encryption: None,
         };
         entry.validate()?;
         Ok(entry)
+    }
+
+    pub fn encrypted(mut self, encryption: PayloadEncryption) -> Result<Self, ManifestError> {
+        self.encryption = Some(encryption);
+        self.validate()?;
+        Ok(self)
     }
 
     fn validate(&self) -> Result<(), ManifestError> {
@@ -203,7 +224,59 @@ impl PayloadEntry {
         validate_label(&self.media_type)?;
         is_sha256(&self.sha256)
             .then_some(())
-            .ok_or(ManifestError::InvalidSha256)
+            .ok_or(ManifestError::InvalidSha256)?;
+        if let Some(encryption) = &self.encryption {
+            encryption.validate()?;
+            self.path
+                .as_str()
+                .ends_with(".enc")
+                .then_some(())
+                .ok_or(ManifestError::EncryptionPolicy)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayloadEncryption {
+    pub envelope_version: u8,
+    pub algorithm: String,
+    pub credential_id: CredentialId,
+    pub nonce_base64: String,
+}
+
+impl PayloadEncryption {
+    pub fn new(
+        envelope_version: u8,
+        algorithm: impl Into<String>,
+        credential_id: CredentialId,
+        nonce: &[u8; 12],
+    ) -> Result<Self, ManifestError> {
+        let encryption = Self {
+            envelope_version,
+            algorithm: algorithm.into(),
+            credential_id,
+            nonce_base64: STANDARD.encode(nonce),
+        };
+        encryption.validate()?;
+        Ok(encryption)
+    }
+
+    pub fn nonce(&self) -> Result<[u8; 12], ManifestError> {
+        let bytes = STANDARD
+            .decode(&self.nonce_base64)
+            .map_err(|_| ManifestError::EncryptionPolicy)?;
+        bytes
+            .try_into()
+            .map_err(|_| ManifestError::EncryptionPolicy)
+    }
+
+    fn validate(&self) -> Result<(), ManifestError> {
+        (self.envelope_version == 1 && self.algorithm == "AES-256-GCM-CHUNKED")
+            .then_some(())
+            .ok_or(ManifestError::EncryptionPolicy)?;
+        self.nonce().map(|_| ())
     }
 }
 
@@ -253,6 +326,8 @@ pub enum ManifestError {
     InvalidLabel,
     #[error("manifest serialization failed")]
     Serialization,
+    #[error("manifest encryption metadata or version policy is invalid")]
+    EncryptionPolicy,
 }
 
 #[cfg(test)]

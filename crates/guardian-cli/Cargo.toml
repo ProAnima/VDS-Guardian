@@ -8,7 +8,9 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+guardian-configuration = { path = "../guardian-configuration" }
 guardian-core.workspace = true
+guardian-local-repository.workspace = true
 guardian-os-keyring = { path = "../guardian-os-keyring" }
 guardian-profile-store = { path = "../guardian-profile-store" }
 guardian-signing = { path = "../guardian-signing" }

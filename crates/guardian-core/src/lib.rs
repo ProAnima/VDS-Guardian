@@ -52,8 +52,8 @@ pub use identifiers::{
     ProfileId, RepositoryId, RunId, Timestamp,
 };
 pub use manifest::{
-    ConsistencyLevel, Manifest, ManifestError, PayloadEntry, PlanReference, Producer,
-    SignatureMetadata, SourceIdentity, VerificationState,
+    ConsistencyLevel, Manifest, ManifestError, PayloadEncryption, PayloadEntry, PlanReference,
+    Producer, SignatureMetadata, SourceIdentity, VerificationState,
 };
 pub use plan::{CapturePlanError, FilesystemCapturePlan};
 pub use preflight::{

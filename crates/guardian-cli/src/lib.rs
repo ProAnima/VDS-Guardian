@@ -1,5 +1,6 @@
 mod credential;
 mod profile;
+mod restore;
 
 use guardian_core::{FoundationStatus, SecretStore};
 use guardian_os_keyring::OsCredentialStore;
@@ -19,6 +20,9 @@ pub fn run(arguments: impl Iterator<Item = OsString>) -> ExitCode {
     }
     if arguments.first().and_then(|value| value.to_str()) == Some("credential") {
         return credential::run(&arguments[1..], &OsCredentialStore);
+    }
+    if arguments.first().and_then(|value| value.to_str()) == Some("restore") {
+        return restore::run(&arguments[1..], &OsCredentialStore);
     }
     match parse(arguments) {
         Ok(Command::Foundation) => write_plain(&FoundationStatus::current()),
@@ -275,6 +279,10 @@ mod tests {
 
         fn store(&self, _id: &CredentialId, _secret: &SecretValue) -> Result<(), SecretStoreError> {
             self.stores.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        fn delete(&self, _id: &CredentialId) -> Result<(), SecretStoreError> {
             Ok(())
         }
     }

@@ -142,20 +142,33 @@ fn restrict_permissions(path: &Path) -> Result<(), SshError> {
 }
 
 #[cfg(windows)]
+fn system32_binary(name: &str) -> std::path::PathBuf {
+    let mut path = std::path::PathBuf::from(
+        std::env::var_os("SystemRoot").unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows")),
+    );
+    path.push("System32");
+    path.push(name);
+    path
+}
+
+#[cfg(windows)]
 fn restrict_windows_permissions(path: &Path) -> Result<(), SshError> {
-    let identity = std::process::Command::new("whoami")
+    let identity = std::process::Command::new(system32_binary("whoami.exe"))
         .arg("/user")
         .output()
         .map_err(|_| SshError::TemporaryIdentityFile)?;
-    let sid = std::str::from_utf8(&identity.stdout)
-        .ok()
-        .and_then(|value| {
-            value
-                .split_ascii_whitespace()
-                .find(|part| part.starts_with("S-1-"))
-        })
+    if !identity.status.success() {
+        return Err(SshError::TemporaryIdentityFile);
+    }
+    // whoami's table header is localized OEM-codepage text on non-English
+    // Windows installs and is not valid UTF-8; decode losslessly and search
+    // for the SID token, which is always plain ASCII regardless of locale.
+    let sid = String::from_utf8_lossy(&identity.stdout)
+        .split_ascii_whitespace()
+        .find(|part| part.starts_with("S-1-"))
+        .map(str::to_owned)
         .ok_or(SshError::TemporaryIdentityFile)?;
-    let hardened = std::process::Command::new("icacls")
+    let hardened = std::process::Command::new(system32_binary("icacls.exe"))
         .arg(path)
         .arg("/inheritance:r")
         .arg("/grant:r")
@@ -172,6 +185,8 @@ fn restrict_windows_permissions(path: &Path) -> Result<(), SshError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    use super::system32_binary;
     use super::{
         OPENSSH_FOOTER, OPENSSH_HEADER, PEM_EC_FOOTER, PEM_EC_HEADER, PEM_PKCS8_FOOTER,
         PEM_PKCS8_HEADER, PEM_RSA_FOOTER, PEM_RSA_HEADER, SecretIdentityFile, validate_private_key,
@@ -204,10 +219,10 @@ mod tests {
             },
             &id,
         )?;
-        let acl = std::process::Command::new("icacls")
+        let acl = std::process::Command::new(system32_binary("icacls.exe"))
             .arg(identity.path())
             .output()?;
-        let rendered = String::from_utf8(acl.stdout)?;
+        let rendered = String::from_utf8_lossy(&acl.stdout).into_owned();
         assert!(acl.status.success());
         assert!(!rendered.contains("(I)"));
         Ok(())
@@ -263,6 +278,10 @@ mod tests {
         }
 
         fn store(&self, _: &CredentialId, _: &SecretValue) -> Result<(), SecretStoreError> {
+            Ok(())
+        }
+
+        fn delete(&self, _: &CredentialId) -> Result<(), SecretStoreError> {
             Ok(())
         }
     }

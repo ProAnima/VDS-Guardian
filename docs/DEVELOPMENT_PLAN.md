@@ -99,7 +99,10 @@ suite; Windows retains the same canonical suite without requiring Docker.
 - Docker/Compose inventory: files, project labels, image digests, networks,
   mounts, secrets references, and health state.
 - Named-volume and bind-mount capture strategies.
-- PostgreSQL and MySQL dump/restore adapters with version compatibility checks.
+- The initial product supports a lightweight embedded database only (SQLite or
+  equivalent application-owned file) through an explicit application-consistent
+  snapshot adapter. PostgreSQL/MySQL server dump and restore adapters are out
+  of scope for the first release.
 - Quiesce hooks are shipped, versioned application adapters; arbitrary remote
   scripts are never executed from captured content.
 - Encrypted payload envelope ADR and implementation.
@@ -126,7 +129,9 @@ can now use that same pinned VDS profile to request a server version from
 remote commands are fixed `psql --no-password` or `mysql --skip-password`
 version queries; unavailable local non-interactive database authorization fails closed. A
 credential-reference connection mode remains modeled but has no adapter yet.
-The dump adapter, fixture stacks, and restore behavior are not implemented yet.
+The lightweight embedded-database snapshot adapter, its fixture drill, and
+restore behavior are not implemented yet. PostgreSQL/MySQL server adapters are
+intentionally deferred rather than release blockers.
 
 ## Milestone 4 — restore engine (P0)
 

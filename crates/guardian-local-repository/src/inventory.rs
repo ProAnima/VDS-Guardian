@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TrustedBackup {
+pub struct TrustedBackup {
     pub backup_id: BackupId,
     pub sealed_at: Timestamp,
 }

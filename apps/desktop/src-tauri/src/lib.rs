@@ -100,6 +100,14 @@ async fn run_capture_plan(
 }
 
 #[tauri::command]
+async fn list_backups(
+    app: tauri::AppHandle,
+    repository_id: String,
+) -> Result<Vec<restore_commands::BackupSummary>, restore_commands::RestoreFailure> {
+    restore_commands::list(app, repository_id).await
+}
+
+#[tauri::command]
 async fn preview_restore(
     app: tauri::AppHandle,
     request: restore_commands::RestoreRequest,
@@ -131,6 +139,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             save_capture_plan,
             list_capture_plans,
             run_capture_plan,
+            list_backups,
             preview_restore,
             execute_restore
         ])

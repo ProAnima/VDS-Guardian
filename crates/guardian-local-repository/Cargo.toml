@@ -11,10 +11,13 @@ repository.workspace = true
 fs2.workspace = true
 guardian-archive.workspace = true
 guardian-core.workspace = true
+guardian-encryption.workspace = true
+rand_core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true

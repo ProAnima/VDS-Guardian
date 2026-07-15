@@ -43,6 +43,12 @@ pub enum RepositoryError {
     RestorePlan(#[source] RestorePlanError),
     #[error("restore extraction failed")]
     RestoreExtraction(#[source] ArchiveError),
+    #[error("payload encryption could not be completed safely")]
+    Encryption,
+    #[error("the operating-system credential store is unavailable")]
+    Credential,
+    #[error("could not restrict a temporary file's permissions to the current user")]
+    PermissionHardening,
     #[error("manifest signing or verification failed")]
     Signing(#[from] SigningError),
     #[error("repository I/O failed during {operation}")]

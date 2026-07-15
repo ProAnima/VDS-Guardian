@@ -9,7 +9,11 @@ inspects tar.zst streams before extraction and can extract only into a newly
 created destination: it accepts only regular files and directories, validates
 every path, applies entry and byte limits, and removes a partial destination on
 failure. It also emits deterministic tar.zst headers for validated paths;
-restore planning and target mutation remain unimplemented. Full plan/item schemas, key rotation
+verified filesystem restores extract only to a new target directory. New live
+filesystem captures use format-v2 encrypted payloads: every `.enc` payload has
+a fresh data key held only in the OS credential store, while the manifest
+records only public envelope metadata. Format-v1 unencrypted backups remain
+readable as an explicit compatibility case. Full plan/item schemas, key rotation
 fixtures, and restore compatibility evidence are still required before this
 contract is declared stable.
 
@@ -53,7 +57,8 @@ independence and complicates deletion and recovery.
 - consistency level and quiesce results
 - payload entries: logical role, relative path, byte length, SHA-256, media type
 - required/optional item results
-- encryption/signature metadata identifiers
+- encryption/signature metadata identifiers; a format-v2 payload includes
+  envelope version, algorithm, credential reference, and base nonce
 - warnings and verification state
 
 The manifest uses canonical JSON for signatures. Secret values, raw environment

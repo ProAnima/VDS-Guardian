@@ -214,5 +214,14 @@ mod tests {
             values.insert(id.as_str().to_owned(), secret.expose().to_vec());
             Ok(())
         }
+
+        fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+            let mut values = self
+                .values
+                .lock()
+                .map_err(|_| SecretStoreError::OperationFailed)?;
+            values.remove(id.as_str());
+            Ok(())
+        }
     }
 }

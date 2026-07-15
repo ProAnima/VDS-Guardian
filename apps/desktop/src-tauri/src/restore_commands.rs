@@ -1,10 +1,10 @@
 use guardian_configuration::RepositoryStore;
 use guardian_core::{BackupId, RepositoryId};
-use guardian_local_repository::LocalRepository;
+use guardian_local_repository::{LocalRepository, TrustedBackup};
 use guardian_os_keyring::OsCredentialStore;
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{ManagedIdentity, SigningIdentityManager};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 #[derive(Debug, Deserialize)]
@@ -31,6 +31,46 @@ pub struct RestoreFailure {
     pub code: &'static str,
     pub message: &'static str,
     pub remediation: &'static str,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupSummary {
+    pub backup_id: String,
+    pub sealed_at: String,
+}
+
+impl From<&TrustedBackup> for BackupSummary {
+    fn from(value: &TrustedBackup) -> Self {
+        Self {
+            backup_id: value.backup_id.as_str().to_owned(),
+            sealed_at: value.sealed_at.as_str().to_owned(),
+        }
+    }
+}
+
+pub async fn list(
+    app: tauri::AppHandle,
+    repository_id: String,
+) -> Result<Vec<BackupSummary>, RestoreFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| RestoreFailure::storage())?;
+    tauri::async_runtime::spawn_blocking(move || list_blocking(root, repository_id))
+        .await
+        .map_err(|_| RestoreFailure::storage())?
+}
+
+fn list_blocking(
+    root: PathBuf,
+    repository_id: String,
+) -> Result<Vec<BackupSummary>, RestoreFailure> {
+    let (repository, identity) = resolve_repository(&root, &repository_id)?;
+    repository
+        .list_sealed_backups(&identity)
+        .map(|inventory| inventory.iter().map(BackupSummary::from).collect())
+        .map_err(|_| RestoreFailure::rejected())
 }
 
 pub async fn preview(
@@ -77,7 +117,13 @@ fn execute_blocking(
         .ok_or_else(RestoreFailure::confirmation)?;
     let (repository, backup_id, identity) = resolve(root, &request)?;
     let plan = repository
-        .execute_restore(&backup_id, &request.destination, confirmation, &identity)
+        .execute_restore(
+            &backup_id,
+            &request.destination,
+            confirmation,
+            &identity,
+            &OsCredentialStore,
+        )
         .map_err(|_| RestoreFailure::rejected())?;
     Ok(summary(plan))
 }
@@ -85,10 +131,18 @@ fn execute_blocking(
 fn resolve(
     root: PathBuf,
     request: &RestoreRequest,
-) -> Result<(LocalRepository, BackupId, guardian_signing::ManagedIdentity), RestoreFailure> {
-    let repository_id =
-        RepositoryId::parse(&request.repository_id).map_err(|_| RestoreFailure::rejected())?;
+) -> Result<(LocalRepository, BackupId, ManagedIdentity), RestoreFailure> {
     let backup_id = BackupId::parse(&request.backup_id).map_err(|_| RestoreFailure::rejected())?;
+    let (repository, identity) = resolve_repository(&root, &request.repository_id)?;
+    Ok((repository, backup_id, identity))
+}
+
+fn resolve_repository(
+    root: &Path,
+    repository_id: &str,
+) -> Result<(LocalRepository, ManagedIdentity), RestoreFailure> {
+    let repository_id =
+        RepositoryId::parse(repository_id).map_err(|_| RestoreFailure::rejected())?;
     let registration = RepositoryStore::at(root.join("repositories"))
         .get(&repository_id)
         .map_err(|_| RestoreFailure::storage())?
@@ -99,7 +153,7 @@ fn resolve(
         .map_err(|_| RestoreFailure::storage())?
         .load_ready(&OsCredentialStore)
         .map_err(|_| RestoreFailure::rejected())?;
-    Ok((repository, backup_id, identity))
+    Ok((repository, identity))
 }
 
 fn summary(plan: guardian_core::RestorePlan) -> RestorePreview {

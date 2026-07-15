@@ -27,12 +27,13 @@ repository = "https://github.com/ProAnima/VDS-Guardian"
 [workspace.dependencies]
 guardian-core = { path = "crates/guardian-core" }
 guardian-archive = { path = "crates/guardian-archive" }
+guardian-encryption = { path = "crates/guardian-encryption" }
 guardian-local-repository = { path = "crates/guardian-local-repository" }
 guardian-ssh = { path = "crates/guardian-ssh" }
 base64 = "0.22"
 aes-gcm = "0.10"
 tar = "0.4"
-ed25519-dalek = { version = "2.2", features = ["rand_core"] }
+ed25519-dalek = { version = "2.2", features = ["rand_core", "zeroize"] }
 fs2 = "0.4"
 keyring = { version = "4.1", default-features = false, features = ["v1"] }
 rand_core = { version = "0.6", features = ["getrandom"] }

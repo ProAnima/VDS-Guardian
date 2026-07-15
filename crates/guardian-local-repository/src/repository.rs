@@ -1,17 +1,23 @@
 use crate::RepositoryError;
-use crate::filesystem::{atomic_write, ensure_directory, sync_parent, write_new};
-use crate::inventory::load_verified_manifest;
+use crate::filesystem::{
+    atomic_write, ensure_directory, restrict_to_owner, sync_parent, write_new,
+};
+use crate::inventory::{TrustedBackup, load_verified_manifest, trusted_inventory};
 use crate::process_lock::ProcessLock;
-use crate::staging::StagingBackup;
+use crate::staging::{StagingBackup, associated_data};
 use fs2::FileExt;
 use guardian_archive::{ArchiveLimits, extract_tar_zstd};
-use guardian_core::{BackupId, ManifestVerifier, RepositoryId, RestorePlan, RunId};
+use guardian_core::{
+    BackupId, ManifestVerifier, PayloadPath, RepositoryId, RestorePlan, RunId, SecretStore,
+};
+use guardian_encryption::{PayloadKey, decrypt_reader_to};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 const REPOSITORY_FORMAT_VERSION: u32 = 1;
+const RESTORE_SCRATCH_DIR_NAME: &str = "restore";
 pub struct LocalRepository {
     root: PathBuf,
     id: RepositoryId,
@@ -56,6 +62,7 @@ impl LocalRepository {
             run_id,
             path,
             _lock: lock,
+            payload_credentials: std::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -73,11 +80,14 @@ impl LocalRepository {
             let metadata = entry
                 .metadata()
                 .map_err(|source| RepositoryError::io("inspect staging entry", source))?;
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| RepositoryError::UnsafeFilesystemEntry)?;
+            if name == RESTORE_SCRATCH_DIR_NAME {
+                continue;
+            }
             if metadata.is_dir() && is_old_enough(&metadata, minimum_age)? {
-                let name = entry
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| RepositoryError::UnsafeFilesystemEntry)?;
                 let run_id =
                     RunId::parse(name).map_err(|_| RepositoryError::UnsafeFilesystemEntry)?;
                 self.quarantine(&run_id, "abandoned")?;
@@ -87,21 +97,36 @@ impl LocalRepository {
         Ok(recovered)
     }
 
+    pub fn recover_abandoned_restores(
+        &self,
+        minimum_age: Duration,
+    ) -> Result<usize, RepositoryError> {
+        let _lock = self.acquire_lock()?;
+        let mut recovered = 0;
+        for entry in fs::read_dir(self.restore_scratch_root())
+            .map_err(|source| RepositoryError::io("list restore scratch files", source))?
+        {
+            let entry = entry
+                .map_err(|source| RepositoryError::io("read restore scratch entry", source))?;
+            let metadata = entry
+                .metadata()
+                .map_err(|source| RepositoryError::io("inspect restore scratch entry", source))?;
+            if metadata.is_file() && is_old_enough(&metadata, minimum_age)? {
+                fs::remove_file(entry.path()).map_err(|source| {
+                    RepositoryError::io("remove abandoned restore scratch file", source)
+                })?;
+                recovered += 1;
+            }
+        }
+        Ok(recovered)
+    }
+
     fn ensure_layout(&self) -> Result<(), RepositoryError> {
         ensure_directory(&self.root)?;
         for name in ["staging", "backups", "quarantine", "audit"] {
-            let path = self.root.join(name);
-            match fs::create_dir(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    ensure_directory(&path)?;
-                }
-                Err(source) => {
-                    return Err(RepositoryError::io("create repository directory", source));
-                }
-            }
+            create_or_verify_directory(&self.root.join(name))?;
         }
-        Ok(())
+        create_or_verify_directory(&self.restore_scratch_root())
     }
 
     fn ensure_metadata(&self) -> Result<(), RepositoryError> {
@@ -174,6 +199,10 @@ impl LocalRepository {
         self.root.join("staging")
     }
 
+    fn restore_scratch_root(&self) -> PathBuf {
+        self.staging_root().join(RESTORE_SCRATCH_DIR_NAME)
+    }
+
     pub(crate) fn backups_root(&self) -> PathBuf {
         self.root.join("backups")
     }
@@ -210,6 +239,14 @@ impl LocalRepository {
         sync_parent(&path)
     }
 
+    pub fn list_sealed_backups(
+        &self,
+        verifier: &dyn ManifestVerifier,
+    ) -> Result<Vec<TrustedBackup>, RepositoryError> {
+        let _lock = self.acquire_lock()?;
+        trusted_inventory(&self.backups_root(), verifier)
+    }
+
     pub fn plan_restore(
         &self,
         backup_id: &BackupId,
@@ -232,26 +269,81 @@ impl LocalRepository {
         destination: impl AsRef<Path>,
         confirmation: &str,
         verifier: &dyn ManifestVerifier,
+        secrets: &dyn SecretStore,
     ) -> Result<RestorePlan, RepositoryError> {
         let destination = destination.as_ref();
         let plan = self.plan_restore(backup_id, destination, verifier)?;
         plan.approve(confirmation)
             .map_err(RepositoryError::RestorePlan)?;
-        let payload = self
-            .backups_root()
-            .join(backup_id.as_str())
-            .join(plan.filesystem_payload.as_str());
+        let backup_root = self.backups_root().join(backup_id.as_str());
+        let manifest = load_verified_manifest(&backup_root, verifier)?;
+        let entry = manifest
+            .payloads
+            .iter()
+            .find(|entry| entry.path == plan.filesystem_payload)
+            .ok_or(RepositoryError::IntegrityFailure)?;
+        let payload = backup_root.join(entry.path.as_str());
         let metadata = fs::symlink_metadata(&payload)
             .map_err(|source| RepositoryError::io("inspect restore payload", source))?;
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(RepositoryError::UnsafeFilesystemEntry);
         }
-        let source = File::open(&payload)
-            .map_err(|source| RepositoryError::io("open restore payload", source))?;
-        extract_tar_zstd(source, destination, ArchiveLimits::conservative())
-            .map_err(RepositoryError::RestoreExtraction)?;
+        extract_payload(
+            &payload,
+            &entry.path,
+            entry.encryption.as_ref(),
+            &manifest.backup_id,
+            secrets,
+            destination,
+            &self.restore_scratch_root(),
+        )?;
         Ok(plan)
     }
+}
+
+fn extract_payload(
+    payload: &Path,
+    payload_path: &PayloadPath,
+    encryption: Option<&guardian_core::PayloadEncryption>,
+    backup_id: &BackupId,
+    secrets: &dyn SecretStore,
+    destination: &Path,
+    scratch_root: &Path,
+) -> Result<guardian_archive::ArchiveInspection, RepositoryError> {
+    if let Some(encryption) = encryption {
+        let secret = secrets
+            .load(&encryption.credential_id)
+            .map_err(|_| RepositoryError::Credential)?;
+        let secret = secret.ok_or(RepositoryError::Credential)?;
+        let key =
+            PayloadKey::from_bytes(secret.expose()).map_err(|_| RepositoryError::Encryption)?;
+        let nonce = encryption.nonce()?;
+        let temporary = tempfile::NamedTempFile::new_in(scratch_root)
+            .map_err(|error| RepositoryError::io("create temporary decrypted payload", error))?;
+        restrict_to_owner(temporary.path())?;
+        let mut encrypted = File::open(payload)
+            .map_err(|error| RepositoryError::io("open encrypted restore payload", error))?;
+        let mut plaintext = temporary
+            .reopen()
+            .map_err(|error| RepositoryError::io("open temporary decrypted payload", error))?;
+        decrypt_reader_to(
+            &key,
+            &mut encrypted,
+            &mut plaintext,
+            &associated_data(backup_id, payload_path),
+            &nonce,
+        )
+        .map_err(|_| RepositoryError::Encryption)?;
+        let source = temporary
+            .reopen()
+            .map_err(|error| RepositoryError::io("read temporary decrypted payload", error))?;
+        return extract_tar_zstd(source, destination, ArchiveLimits::conservative())
+            .map_err(RepositoryError::RestoreExtraction);
+    }
+    let source =
+        File::open(payload).map_err(|error| RepositoryError::io("open restore payload", error))?;
+    extract_tar_zstd(source, destination, ArchiveLimits::conservative())
+        .map_err(RepositoryError::RestoreExtraction)
 }
 
 pub(crate) struct RepositoryLock {
@@ -277,6 +369,14 @@ struct CaptureAuditRecord<'a> {
 #[derive(Serialize)]
 struct QuarantineRecord {
     reason: &'static str,
+}
+
+fn create_or_verify_directory(path: &Path) -> Result<(), RepositoryError> {
+    match fs::create_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => ensure_directory(path),
+        Err(source) => Err(RepositoryError::io("create repository directory", source)),
+    }
 }
 
 fn is_old_enough(metadata: &fs::Metadata, minimum_age: Duration) -> Result<bool, RepositoryError> {

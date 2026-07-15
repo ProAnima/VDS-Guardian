@@ -171,6 +171,8 @@ pub enum CaptureRequestError {
     InvalidProfile,
     #[error("required pinned SSH capture preflight failed")]
     PreflightFailed,
+    #[error("capture payload path does not carry the required encryption suffix")]
+    InvalidPayloadPath,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

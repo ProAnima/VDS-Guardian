@@ -85,6 +85,11 @@ export interface CapturePlanRequest { profileId: string; repositoryId: string; r
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; }
 export interface CaptureJobSummary { backupId: string; }
 
+export interface BackupSummary { backupId: string; sealedAt: string; }
+export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; }
+export interface RestorePreview { backupId: string; destination: string; confirmation: string; payload: string; }
+export interface RestoreFailure { code: string; message: string; remediation: string; }
+
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
@@ -148,6 +153,9 @@ export async function listRepositories(): Promise<RepositorySummary[]> {
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId } }); }
+export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
+export async function previewRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("preview_restore", { request }); }
+export async function executeRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("execute_restore", { request }); }
 // OpenSSH commonly stores private identities without a conventional extension
 // (for example `id_rsa` or an operator-provided `id_rsa.priv`). File type is
 // validated by the desktop command after selection, never by this UI filter.

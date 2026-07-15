@@ -21,6 +21,13 @@ impl SecretStore for OsCredentialStore {
     fn store(&self, id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError> {
         entry(id)?.set_secret(secret.expose()).map_err(map_error)
     }
+
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+        match entry(id)?.delete_credential() {
+            Ok(()) | Err(Error::NoEntry) => Ok(()),
+            Err(error) => Err(map_error(error)),
+        }
+    }
 }
 
 fn entry(id: &CredentialId) -> Result<Entry, SecretStoreError> {

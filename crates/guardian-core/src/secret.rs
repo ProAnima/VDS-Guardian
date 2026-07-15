@@ -19,6 +19,8 @@ impl SecretValue {
 pub trait SecretStore: Send + Sync {
     fn load(&self, id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError>;
     fn store(&self, id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError>;
+    /// Removes a stored secret. Deleting an id that holds no secret is not an error.
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError>;
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

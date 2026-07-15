@@ -103,7 +103,7 @@ fn run_blocking(
             run_id: run_id.clone(),
             profile_id: profile.profile_id.clone(),
             roots: plan.plan.roots,
-            payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst")
+            payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst.enc")
                 .map_err(|_| CaptureJobFailure::internal())?,
         },
         manifest,

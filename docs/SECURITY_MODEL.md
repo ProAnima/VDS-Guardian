@@ -81,6 +81,17 @@ capture. Its OpenSSH stream has a 20 GiB compressed-output cap and requires at
 least that budget plus a 5 GiB free-space reserve on the destination filesystem.
 The capture is rejected before opening staging if the reserve is unavailable.
 
+New live filesystem captures replace the inspected staging archive with a
+streaming AES-256-GCM ciphertext before it can enter a sealed directory. A
+fresh payload key is stored only in the OS credential store under a random
+reference; ciphertext digest, envelope version, nonce, algorithm, and that
+reference are signed in the format-v2 manifest. Failed staging cleanup removes
+payload files before quarantine so a plaintext archive is never retained as a
+quarantine artifact. Restore verifies the sealed ciphertext first, resolves the
+key through the OS store, fully authenticates into a transient file, and only
+then extracts to the requested new destination. Key rotation and portable
+recovery are still open.
+
 The desktop enrollment screen follows the same boundary: the operator supplies
 an absolute path to a dedicated unencrypted OpenSSH or PEM private key and explicitly confirms
 that the pasted host key was verified out-of-band. The application validates

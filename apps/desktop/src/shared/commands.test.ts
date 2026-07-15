@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   enrollSigningIdentity,
   enrollSshProfile,
+  executeRestore,
   getFoundationStatus,
   getSigningIdentityStatus,
+  listBackups,
   listSshProfiles,
+  previewRestore,
 } from "./commands";
 
 describe("foundation bridge", () => {
@@ -32,5 +35,12 @@ describe("foundation bridge", () => {
       hostKey: "ssh-ed25519 AAAA",
       keyPath: "C:/Keys/vds",
     })).rejects.toThrow("desktop runtime");
+  });
+
+  it("never previews or restores a backup from the browser preview", async () => {
+    await expect(listBackups("repository-001")).resolves.toEqual([]);
+    const request = { repositoryId: "repository-001", backupId: "backup-001", destination: "C:/restore" };
+    await expect(previewRestore(request)).rejects.toThrow("desktop runtime");
+    await expect(executeRestore(request)).rejects.toThrow("desktop runtime");
   });
 });

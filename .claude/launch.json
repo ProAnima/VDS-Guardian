@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "desktop-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:web", "--workspace", "@vds-guardian/desktop"],
+      "port": 1420
+    }
+  ]
+}

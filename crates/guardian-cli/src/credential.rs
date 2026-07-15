@@ -394,5 +394,14 @@ mod tests {
             self.writes.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
+
+        fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+            let mut values = self
+                .values
+                .lock()
+                .map_err(|_| SecretStoreError::OperationFailed)?;
+            values.remove(id.as_str());
+            Ok(())
+        }
     }
 }
