@@ -5,9 +5,10 @@ mod secret_identity;
 mod stream;
 
 use guardian_core::{
-    DatabaseAuthentication, DatabaseConnection, DatabaseEngine, FilesystemCapturePort,
-    FilesystemCaptureRequest, HostPin, SecretStore, SshCapabilityProbeError,
-    SshCapabilityProbePort, SshCaptureCapabilities, VdsProfile,
+    DatabaseAuthentication, DatabaseConnection, DatabaseEngine, EmbeddedDatabaseCapturePort,
+    EmbeddedDatabaseCaptureRequest, FilesystemCapturePort, FilesystemCaptureRequest, HostPin,
+    SecretStore, SshCapabilityProbeError, SshCapabilityProbePort, SshCaptureCapabilities,
+    VdsProfile,
 };
 use std::{
     ffi::OsString,
@@ -190,6 +191,34 @@ impl FilesystemCapturePort for PinnedSshCaptureAdapter<'_> {
     }
 }
 
+pub struct PinnedEmbeddedDatabaseCaptureAdapter<'a> {
+    pub ssh: &'a SystemOpenSsh,
+    pub host: &'a PinnedHost,
+    pub user: &'a SshUser,
+    pub identity_file: &'a Path,
+    pub maximum_output_bytes: u64,
+}
+
+impl EmbeddedDatabaseCapturePort for PinnedEmbeddedDatabaseCaptureAdapter<'_> {
+    fn capture_to(
+        &self,
+        request: &EmbeddedDatabaseCaptureRequest,
+        destination: &Path,
+    ) -> Result<(), guardian_core::CapturePortError> {
+        self.ssh
+            .snapshot_sqlite_to(
+                self.host,
+                self.user,
+                self.identity_file,
+                &request.database_path,
+                destination,
+                self.maximum_output_bytes,
+            )
+            .map(|_| ())
+            .map_err(|_| guardian_core::CapturePortError::Transport)
+    }
+}
+
 impl Default for SystemOpenSsh {
     fn default() -> Self {
         Self {
@@ -280,6 +309,25 @@ impl SystemOpenSsh {
             user,
             identity_file,
             database_tool_probe_command().into(),
+            destination,
+            Some(maximum_output_bytes),
+        )
+    }
+
+    pub fn snapshot_sqlite_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        database_path: &str,
+        destination: &Path,
+        maximum_output_bytes: u64,
+    ) -> Result<CaptureResult, SshError> {
+        self.run_to(
+            host,
+            user,
+            identity_file,
+            sqlite_snapshot_command(database_path).into(),
             destination,
             Some(maximum_output_bytes),
         )
@@ -416,6 +464,24 @@ impl SystemOpenSsh {
         })
     }
 
+    pub fn probe_sqlite3(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+    ) -> Result<bool, SshError> {
+        let known_hosts = self.known_hosts_file(host)?;
+        let child = Command::new(&self.binary)
+            .args(self.sqlite3_probe_arguments(host, user, identity_file, known_hosts.path()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| SshError::LaunchFailed)?;
+        let status = process::wait_for_exit(child, self.total_timeout).map_err(map_wait_error)?;
+        Ok(status.success())
+    }
+
     pub fn probe_connection(
         &self,
         host: &PinnedHost,
@@ -522,6 +588,41 @@ impl SystemOpenSsh {
             known_hosts,
             remote_command.into(),
         ))
+    }
+
+    #[must_use]
+    pub fn snapshot_sqlite_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        database_path: &str,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            sqlite_snapshot_command(database_path).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn sqlite3_probe_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            sqlite3_probe_command().into(),
+        )
     }
 
     fn known_hosts_file(&self, host: &PinnedHost) -> Result<NamedTempFile, SshError> {
@@ -632,6 +733,17 @@ fn timeout_seconds(timeout: Duration) -> u64 {
 
 fn docker_inspect_command() -> &'static str {
     "ids=$(docker ps --all --quiet --no-trunc) || exit 1; [ -z \"$ids\" ] || printf '%s\\n' \"$ids\" | xargs -r docker inspect --"
+}
+
+fn sqlite_snapshot_command(database_path: &str) -> String {
+    let path = shell_quote(database_path);
+    format!(
+        "[ -f {path} ] || exit 1; tmp=$(mktemp) || exit 1; sqlite3 {path} \".backup '$tmp'\" && zstd -q -c \"$tmp\"; status=$?; rm -f \"$tmp\"; exit $status"
+    )
+}
+
+fn sqlite3_probe_command() -> &'static str {
+    "command -v sqlite3 >/dev/null 2>&1"
 }
 
 fn database_tool_probe_command() -> &'static str {

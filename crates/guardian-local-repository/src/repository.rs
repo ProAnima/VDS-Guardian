@@ -6,7 +6,7 @@ use crate::inventory::{TrustedBackup, load_verified_manifest, trusted_inventory}
 use crate::process_lock::ProcessLock;
 use crate::staging::{StagingBackup, associated_data};
 use fs2::FileExt;
-use guardian_archive::{ArchiveLimits, extract_tar_zstd};
+use guardian_archive::{ArchiveLimits, decompress_zstd_file, extract_tar_zstd};
 use guardian_core::{
     BackupId, ManifestVerifier, PayloadPath, RepositoryId, RestorePlan, RunId, SecretStore,
 };
@@ -277,73 +277,160 @@ impl LocalRepository {
             .map_err(RepositoryError::RestorePlan)?;
         let backup_root = self.backups_root().join(backup_id.as_str());
         let manifest = load_verified_manifest(&backup_root, verifier)?;
-        let entry = manifest
-            .payloads
-            .iter()
-            .find(|entry| entry.path == plan.filesystem_payload)
-            .ok_or(RepositoryError::IntegrityFailure)?;
-        let payload = backup_root.join(entry.path.as_str());
-        let metadata = fs::symlink_metadata(&payload)
-            .map_err(|source| RepositoryError::io("inspect restore payload", source))?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() {
-            return Err(RepositoryError::UnsafeFilesystemEntry);
-        }
+        let scratch_root = self.restore_scratch_root();
         extract_payload(
-            &payload,
-            &entry.path,
-            entry.encryption.as_ref(),
-            &manifest.backup_id,
+            &backup_root,
+            &manifest,
+            &plan.filesystem_payload,
             secrets,
             destination,
-            &self.restore_scratch_root(),
+            &scratch_root,
         )?;
+        if let Some(database_payload) = &plan.database_payload {
+            extract_database_payload(
+                &backup_root,
+                &manifest,
+                database_payload,
+                secrets,
+                destination,
+                &scratch_root,
+            )?;
+        }
         Ok(plan)
     }
 }
 
+fn resolve_payload_file(
+    backup_root: &Path,
+    manifest: &guardian_core::Manifest,
+    payload_path: &PayloadPath,
+) -> Result<(PathBuf, Option<guardian_core::PayloadEncryption>), RepositoryError> {
+    let entry = manifest
+        .payloads
+        .iter()
+        .find(|entry| entry.path == *payload_path)
+        .ok_or(RepositoryError::IntegrityFailure)?;
+    let payload = backup_root.join(entry.path.as_str());
+    let metadata = fs::symlink_metadata(&payload)
+        .map_err(|source| RepositoryError::io("inspect restore payload", source))?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(RepositoryError::UnsafeFilesystemEntry);
+    }
+    Ok((payload, entry.encryption.clone()))
+}
+
 fn extract_payload(
+    backup_root: &Path,
+    manifest: &guardian_core::Manifest,
+    payload_path: &PayloadPath,
+    secrets: &dyn SecretStore,
+    destination: &Path,
+    scratch_root: &Path,
+) -> Result<guardian_archive::ArchiveInspection, RepositoryError> {
+    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
+    let source = decrypted_payload_reader(
+        &payload,
+        payload_path,
+        encryption.as_ref(),
+        &manifest.backup_id,
+        secrets,
+        scratch_root,
+    )?;
+    extract_tar_zstd(source, destination, ArchiveLimits::conservative())
+        .map_err(RepositoryError::RestoreExtraction)
+}
+
+fn extract_database_payload(
+    backup_root: &Path,
+    manifest: &guardian_core::Manifest,
+    payload_path: &PayloadPath,
+    secrets: &dyn SecretStore,
+    destination: &Path,
+    scratch_root: &Path,
+) -> Result<u64, RepositoryError> {
+    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
+    let source = decrypted_payload_reader(
+        &payload,
+        payload_path,
+        encryption.as_ref(),
+        &manifest.backup_id,
+        secrets,
+        scratch_root,
+    )?;
+    // Bounds the *decompressed* database size; the compressed stream itself
+    // was already bounded and digest-verified at capture and load time.
+    decompress_zstd_file(
+        source,
+        &destination.join("database.sqlite"),
+        ArchiveLimits::conservative().max_expanded_bytes,
+    )
+    .map_err(RepositoryError::RestoreExtraction)
+}
+
+/// Decrypts (when the payload is encrypted) into a hardened scratch file and
+/// returns a reader over the plaintext bytes, or opens the payload directly
+/// when it is not encrypted. The scratch file, when used, is kept alive for
+/// as long as the returned reader is, and is removed once the reader (and
+/// its guard) is dropped.
+fn decrypted_payload_reader(
     payload: &Path,
     payload_path: &PayloadPath,
     encryption: Option<&guardian_core::PayloadEncryption>,
     backup_id: &BackupId,
     secrets: &dyn SecretStore,
-    destination: &Path,
     scratch_root: &Path,
-) -> Result<guardian_archive::ArchiveInspection, RepositoryError> {
-    if let Some(encryption) = encryption {
-        let secret = secrets
-            .load(&encryption.credential_id)
-            .map_err(|_| RepositoryError::Credential)?;
-        let secret = secret.ok_or(RepositoryError::Credential)?;
-        let key =
-            PayloadKey::from_bytes(secret.expose()).map_err(|_| RepositoryError::Encryption)?;
-        let nonce = encryption.nonce()?;
-        let temporary = tempfile::NamedTempFile::new_in(scratch_root)
-            .map_err(|error| RepositoryError::io("create temporary decrypted payload", error))?;
-        restrict_to_owner(temporary.path())?;
-        let mut encrypted = File::open(payload)
-            .map_err(|error| RepositoryError::io("open encrypted restore payload", error))?;
-        let mut plaintext = temporary
-            .reopen()
-            .map_err(|error| RepositoryError::io("open temporary decrypted payload", error))?;
-        decrypt_reader_to(
-            &key,
-            &mut encrypted,
-            &mut plaintext,
-            &associated_data(backup_id, payload_path),
-            &nonce,
-        )
-        .map_err(|_| RepositoryError::Encryption)?;
-        let source = temporary
-            .reopen()
-            .map_err(|error| RepositoryError::io("read temporary decrypted payload", error))?;
-        return extract_tar_zstd(source, destination, ArchiveLimits::conservative())
-            .map_err(RepositoryError::RestoreExtraction);
+) -> Result<DecryptedPayload, RepositoryError> {
+    let Some(encryption) = encryption else {
+        let file = File::open(payload)
+            .map_err(|error| RepositoryError::io("open restore payload", error))?;
+        return Ok(DecryptedPayload::Direct(file));
+    };
+    let secret = secrets
+        .load(&encryption.credential_id)
+        .map_err(|_| RepositoryError::Credential)?;
+    let secret = secret.ok_or(RepositoryError::Credential)?;
+    let key = PayloadKey::from_bytes(secret.expose()).map_err(|_| RepositoryError::Encryption)?;
+    let nonce = encryption.nonce()?;
+    let temporary = tempfile::NamedTempFile::new_in(scratch_root)
+        .map_err(|error| RepositoryError::io("create temporary decrypted payload", error))?;
+    restrict_to_owner(temporary.path())?;
+    let mut encrypted = File::open(payload)
+        .map_err(|error| RepositoryError::io("open encrypted restore payload", error))?;
+    let mut plaintext = temporary
+        .reopen()
+        .map_err(|error| RepositoryError::io("open temporary decrypted payload", error))?;
+    decrypt_reader_to(
+        &key,
+        &mut encrypted,
+        &mut plaintext,
+        &associated_data(backup_id, payload_path),
+        &nonce,
+    )
+    .map_err(|_| RepositoryError::Encryption)?;
+    let file = temporary
+        .reopen()
+        .map_err(|error| RepositoryError::io("read temporary decrypted payload", error))?;
+    Ok(DecryptedPayload::Temporary {
+        _guard: temporary,
+        file,
+    })
+}
+
+enum DecryptedPayload {
+    Temporary {
+        _guard: tempfile::NamedTempFile,
+        file: File,
+    },
+    Direct(File),
+}
+
+impl std::io::Read for DecryptedPayload {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            DecryptedPayload::Temporary { file, .. } => file.read(buffer),
+            DecryptedPayload::Direct(file) => file.read(buffer),
+        }
     }
-    let source =
-        File::open(payload).map_err(|error| RepositoryError::io("open restore payload", error))?;
-    extract_tar_zstd(source, destination, ArchiveLimits::conservative())
-        .map_err(RepositoryError::RestoreExtraction)
 }
 
 pub(crate) struct RepositoryLock {

@@ -7,6 +7,7 @@ pub struct RestorePlan {
     pub backup_id: BackupId,
     pub destination: PathBuf,
     pub filesystem_payload: PayloadPath,
+    pub database_payload: Option<PayloadPath>,
     pub confirmation: String,
 }
 
@@ -31,6 +32,15 @@ impl RestorePlan {
         if filesystem_payloads.len() != 1 {
             return Err(RestorePlanError::NoFilesystemPayload);
         }
+        let mut database_payloads = manifest
+            .payloads
+            .iter()
+            .filter(|payload| payload.logical_role == "database")
+            .map(|payload| payload.path.clone())
+            .collect::<Vec<_>>();
+        if database_payloads.len() > 1 {
+            return Err(RestorePlanError::AmbiguousDatabasePayload);
+        }
         let confirmation = format!(
             "RESTORE {} TO {}",
             manifest.backup_id.as_str(),
@@ -40,6 +50,7 @@ impl RestorePlan {
             backup_id: manifest.backup_id.clone(),
             destination,
             filesystem_payload: filesystem_payloads.remove(0),
+            database_payload: database_payloads.pop(),
             confirmation,
         })
     }
@@ -64,6 +75,8 @@ pub enum RestorePlanError {
     UnsafeDestination,
     #[error("backup has no supported filesystem payload")]
     NoFilesystemPayload,
+    #[error("backup has more than one database payload")]
+    AmbiguousDatabasePayload,
     #[error("exact restore confirmation is required")]
     ConfirmationRequired,
 }

@@ -1,43 +1,39 @@
-//! Composition root for the core filesystem-capture use case.
-
-mod embedded_database;
+//! Composition root for the embedded-database (SQLite) capture use case.
+//! Mirrors `lib.rs`'s filesystem capture composition; produces its own
+//! independently sealed backup rather than a combined multi-payload plan.
 
 use fs2::available_space;
-use guardian_archive::{ArchiveLimits, TarZstdInspector};
+use guardian_archive::{ArchiveLimits, ZstdFileInspector};
 use guardian_core::{
-    AuditPort, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
-    FilesystemBackupUseCase, FilesystemCaptureRequest, ManifestSigner, SealedBackup, SecretStore,
-    SshCapabilityProbePort, StoragePortError, VdsProfile,
+    AuditPort, CaptureRequestError, CaptureUseCaseError, EmbeddedDatabaseBackupRequest,
+    EmbeddedDatabaseBackupUseCase, EmbeddedDatabaseCaptureRequest, ManifestSigner, SealedBackup,
+    SecretStore, StoragePortError, VdsProfile,
 };
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
-    PinnedHost, PinnedSshCapabilityProbe, PinnedSshCaptureAdapter, SecretIdentityFile, SshUser,
-    SystemOpenSsh,
+    PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, SecretIdentityFile, SshUser, SystemOpenSsh,
 };
+use std::path::Path;
 
-pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
-
-pub const MAX_CAPTURE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
+pub const MAX_DATABASE_SNAPSHOT_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 pub const MINIMUM_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
-pub struct FilesystemCaptureComposition<'a> {
+pub struct EmbeddedDatabaseCaptureComposition<'a> {
     pub repository: &'a LocalRepository,
     pub ssh: &'a SystemOpenSsh,
     pub profile: &'a VdsProfile,
     pub credentials: &'a dyn SecretStore,
     pub audit: &'a dyn AuditPort,
-    pub archive_limits: ArchiveLimits,
 }
 
-impl FilesystemCaptureComposition<'_> {
+impl EmbeddedDatabaseCaptureComposition<'_> {
     pub fn execute(
         &self,
-        request: FilesystemBackupRequest,
+        request: EmbeddedDatabaseBackupRequest,
         signer: &dyn ManifestSigner,
     ) -> Result<SealedBackup, CaptureUseCaseError> {
         self.validate_profile(&request.capture)?;
         self.require_encrypted_payload_path(&request.capture)?;
-        self.require_preflight()?;
         self.require_disk_budget()?;
         let host = PinnedHost::parse(
             &self.profile.endpoint.host,
@@ -52,20 +48,25 @@ impl FilesystemCaptureComposition<'_> {
             SecretIdentityFile::from_store(self.credentials, &self.profile.credential_id).map_err(
                 |_| CaptureUseCaseError::Capture(guardian_core::CapturePortError::Credential),
             )?;
+        self.require_sqlite3(&host, &user, identity_file.path())?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
             request.manifest.backup_id.clone(),
             self.credentials,
         );
-        let capture = PinnedSshCaptureAdapter {
+        let capture = PinnedEmbeddedDatabaseCaptureAdapter {
             ssh: self.ssh,
             host: &host,
             user: &user,
             identity_file: identity_file.path(),
-            maximum_output_bytes: MAX_CAPTURE_BYTES,
+            maximum_output_bytes: MAX_DATABASE_SNAPSHOT_BYTES,
         };
-        let inspector = TarZstdInspector::new(self.archive_limits);
-        FilesystemBackupUseCase {
+        // The capture stream is capped at MAX_DATABASE_SNAPSHOT_BYTES of
+        // *compressed* network egress; a well-compressed source database can
+        // expand well past that once decompressed, so inspection uses the
+        // same generous expansion ceiling the filesystem archive path uses.
+        let inspector = ZstdFileInspector::new(ArchiveLimits::conservative().max_expanded_bytes);
+        EmbeddedDatabaseBackupUseCase {
             capture: &capture,
             storage: &storage,
             inspector: &inspector,
@@ -77,7 +78,7 @@ impl FilesystemCaptureComposition<'_> {
 
     fn validate_profile(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
     ) -> Result<(), CaptureUseCaseError> {
         if self.profile.profile_id != request.profile_id {
             return Err(CaptureUseCaseError::Request(
@@ -91,7 +92,7 @@ impl FilesystemCaptureComposition<'_> {
 
     fn require_encrypted_payload_path(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
     ) -> Result<(), CaptureUseCaseError> {
         request
             .payload_path
@@ -103,25 +104,25 @@ impl FilesystemCaptureComposition<'_> {
             ))
     }
 
-    fn require_preflight(&self) -> Result<(), CaptureUseCaseError> {
-        let capabilities = PinnedSshCapabilityProbe {
-            ssh: self.ssh,
-            credentials: self.credentials,
-        }
-        .probe(self.profile)
-        .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
-        capabilities
-            .tar_zstd
-            .then_some(())
-            .ok_or(CaptureUseCaseError::Request(
-                CaptureRequestError::PreflightFailed,
-            ))
+    fn require_sqlite3(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+    ) -> Result<(), CaptureUseCaseError> {
+        let available = self
+            .ssh
+            .probe_sqlite3(host, user, identity_file)
+            .map_err(|_| CaptureUseCaseError::Request(CaptureRequestError::PreflightFailed))?;
+        available.then_some(()).ok_or(CaptureUseCaseError::Request(
+            CaptureRequestError::PreflightFailed,
+        ))
     }
 
     fn require_disk_budget(&self) -> Result<(), CaptureUseCaseError> {
         let available = available_space(self.repository.root())
             .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
-        (available >= MINIMUM_FREE_BYTES.saturating_add(MAX_CAPTURE_BYTES))
+        (available >= MINIMUM_FREE_BYTES.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES))
             .then_some(())
             .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
     }
@@ -129,13 +130,13 @@ impl FilesystemCaptureComposition<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FilesystemCaptureComposition;
+    use super::EmbeddedDatabaseCaptureComposition;
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    use guardian_archive::ArchiveLimits;
+    use guardian_core::{AuditPort, CaptureAuditCode};
     use guardian_core::{
-        AuditPort, CaptureAuditCode, CaptureRequestError, CaptureUseCaseError, CredentialId,
-        FilesystemCaptureRequest, HostPin, PayloadPath, ProfileId, RepositoryId, RunId,
-        SecretStore, SecretStoreError, SecretValue, SshEndpoint, VdsProfile,
+        CaptureRequestError, CaptureUseCaseError, CredentialId, EmbeddedDatabaseCaptureRequest,
+        HostPin, PayloadPath, ProfileId, RepositoryId, RunId, SecretStore, SecretStoreError,
+        SecretValue, SshEndpoint, VdsProfile,
     };
     use guardian_local_repository::LocalRepository;
     use guardian_ssh::SystemOpenSsh;
@@ -147,19 +148,18 @@ mod tests {
         let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-001")?)?;
         let profile = profile()?;
         let audit = NoopAudit;
-        let composition = FilesystemCaptureComposition {
+        let composition = EmbeddedDatabaseCaptureComposition {
             repository: &repository,
             ssh: &SystemOpenSsh::default(),
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
-            archive_limits: ArchiveLimits::conservative(),
         };
-        let request = FilesystemCaptureRequest {
+        let request = EmbeddedDatabaseCaptureRequest {
             run_id: RunId::parse("run-001")?,
             profile_id: ProfileId::parse("different-profile")?,
-            roots: vec!["/srv/app".to_owned()],
-            payload_path: PayloadPath::parse("filesystem.tar.zst")?,
+            database_path: "/srv/app/app.sqlite".to_owned(),
+            payload_path: PayloadPath::parse("database.sqlite.zst")?,
         };
         assert!(matches!(
             composition.validate_profile(&request),
@@ -177,19 +177,18 @@ mod tests {
         let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-002")?)?;
         let profile = profile()?;
         let audit = NoopAudit;
-        let composition = FilesystemCaptureComposition {
+        let composition = EmbeddedDatabaseCaptureComposition {
             repository: &repository,
             ssh: &SystemOpenSsh::default(),
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
-            archive_limits: ArchiveLimits::conservative(),
         };
-        let request = FilesystemCaptureRequest {
+        let request = EmbeddedDatabaseCaptureRequest {
             run_id: RunId::parse("run-002")?,
             profile_id: profile.profile_id.clone(),
-            roots: vec!["/srv/app".to_owned()],
-            payload_path: PayloadPath::parse("filesystem.tar.zst")?,
+            database_path: "/srv/app/app.sqlite".to_owned(),
+            payload_path: PayloadPath::parse("database.sqlite.zst")?,
         };
         assert!(matches!(
             composition.require_encrypted_payload_path(&request),

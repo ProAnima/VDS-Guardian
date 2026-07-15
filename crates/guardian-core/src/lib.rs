@@ -6,6 +6,7 @@ mod capture;
 mod database;
 mod database_connection;
 mod docker;
+mod embedded_database;
 mod enroll_profile;
 mod host_trust;
 mod identifiers;
@@ -42,6 +43,10 @@ pub use docker::{
     DiscoverDockerInventoryError, DiscoverDockerInventoryUseCase, DockerContainer,
     DockerContainerState, DockerHealth, DockerInventory, DockerInventoryError, DockerInventoryPort,
     DockerInventoryPortError, DockerMount, DockerMountKind, DockerNetwork,
+};
+pub use embedded_database::{
+    EmbeddedDatabaseBackupRequest, EmbeddedDatabaseBackupUseCase, EmbeddedDatabaseCapturePort,
+    EmbeddedDatabaseCaptureRequest, EmbeddedDatabaseCaptureUseCase,
 };
 pub use enroll_profile::{EnrollProfileError, EnrollProfileUseCase};
 pub use host_trust::{

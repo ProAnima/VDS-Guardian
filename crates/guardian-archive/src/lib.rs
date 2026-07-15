@@ -1,6 +1,8 @@
-//! Streaming tar.zst validation. This crate inspects archives but never extracts them.
+//! Streaming validation and extraction for tar.zst archives and single-file
+//! zstd payloads (for example a database snapshot).
 
 mod writer;
+mod zstd_file;
 
 use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError, ArchivePath};
 use std::{
@@ -12,6 +14,7 @@ use tar::Archive;
 use thiserror::Error;
 
 pub use writer::{ArchiveWriteError, TarZstdWriter};
+pub use zstd_file::{ZstdFileInspector, decompress_zstd_file, inspect_zstd_file};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArchiveLimits {
@@ -73,8 +76,10 @@ pub fn inspect_tar_zstd(
     source: impl Read,
     limits: ArchiveLimits,
 ) -> Result<ArchiveInspection, ArchiveError> {
-    let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
-    inspect_tar(ReadBudget::new(decoder, limits.max_expanded_bytes), limits)
+    inspect_tar(
+        bounded_zstd_reader(source, limits.max_expanded_bytes)?,
+        limits,
+    )
 }
 
 /// Extracts a validated archive into a newly created empty directory.
@@ -97,8 +102,7 @@ fn extract_new_tar_zstd(
     destination: &Path,
     limits: ArchiveLimits,
 ) -> Result<ArchiveInspection, ArchiveError> {
-    let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
-    let mut source = ReadBudget::new(decoder, limits.max_expanded_bytes);
+    let mut source = bounded_zstd_reader(source, limits.max_expanded_bytes)?;
     let mut inspection = ArchiveInspection {
         entries: 0,
         regular_files: 0,
@@ -220,7 +224,7 @@ fn inspect_tar<R: Read>(
     Ok(inspection)
 }
 
-fn drain_expanded_stream(source: &mut impl Read) -> Result<(), ArchiveError> {
+pub(crate) fn drain_expanded_stream(source: &mut impl Read) -> Result<(), ArchiveError> {
     let mut buffer = [0_u8; 64 * 1024];
     loop {
         if source
@@ -269,14 +273,17 @@ fn inspect_entry<R: Read>(
     Ok(())
 }
 
-struct ReadBudget<R> {
+/// A [`Read`] wrapper that fails once more than `remaining` bytes have been
+/// read from it, and records how many bytes were actually consumed.
+pub struct ReadBudget<R> {
     inner: R,
     remaining: u64,
-    consumed: u64,
+    pub consumed: u64,
 }
 
 impl<R> ReadBudget<R> {
-    fn new(inner: R, remaining: u64) -> Self {
+    #[must_use]
+    pub fn new(inner: R, remaining: u64) -> Self {
         Self {
             inner,
             remaining,
@@ -285,20 +292,43 @@ impl<R> ReadBudget<R> {
     }
 }
 
+/// Wraps a byte stream in a zstd decoder bounded to `max_bytes` of expanded
+/// output. Shared by tar.zst archive handling and single-file zstd payloads
+/// (for example a database snapshot) so both enforce the same expansion cap
+/// with one implementation.
+pub fn bounded_zstd_reader(
+    source: impl Read,
+    max_bytes: u64,
+) -> Result<ReadBudget<impl Read>, ArchiveError> {
+    let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
+    Ok(ReadBudget::new(decoder, max_bytes))
+}
+
 impl<R: Read> Read for ReadBudget<R> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        if self.remaining == 0 {
-            return Err(io::Error::other("expanded archive limit"));
+        if buffer.is_empty() {
+            return Ok(0);
         }
-        let maximum = match usize::try_from(self.remaining) {
+        // Request one byte beyond the remaining budget. A stream that ends
+        // exactly at the limit then reports genuine EOF on this final read;
+        // a stream with anything left beyond the limit yields more than
+        // `remaining` bytes here and is rejected below. A plain
+        // `remaining == 0` check would instead reject a stream that is
+        // exactly at the limit, even though it never actually exceeded it.
+        let request = self.remaining.saturating_add(1);
+        let maximum = match usize::try_from(request) {
             Ok(value) => value,
             Err(_) => buffer.len(),
         }
         .min(buffer.len());
         let read = self.inner.read(&mut buffer[..maximum])?;
-        let consumed = u64::try_from(read).map_err(|_| io::Error::other("read count overflow"))?;
-        self.remaining -= consumed;
-        self.consumed += consumed;
+        let read_bytes =
+            u64::try_from(read).map_err(|_| io::Error::other("read count overflow"))?;
+        if read_bytes > self.remaining {
+            return Err(io::Error::other("expanded archive limit"));
+        }
+        self.remaining -= read_bytes;
+        self.consumed += read_bytes;
         Ok(read)
     }
 }

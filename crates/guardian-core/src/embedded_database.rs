@@ -1,55 +1,58 @@
+//! Capture and backup use cases for a lightweight embedded database (for
+//! example SQLite) snapshotted from a single absolute file path, mirroring
+//! `capture.rs`'s filesystem capture use cases exactly. PostgreSQL/MySQL
+//! server dump/restore remain out of scope for the initial product.
+
+use crate::capture::valid_remote_root;
 use crate::{
-    ArchiveInspectionPort, AuditPort, BackupStoragePort, CaptureAuditCode, Manifest, ManifestError,
-    ManifestSigner, PayloadEntry, PayloadPath, ProfileId, RunId, SealedBackup, Timestamp,
+    ArchiveInspectionPort, AuditPort, BackupStoragePort, CaptureAuditCode, CapturePortError,
+    CaptureRequestError, CaptureUseCaseError, Manifest, ManifestError, ManifestSigner,
+    PayloadEntry, PayloadPath, ProfileId, RunId, SealedBackup, Timestamp,
 };
 use std::path::Path;
-use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FilesystemCaptureRequest {
+pub struct EmbeddedDatabaseCaptureRequest {
     pub run_id: RunId,
     pub profile_id: ProfileId,
-    pub roots: Vec<String>,
+    pub database_path: String,
     pub payload_path: PayloadPath,
 }
 
 #[derive(Debug, Clone)]
-pub struct FilesystemBackupRequest {
-    pub capture: FilesystemCaptureRequest,
+pub struct EmbeddedDatabaseBackupRequest {
+    pub capture: EmbeddedDatabaseCaptureRequest,
     pub manifest: Manifest,
     pub sealed_at: Timestamp,
 }
 
-impl FilesystemCaptureRequest {
+impl EmbeddedDatabaseCaptureRequest {
     pub fn validate(&self) -> Result<(), CaptureRequestError> {
-        let roots_valid = !self.roots.is_empty()
-            && self.roots.len() <= 32
-            && self.roots.iter().all(|root| valid_remote_root(root));
-        roots_valid
+        (self.database_path != "/" && valid_remote_root(&self.database_path))
             .then_some(())
-            .ok_or(CaptureRequestError::InvalidRoots)
+            .ok_or(CaptureRequestError::InvalidDatabasePath)
     }
 }
 
-pub trait FilesystemCapturePort: Send + Sync {
+pub trait EmbeddedDatabaseCapturePort: Send + Sync {
     fn capture_to(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
         destination: &Path,
     ) -> Result<(), CapturePortError>;
 }
 
-pub struct FilesystemCaptureUseCase<'a> {
-    pub capture: &'a dyn FilesystemCapturePort,
+pub struct EmbeddedDatabaseCaptureUseCase<'a> {
+    pub capture: &'a dyn EmbeddedDatabaseCapturePort,
     pub storage: &'a dyn BackupStoragePort,
     pub inspector: &'a dyn ArchiveInspectionPort,
     pub audit: &'a dyn AuditPort,
 }
 
-impl FilesystemCaptureUseCase<'_> {
+impl EmbeddedDatabaseCaptureUseCase<'_> {
     pub fn execute(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
     ) -> Result<PayloadEntry, CaptureUseCaseError> {
         request.validate().map_err(CaptureUseCaseError::Request)?;
         self.storage
@@ -75,14 +78,14 @@ impl FilesystemCaptureUseCase<'_> {
         if self.inspector.inspect(&destination).is_err() {
             return self.fail(
                 request,
-                CaptureAuditCode::ArchivePolicy,
+                CaptureAuditCode::DatabasePolicy,
                 CaptureUseCaseError::Archive,
             );
         }
         match self.storage.register_payload_path(
-            "filesystem",
+            "database",
             request.payload_path.clone(),
-            "application/zstd",
+            "application/vnd.sqlite3+zstd",
         ) {
             Ok(payload) => Ok(payload),
             Err(error) => self.fail(
@@ -95,7 +98,7 @@ impl FilesystemCaptureUseCase<'_> {
 
     fn fail<T>(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
         code: CaptureAuditCode,
         error: CaptureUseCaseError,
     ) -> Result<T, CaptureUseCaseError> {
@@ -107,20 +110,20 @@ impl FilesystemCaptureUseCase<'_> {
     }
 }
 
-pub struct FilesystemBackupUseCase<'a> {
-    pub capture: &'a dyn FilesystemCapturePort,
+pub struct EmbeddedDatabaseBackupUseCase<'a> {
+    pub capture: &'a dyn EmbeddedDatabaseCapturePort,
     pub storage: &'a dyn BackupStoragePort,
     pub inspector: &'a dyn ArchiveInspectionPort,
     pub signer: &'a dyn ManifestSigner,
     pub audit: &'a dyn AuditPort,
 }
 
-impl FilesystemBackupUseCase<'_> {
+impl EmbeddedDatabaseBackupUseCase<'_> {
     pub fn execute(
         &self,
-        request: FilesystemBackupRequest,
+        request: EmbeddedDatabaseBackupRequest,
     ) -> Result<SealedBackup, CaptureUseCaseError> {
-        let payload = FilesystemCaptureUseCase {
+        let payload = EmbeddedDatabaseCaptureUseCase {
             capture: self.capture,
             storage: self.storage,
             inspector: self.inspector,
@@ -149,7 +152,7 @@ impl FilesystemBackupUseCase<'_> {
 
     fn fail<T>(
         &self,
-        request: &FilesystemCaptureRequest,
+        request: &EmbeddedDatabaseCaptureRequest,
         error: CaptureUseCaseError,
     ) -> Result<T, CaptureUseCaseError> {
         self.audit
@@ -159,53 +162,4 @@ impl FilesystemBackupUseCase<'_> {
             .map_err(CaptureUseCaseError::Storage)?;
         Err(error)
     }
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum CaptureRequestError {
-    #[error("capture roots must be bounded absolute lexical paths")]
-    InvalidRoots,
-    #[error("capture request profile does not match the pinned SSH profile")]
-    ProfileMismatch,
-    #[error("pinned SSH profile is invalid")]
-    InvalidProfile,
-    #[error("required pinned SSH capture preflight failed")]
-    PreflightFailed,
-    #[error("capture payload path does not carry the required encryption suffix")]
-    InvalidPayloadPath,
-    #[error("embedded database path must be a bounded absolute lexical path")]
-    InvalidDatabasePath,
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum CapturePortError {
-    #[error("filesystem capture transport failed")]
-    Transport,
-    #[error("filesystem capture credential is unavailable or invalid")]
-    Credential,
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum CaptureUseCaseError {
-    #[error("capture request is invalid")]
-    Request(#[source] CaptureRequestError),
-    #[error("capture transport failed")]
-    Capture(#[source] CapturePortError),
-    #[error("capture storage failed")]
-    Storage(#[source] crate::StoragePortError),
-    #[error("captured archive violates inspection policy")]
-    Archive,
-    #[error("backup manifest could not be finalized")]
-    Manifest(#[source] ManifestError),
-}
-
-pub(crate) fn valid_remote_root(root: &str) -> bool {
-    root == "/"
-        || (root.starts_with('/')
-            && root.len() <= 1_024
-            && !root.contains(['\0', '\n', '\r', '\\'])
-            && root
-                .split('/')
-                .skip(1)
-                .all(|segment| !matches!(segment, "" | "." | "..")))
 }

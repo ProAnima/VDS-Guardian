@@ -129,9 +129,18 @@ can now use that same pinned VDS profile to request a server version from
 remote commands are fixed `psql --no-password` or `mysql --skip-password`
 version queries; unavailable local non-interactive database authorization fails closed. A
 credential-reference connection mode remains modeled but has no adapter yet.
-The lightweight embedded-database snapshot adapter, its fixture drill, and
-restore behavior are not implemented yet. PostgreSQL/MySQL server adapters are
-intentionally deferred rather than release blockers.
+The lightweight embedded-database snapshot adapter now exists end to end
+(ADR 0005): a fixed `sqlite3 .backup` plus `zstd` remote command produces a
+consistent, WAL-safe snapshot of one operator-configured absolute database
+file, gated by a narrow `sqlite3` presence probe. The captured stream is
+encrypted like any other payload, validated by a new bounded zstd-stream
+inspector, and sealed as its own independently restorable backup rather than
+combined into a unified multi-payload plan yet. Restore decrypts and
+zstd-decompresses that payload directly into `database.sqlite` at the
+restore destination, alongside the existing filesystem payload when both are
+present. No fixture-drill evidence or CLI/desktop UI to trigger a database
+capture exists yet; PostgreSQL/MySQL server adapters remain intentionally
+deferred rather than release blockers.
 
 ## Milestone 4 — restore engine (P0)
 

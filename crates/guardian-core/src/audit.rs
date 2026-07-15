@@ -8,5 +8,6 @@ pub trait AuditPort: Send + Sync {
 pub enum CaptureAuditCode {
     Transport,
     ArchivePolicy,
+    DatabasePolicy,
     Storage,
 }

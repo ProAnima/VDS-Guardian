@@ -21,6 +21,7 @@ tempfile.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
+zstd.workspace = true
 
 [lints]
 workspace = true

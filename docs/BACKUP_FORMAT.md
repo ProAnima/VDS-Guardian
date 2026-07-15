@@ -13,9 +13,14 @@ verified filesystem restores extract only to a new target directory. New live
 filesystem captures use format-v2 encrypted payloads: every `.enc` payload has
 a fresh data key held only in the OS credential store, while the manifest
 records only public envelope metadata. Format-v1 unencrypted backups remain
-readable as an explicit compatibility case. Full plan/item schemas, key rotation
-fixtures, and restore compatibility evidence are still required before this
-contract is declared stable.
+readable as an explicit compatibility case. A lightweight embedded-database
+(SQLite) snapshot payload (ADR 0005) is now a second supported payload kind:
+`logicalRole: "database"`, `mediaType: "application/vnd.sqlite3+zstd"`, a
+single zstd-compressed file rather than a tar archive, encrypted the same way
+as the filesystem payload. It is sealed as its own independent backup today,
+not yet combined with a filesystem payload into one unified multi-payload
+plan. Full plan/item schemas, key rotation fixtures, and restore compatibility
+evidence are still required before this contract is declared stable.
 
 ## Directory layout
 

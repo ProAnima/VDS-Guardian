@@ -192,8 +192,9 @@ clears that acknowledgement.
   enter a capture plan. Its `docker inspect` parser accepts only a bounded JSON
   response and maps fixed Docker fields into that contract. The pinned-SSH
   adapter accepts no operator command input, uses one reviewed `docker ps` /
-  `docker inspect --` template, and kills an output stream above 8 MiB. Database
-  consistency logic remains unimplemented.
+  `docker inspect --` template, and kills an output stream above 8 MiB. Embedded-database
+  consistency logic is implemented for a lightweight SQLite-style file (see below);
+  PostgreSQL/MySQL consistency (beyond version preflight) remains unimplemented.
 - Database dump preflight rejects missing, malformed, or major-version-mismatched
   PostgreSQL/MySQL server and dump-tool capabilities. This compatibility check is
   not a substitute for quiesce, a successful dump, or a restore drill.
@@ -208,6 +209,33 @@ clears that acknowledgement.
   closed. Validation rejects unsafe identifier syntax before any adapter is
   called, and secret bytes never become remote command arguments. The
   credential-reference mode has no transport adapter yet.
+
+### Embedded-database capture
+
+- The only remote command is fixed (ADR 0005):
+  `[ -f '<path>' ] || exit 1; tmp=$(mktemp) || exit 1; sqlite3 '<path>' ".backup '$tmp'" && zstd -q -c "$tmp"; status=$?; rm -f "$tmp"; exit $status`,
+  where `<path>` is the one operator-configured, already-validated absolute
+  file path, shell-quoted like every other remote command. The path existence
+  check fails closed instead of letting `sqlite3` silently create a fresh
+  empty database at a mistyped path. The remote temporary file is removed
+  before the command exits on every path, success or failure.
+- `sqlite3 .backup` is SQLite's own consistent-snapshot mechanism: it is safe
+  to run against a live, concurrently written database, including one using
+  WAL, without any application quiesce step.
+- A narrow, fixed `command -v sqlite3` capability probe gates capture; no
+  operator input reaches either the probe or the snapshot command beyond the
+  one validated path. Unlike PostgreSQL/MySQL, no version-parity gate applies
+  (SQLite has no client/server split).
+- The captured stream is a single zstd-compressed file, not a tar archive. It
+  is encrypted exactly like the filesystem payload before it can enter a
+  sealed backup, and validated by a bounded zstd-stream inspector
+  (`ZstdFileInspector`) that never writes the decompressed content to disk
+  before restore. Restore decrypts and decompresses it directly to
+  `database.sqlite`; there is no extraction/unpacking step because the
+  payload is already exactly one file.
+- Residual risk: the backup account needs read access to the configured
+  database file and a working `sqlite3` binary on the remote host; capture
+  fails closed if either is missing, but neither is otherwise verified.
 
 ### Restore safety
 

@@ -150,6 +150,68 @@ fn database_server_probe_uses_ssh_peer_without_a_database_password()
 }
 
 #[test]
+fn snapshot_sqlite_command_uses_only_a_fixed_backup_and_compress_template()
+-> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().snapshot_sqlite_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app/app.sqlite",
+    );
+    let rendered = arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("StrictHostKeyChecking=yes"));
+    assert!(rendered.contains("[ -f '/srv/app/app.sqlite' ] || exit 1"));
+    assert!(rendered.contains("sqlite3 '/srv/app/app.sqlite' \".backup '$tmp'\""));
+    assert!(rendered.contains("zstd -q -c \"$tmp\""));
+    assert!(rendered.contains("rm -f \"$tmp\""));
+    assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
+fn snapshot_sqlite_command_safely_quotes_a_path_containing_a_single_quote()
+-> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().snapshot_sqlite_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app's data/app.sqlite",
+    );
+    let rendered = arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains(r#"'/srv/app'"'"'s data/app.sqlite'"#));
+    Ok(())
+}
+
+#[test]
+fn sqlite3_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().sqlite3_probe_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+    );
+    let rendered = arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("StrictHostKeyChecking=yes"));
+    assert!(rendered.contains("command -v sqlite3 >/dev/null 2>&1"));
+    assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
 fn pin_and_capture_plan_fail_closed_on_untrusted_input() {
     assert!(PinnedHost::parse("vds.example", 22, "ssh-ed25519", "not base64!").is_err());
     assert!(PinnedHost::parse("vds.example", 22, "ssh-rsa", "c3NoLXJzYQ==").is_err());

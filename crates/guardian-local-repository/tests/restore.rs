@@ -135,6 +135,68 @@ fn discarding_an_encrypted_staging_run_revokes_its_payload_key() -> TestResult {
 }
 
 #[test]
+fn restore_reconstructs_an_encrypted_database_payload_alongside_the_filesystem_payload()
+-> TestResult {
+    let root = TestRoot::new()?;
+    let local_repository = repository(&root)?;
+    let signer = TestSigner::new();
+    let secrets = MemorySecrets::default();
+    let backup_id = BackupId::parse("backup-with-database")?;
+    let run = RunId::parse("run-with-database")?;
+    let staging = local_repository.begin_staging(run.clone())?;
+    let filesystem_path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload(
+        "filesystem",
+        filesystem_path.clone(),
+        "application/zstd",
+        &archive()?,
+    )?;
+    let filesystem_payload = staging.encrypt_and_register_payload_file(
+        "filesystem",
+        filesystem_path,
+        "application/zstd",
+        &backup_id,
+        &secrets,
+    )?;
+    let original_database = b"select 1;".repeat(32);
+    let database_bytes = zstd::stream::encode_all(Cursor::new(&original_database[..]), 0)?;
+    let database_path = PayloadPath::parse("payload/database.sqlite.zst.enc")?;
+    staging.write_payload(
+        "database",
+        database_path.clone(),
+        "application/vnd.sqlite3+zstd",
+        &database_bytes,
+    )?;
+    let database_payload = staging.encrypt_and_register_payload_file(
+        "database",
+        database_path,
+        "application/vnd.sqlite3+zstd",
+        &backup_id,
+        &secrets,
+    )?;
+    let mut manifest = manifest("backup-with-database", run)?;
+    manifest.add_payload(filesystem_payload)?;
+    manifest.add_payload(database_payload)?;
+    staging.seal(manifest, timestamp("2026-07-15T09:00:00Z")?, &signer)?;
+    let destination = root.path().join("database-target");
+    let plan = local_repository.plan_restore(&backup_id, &destination, &signer)?;
+    assert!(plan.database_payload.is_some());
+    local_repository.execute_restore(
+        &backup_id,
+        &destination,
+        &plan.confirmation,
+        &signer,
+        &secrets,
+    )?;
+    assert_eq!(std::fs::read(destination.join("srv/app/config"))?, b"safe");
+    assert_eq!(
+        std::fs::read(destination.join("database.sqlite"))?,
+        original_database
+    );
+    Ok(())
+}
+
+#[test]
 fn encrypted_restore_fails_closed_when_the_key_is_missing() -> TestResult {
     let root = TestRoot::new()?;
     let local_repository = repository(&root)?;
