@@ -127,15 +127,34 @@ pub enum DockerHealth {
 pub struct DockerMount {
     pub kind: DockerMountKind,
     pub source_reference: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub host_path: Option<String>,
     pub destination: String,
     pub read_only: bool,
 }
 
 impl DockerMount {
     fn validate(&self) -> Result<(), DockerInventoryError> {
-        (valid_text(&self.source_reference, 1_024) && valid_absolute_path(&self.destination))
+        let host_path_valid = self.host_path.as_deref().is_none_or(valid_absolute_path);
+        (valid_text(&self.source_reference, 1_024)
+            && valid_absolute_path(&self.destination)
+            && host_path_valid)
             .then_some(())
             .ok_or(DockerInventoryError::InvalidMount)
+    }
+
+    /// The absolute host-side path this mount's data lives at, when known —
+    /// a bind mount's `source_reference` already is that path; a named
+    /// volume's is not (it is the volume's bare name), so that case relies
+    /// on `host_path` (resolved from the same `docker inspect` response's
+    /// `Source` field). `Tmpfs` has no host-side data to capture.
+    #[must_use]
+    pub fn capturable_path(&self) -> Option<&str> {
+        match self.kind {
+            DockerMountKind::Bind => Some(&self.source_reference),
+            DockerMountKind::Volume => self.host_path.as_deref(),
+            DockerMountKind::Tmpfs => None,
+        }
     }
 }
 

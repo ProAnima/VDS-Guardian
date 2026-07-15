@@ -138,7 +138,16 @@ unsafe metadata before an inventory is accepted. `guardian-docker` additionally
 parses bounded `docker inspect` JSON into that contract and rejects unexpected
 state or unsafe mount data. Its pinned-SSH adapter invokes only a reviewed
 read-only Docker command, caps local output at 8 MiB, and passes it to the
-parser. Database preflight now requires matching major versions between a
+parser. Named-volume and bind-mount capture strategies (ADR 0008) now exist:
+a `DockerMount` resolves to a `capturable_path()` — a bind mount's already-
+validated host path, or a named volume's host directory recovered from the
+same `docker inspect` response's `Source` field the parser already fetched
+but previously discarded — feeding directly into the existing filesystem-
+capture mechanism with no new capture use case. Non-`local` volume drivers,
+quiesce/consistency guarantees for a live volume, any new privilege beyond
+what the operator's own dedicated backup account already grants, and a
+discovery/selection UI to turn inventory into a capture plan all remain
+explicitly open, not silently assumed solved. Database preflight now requires matching major versions between a
 reported PostgreSQL/MySQL server and its selected dump tool, and rejects an
 empty discovery result. `guardian-database` composes the fixed server-version
 and dump-tool probes into the core capability port, so an SSH preflight cannot

@@ -169,6 +169,10 @@ struct InspectMount {
 impl InspectMount {
     fn into_mount(self) -> Result<DockerMount, DockerInspectError> {
         let kind = parse_mount_kind(&self.kind)?;
+        let host_path = match kind {
+            DockerMountKind::Volume if !self.source.is_empty() => Some(self.source.clone()),
+            _ => None,
+        };
         let source_reference = match kind {
             DockerMountKind::Bind => self.source,
             DockerMountKind::Volume => self.name,
@@ -177,6 +181,7 @@ impl InspectMount {
         Ok(DockerMount {
             kind,
             source_reference,
+            host_path,
             destination: self.destination,
             read_only: !self.read_write,
         })

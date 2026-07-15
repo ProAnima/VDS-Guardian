@@ -226,6 +226,18 @@ clears that acknowledgement.
   `docker inspect --` template, and kills an output stream above 8 MiB. Embedded-database
   consistency logic is implemented for a lightweight SQLite-style file (see below);
   PostgreSQL/MySQL consistency (beyond version preflight) remains unimplemented.
+- A bind mount's or named volume's host-side data resolves to a capturable
+  absolute path (ADR 0008) reusing the existing filesystem-capture mechanism —
+  no new remote command. Three residual risks are intentionally unresolved,
+  not silently assumed away: a volume's reported source path is trusted at
+  face value with no separate driver check, so a non-`local` volume driver
+  fails closed only if `tar` itself cannot read what is there; a raw capture
+  of a live, actively-written volume has no consistency guarantee (no generic
+  quiesce mechanism exists — prefer the embedded-database adapter for a live
+  database instead of raw volume capture of the same data); and reading
+  Docker's volume storage needs filesystem access this tool never requests,
+  grants, or assumes — the same operator-arranged, least-privilege prerequisite
+  already required for the embedded-database adapter's target file.
 - Database dump preflight rejects missing, malformed, or major-version-mismatched
   PostgreSQL/MySQL server and dump-tool capabilities. This compatibility check is
   not a substitute for quiesce, a successful dump, or a restore drill.
