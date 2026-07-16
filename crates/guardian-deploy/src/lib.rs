@@ -3,12 +3,14 @@
 //! crate capable of *mutating* a remote host is enumerable on its own — see
 //! `docs/adr/0007-remote-deploy-to-a-new-vds.md`.
 
+use guardian_archive::{ArchiveLimits, inspect_tar_zstd};
 use guardian_core::{
     BackupId, DeploymentPlan, DeploymentPlanError, ManifestVerifier, PayloadPath, ProfileId,
     RemoteTargetPath, RunId, SecretStore, VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshIdentity, SshUser, StagingTarget, SystemOpenSsh};
+use std::io::{Seek, SeekFrom};
 use thiserror::Error;
 
 pub struct DeploymentComposition<'a> {
@@ -177,10 +179,11 @@ impl DeploymentComposition<'_> {
         // never `PayloadEntry.byte_length` (which records the on-disk,
         // possibly-encrypted-and-therefore-larger stored size) — see
         // `open_deploy_payload_reader`'s own doc comment.
-        let (reader, expected_bytes) = self
+        let (mut reader, expected_bytes) = self
             .repository
             .open_deploy_payload_reader(backup_id, payload_path, self.verifier, self.credentials)
             .map_err(|_| DeployError::Storage)?;
+        Self::inspect_filesystem_payload(&mut reader, kind)?;
         let identity_path = session.identity.path();
         let result = match kind {
             PushKind::FilesystemOnly => self.ssh.push_filesystem_to(
@@ -215,6 +218,21 @@ impl DeploymentComposition<'_> {
             ),
         };
         result.map(|_| ()).map_err(|_| DeployError::PushFailed)
+    }
+
+    fn inspect_filesystem_payload(
+        reader: &mut (impl std::io::Read + Seek),
+        kind: PushKind<'_>,
+    ) -> Result<(), DeployError> {
+        if !kind.is_filesystem() {
+            return Ok(());
+        }
+        inspect_tar_zstd(&mut *reader, ArchiveLimits::conservative())
+            .map_err(|_| DeployError::ArchivePolicy)?;
+        reader
+            .seek(SeekFrom::Start(0))
+            .map_err(|_| DeployError::Storage)?;
+        Ok(())
     }
 
     fn finalize_deploy(
@@ -263,10 +281,20 @@ struct SshSession {
     identity: SshIdentity,
 }
 
+#[derive(Clone, Copy)]
 enum PushKind<'a> {
     FilesystemOnly,
     FilesystemIntoStaging { run_id: &'a RunId },
     DatabaseIntoStaging { run_id: &'a RunId },
+}
+
+impl PushKind<'_> {
+    const fn is_filesystem(self) -> bool {
+        matches!(
+            self,
+            Self::FilesystemOnly | Self::FilesystemIntoStaging { .. }
+        )
+    }
 }
 
 #[derive(Debug, Error)]
@@ -279,6 +307,8 @@ pub enum DeployError {
     Credential,
     #[error("sealed backup or repository storage is unavailable")]
     Storage,
+    #[error("filesystem payload violates archive policy")]
+    ArchivePolicy,
     #[error(transparent)]
     Plan(#[from] DeploymentPlanError),
     #[error("remote preflight check failed")]
@@ -291,17 +321,30 @@ pub enum DeployError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeployError, DeploymentComposition};
+    use super::{DeployError, DeploymentComposition, PushKind};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
     use guardian_core::{
-        BackupId, CredentialId, HostPin, Manifest, ManifestSigner, PayloadPath, PlanId,
-        PlanReference, Producer, ProfileId, RemoteTargetPath, RepositoryId, RunId, SecretStore,
-        SecretStoreError, SecretValue, SigningError, SourceIdentity, SshEndpoint, Timestamp,
-        VdsProfile,
+        ArchivePath, BackupId, CredentialId, HostPin, Manifest, ManifestSigner, PayloadPath,
+        PlanId, PlanReference, Producer, ProfileId, RemoteTargetPath, RepositoryId, RunId,
+        SecretStore, SecretStoreError, SecretValue, SigningError, SourceIdentity, SshEndpoint,
+        Timestamp, VdsProfile,
     };
     use guardian_local_repository::LocalRepository;
     use guardian_ssh::SystemOpenSsh;
+    use std::io::Cursor;
+
+    #[test]
+    fn deploy_rejects_a_malformed_filesystem_archive_before_ssh_push() {
+        let mut payload = Cursor::new(b"not a tar.zstd archive".to_vec());
+        assert!(matches!(
+            DeploymentComposition::inspect_filesystem_payload(
+                &mut payload,
+                PushKind::FilesystemOnly,
+            ),
+            Err(DeployError::ArchivePolicy)
+        ));
+    }
 
     #[test]
     fn execute_rejects_a_mismatched_target_profile_id_before_touching_storage()
@@ -484,7 +527,7 @@ mod tests {
             "filesystem",
             filesystem_path,
             "application/zstd",
-            b"payload-bytes",
+            &valid_filesystem_archive()?,
         )?;
         let database_path = PayloadPath::parse("payload/database.sqlite.zst")?;
         let database_payload = staging.write_payload(
@@ -526,8 +569,12 @@ mod tests {
         let run = RunId::parse(format!("run-{}", backup_id.as_str()))?;
         let staging = repository.begin_staging(run.clone())?;
         let path = PayloadPath::parse("payload/filesystem.tar.zst")?;
-        let payload =
-            staging.write_payload("filesystem", path, "application/zstd", b"payload-bytes")?;
+        let payload = staging.write_payload(
+            "filesystem",
+            path,
+            "application/zstd",
+            &valid_filesystem_archive()?,
+        )?;
         let mut manifest = Manifest::new(
             backup_id.clone(),
             run,
@@ -550,6 +597,16 @@ mod tests {
         manifest.add_payload(payload)?;
         staging.seal(manifest, Timestamp::parse("2026-07-15T19:00:01Z")?, signer)?;
         Ok(())
+    }
+
+    fn valid_filesystem_archive() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let mut writer = guardian_archive::TarZstdWriter::new(Vec::new())?;
+        writer.append_file(
+            &ArchivePath::parse("srv/app/config.yaml")?,
+            4,
+            &mut Cursor::new(b"safe"),
+        )?;
+        Ok(writer.finish()?)
     }
 
     fn secrets_store_valid_key(

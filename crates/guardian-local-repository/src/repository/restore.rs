@@ -111,7 +111,7 @@ impl LocalRepository {
         payload_path: &PayloadPath,
         verifier: &dyn ManifestVerifier,
         secrets: &dyn SecretStore,
-    ) -> Result<(impl std::io::Read + Send + use<>, u64), RepositoryError> {
+    ) -> Result<(impl std::io::Read + std::io::Seek + Send + use<>, u64), RepositoryError> {
         let _lock = self.acquire_lock()?;
         let backup_root = self.backups_root().join(backup_id.as_str());
         let manifest = load_verified_manifest(&backup_root, verifier)?;

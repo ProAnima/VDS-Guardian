@@ -107,3 +107,12 @@ impl std::io::Read for DecryptedPayload {
         }
     }
 }
+
+impl std::io::Seek for DecryptedPayload {
+    fn seek(&mut self, position: std::io::SeekFrom) -> std::io::Result<u64> {
+        match self {
+            DecryptedPayload::Temporary { file, .. } => file.seek(position),
+            DecryptedPayload::Direct(file) => file.seek(position),
+        }
+    }
+}

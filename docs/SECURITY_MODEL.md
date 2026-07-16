@@ -413,6 +413,10 @@ clears that acknowledgement.
 - Each payload's manifest signature and checksums are re-verified
   immediately before that payload is pushed, not once for the whole
   operation, since each push is network-bound and can run for minutes.
+- Before any filesystem payload is sent to a remote extractor, the decrypted
+  tar.zst stream is inspected locally against the same path, entry-type, and
+  resource limits used by capture and local restore; a rejected stream never
+  opens remote deploy staging.
 - Requires an exact confirmation phrase, computed from the backup ID, the
   target profile ID, and the target path together, before any push begins.
 - Every deploy attempt is recorded to the repository's audit log at
