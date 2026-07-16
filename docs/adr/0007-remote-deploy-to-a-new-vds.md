@@ -125,10 +125,11 @@ state, backup_id, target_profile_id)` was added instead, mirroring
 `write_capture_audit`'s shape exactly (`deploy-{run_id}-{state}.json`, one
 record per state transition, `run_id` generated fresh per CLI invocation so
 retries of the same backup/target pair never collide with or silently
-overwrite a prior attempt's record). `guardian-cli/src/deploy.rs`'s
-`execute` wraps the composition call with `attempted` → `completed`/`failed`
-audit writes, mirroring exactly how the Tauri layer wraps capture today —
-audit-writing is the caller's responsibility, not the composition's.
+overwrite a prior attempt's record). `DeploymentComposition::execute`
+itself now writes the full `attempted` → `completed`/`cancelled`/`failed`
+audit trail (see the 2026-07-16 audit amendment below) — every caller,
+`guardian-cli/src/deploy.rs` included, simply invokes it and reacts to the
+result.
 
 This satisfies CODEX.md's "fresh pre-restore backup" clause vacuously
 (nothing was there to back up) — that reasoning does not extend to the
@@ -311,6 +312,47 @@ partially deployed target with no database file), and making attempted/
 completed/failed audit persistence part of this composition itself rather
 than a responsibility duplicated by every caller. Both are tracked in
 `docs/DEVELOPMENT_PLAN.md`.
+
+## Amendment (2026-07-16): audit persistence moved into the composition
+
+The second non-goal named directly above is now closed: `DeploymentComposition::
+execute` writes its own `attempted`/`completed`/`cancelled`/`failed` audit
+trail unconditionally, reversing the original decision (further up this
+document, "Audit record: a new `LocalRepository` method, not `AuditPort`")
+that audit-writing was the caller's responsibility. That reversal is a
+deliberate strengthening, not a correction of an error: nothing about the
+original design was wrong, but leaving audit persistence to convention
+meant a third caller — a future scheduler, a test exercising `execute`
+directly, anything that didn't copy the existing wrapping exactly — could
+silently skip it, which `CODEX.md`'s "destructive server mutations require
+... an audit record" does not allow as an option.
+
+Mechanically: `execute` gained a `run_id: &RunId` parameter (callers
+already minted one for their own now-removed wrapping, so this only moves
+where it's consumed, not who produces it) and a new private `write_audit`
+helper wrapping `LocalRepository::write_deploy_audit`. Cancellation
+detection moved with it: `SystemOpenSsh` gained a small `is_cancelled()`
+accessor so the composition can distinguish `"cancelled"` from `"failed"`
+using the same `CancellationHandle` its own `ssh` field was already built
+with, without a second copy of that handle threaded through separately.
+The existing strict/best-effort split is preserved exactly: `"attempted"`/
+`"completed"` writes are strict (a write failure here fails the call even
+though the push itself succeeded), `"cancelled"`/`"failed"` are best-effort.
+
+`FilesystemCaptureComposition::execute` (`guardian-capture`) gained the
+identical treatment in the same change, for the identical reason — it is
+not part of this ADR's own scope, but is named here because both
+compositions now share one pattern deliberately. It needed no new
+parameter: `FilesystemBackupRequest.capture.run_id` was already available
+inside the request `execute` already takes.
+
+Named explicitly, not silently carried forward: `EmbeddedDatabaseCaptureComposition`
+(`guardian-capture/src/embedded_database.rs`) is a third, structurally
+identical composition with the same audit gap. It has no production caller
+today, so it is untouched by this amendment — but it would silently lack a
+real audit trail the moment something calls it directly, and whoever wires
+it up next should give it the same treatment rather than rediscovering this
+gap.
 
 ## Consequences
 

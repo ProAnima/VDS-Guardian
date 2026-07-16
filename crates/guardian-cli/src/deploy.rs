@@ -171,7 +171,6 @@ fn execute(
             .map(|plan| summarize(&plan, &target_profile))
             .map_err(|_| DeployFailure::rejected()),
         DeployAction::Execute => execute_deploy(
-            &repository,
             &composition,
             &backup_id,
             &target_profile_id,
@@ -183,7 +182,6 @@ fn execute(
 }
 
 fn execute_deploy(
-    repository: &LocalRepository,
     composition: &DeploymentComposition<'_>,
     backup_id: &BackupId,
     target_profile_id: &ProfileId,
@@ -193,25 +191,16 @@ fn execute_deploy(
 ) -> Result<DeploymentPlanSummary, DeployFailure> {
     let confirmation = confirmation.ok_or_else(DeployFailure::usage)?;
     let run_id = random_run_id()?;
-    repository
-        .write_deploy_audit(&run_id, "attempted", backup_id, target_profile_id)
-        .map_err(|_| DeployFailure::storage())?;
-    match composition.execute(target_profile_id, backup_id, target_path, confirmation) {
-        Ok(plan) => {
-            repository
-                .write_deploy_audit(&run_id, "completed", backup_id, target_profile_id)
-                .map_err(|_| DeployFailure::storage())?;
-            Ok(summarize(&plan, composition.target_profile))
-        }
-        Err(_) if cancellation.is_cancelled() => {
-            let _ =
-                repository.write_deploy_audit(&run_id, "cancelled", backup_id, target_profile_id);
-            Err(DeployFailure::cancelled())
-        }
-        Err(_) => {
-            let _ = repository.write_deploy_audit(&run_id, "failed", backup_id, target_profile_id);
-            Err(DeployFailure::rejected())
-        }
+    match composition.execute(
+        &run_id,
+        target_profile_id,
+        backup_id,
+        target_path,
+        confirmation,
+    ) {
+        Ok(plan) => Ok(summarize(&plan, composition.target_profile)),
+        Err(_) if cancellation.is_cancelled() => Err(DeployFailure::cancelled()),
+        Err(_) => Err(DeployFailure::rejected()),
     }
 }
 
@@ -598,7 +587,10 @@ mod tests {
                 host_pin: pin()?,
             },
         };
-        let ssh = guardian_ssh::SystemOpenSsh::with_binary(root.path().join("missing-ssh"));
+        let cancellation = guardian_core::CancellationHandle::new();
+        cancellation.cancel();
+        let ssh = guardian_ssh::SystemOpenSsh::with_binary(root.path().join("missing-ssh"))
+            .with_cancellation(cancellation.clone());
         let composition = guardian_deploy::DeploymentComposition {
             repository: &repository,
             ssh: &ssh,
@@ -612,10 +604,7 @@ mod tests {
         // cancelled-vs-rejected branch itself, not a real network failure.
         let backup_id = guardian_core::BackupId::parse("backup-missing")?;
         let target_path = guardian_core::RemoteTargetPath::parse("/srv/app")?;
-        let cancellation = guardian_core::CancellationHandle::new();
-        cancellation.cancel();
         let result = execute_deploy(
-            &repository,
             &composition,
             &backup_id,
             &target_profile_id,

@@ -5,7 +5,7 @@
 
 use guardian_core::{
     BackupId, DeploymentPlan, DeploymentPlanError, ManifestVerifier, PayloadPath, ProfileId,
-    RemoteTargetPath, SecretStore, VdsProfile,
+    RemoteTargetPath, RunId, SecretStore, VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
@@ -52,13 +52,59 @@ impl DeploymentComposition<'_> {
         Ok(plan)
     }
 
+    /// Writes the attempted/completed/cancelled/failed audit trail itself —
+    /// mandatory, not a responsibility left to whichever caller happens to
+    /// invoke this, per `CODEX.md`'s requirement that a destructive server
+    /// mutation always carries an audit record. "Attempted" and "completed"
+    /// are strict (a write failure here fails the call even though the push
+    /// itself succeeded); "cancelled"/"failed" are best-effort, matching
+    /// every caller's own prior behavior before this became the
+    /// composition's job.
+    pub fn execute(
+        &self,
+        run_id: &RunId,
+        expected_target_profile_id: &ProfileId,
+        backup_id: &BackupId,
+        target_path: RemoteTargetPath,
+        confirmation: &str,
+    ) -> Result<DeploymentPlan, DeployError> {
+        self.write_audit(run_id, "attempted", backup_id)?;
+        let result = self.execute_pushes(
+            expected_target_profile_id,
+            backup_id,
+            target_path,
+            confirmation,
+        );
+        match &result {
+            Ok(_) => self.write_audit(run_id, "completed", backup_id)?,
+            Err(_) if self.ssh.is_cancelled() => {
+                let _ = self.write_audit(run_id, "cancelled", backup_id);
+            }
+            Err(_) => {
+                let _ = self.write_audit(run_id, "failed", backup_id);
+            }
+        }
+        result
+    }
+
+    fn write_audit(
+        &self,
+        run_id: &RunId,
+        state: &'static str,
+        backup_id: &BackupId,
+    ) -> Result<(), DeployError> {
+        self.repository
+            .write_deploy_audit(run_id, state, backup_id, &self.target_profile.profile_id)
+            .map_err(|_| DeployError::Storage)
+    }
+
     /// Re-derives the plan from scratch (never accepts one as trusted
     /// input), approves the confirmation, then pushes each payload with its
     /// own fresh manifest re-verification immediately beforehand — the
     /// filesystem and database pushes are each network-bound and can run
     /// for minutes, so the second push must not rely on a verification
     /// already minutes stale by the time it starts.
-    pub fn execute(
+    fn execute_pushes(
         &self,
         expected_target_profile_id: &ProfileId,
         backup_id: &BackupId,
@@ -216,6 +262,7 @@ mod tests {
             verifier: &signer,
         };
         let result = composition.execute(
+            &RunId::parse("run-001")?,
             &ProfileId::parse("different-profile")?,
             &BackupId::parse("backup-001")?,
             RemoteTargetPath::parse("/srv/app")?,
@@ -243,6 +290,7 @@ mod tests {
             verifier: &signer,
         };
         let result = composition.execute(
+            &RunId::parse("run-002")?,
             &target.profile_id,
             &backup_id,
             RemoteTargetPath::parse("/srv/app")?,
@@ -275,8 +323,13 @@ mod tests {
             target.profile_id.as_str(),
             target_path.as_str()
         );
-        let result =
-            composition.execute(&target.profile_id, &backup_id, target_path, &confirmation);
+        let result = composition.execute(
+            &RunId::parse("run-003")?,
+            &target.profile_id,
+            &backup_id,
+            target_path,
+            &confirmation,
+        );
         assert!(matches!(result, Err(DeployError::Credential)));
         Ok(())
     }
@@ -306,8 +359,13 @@ mod tests {
             target.profile_id.as_str(),
             target_path.as_str()
         );
-        let result =
-            composition.execute(&target.profile_id, &backup_id, target_path, &confirmation);
+        let result = composition.execute(
+            &RunId::parse("run-004")?,
+            &target.profile_id,
+            &backup_id,
+            target_path,
+            &confirmation,
+        );
         assert!(matches!(result, Err(DeployError::PushFailed)));
         Ok(())
     }

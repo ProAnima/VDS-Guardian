@@ -88,16 +88,27 @@ gate.
   local restore's extractor.
 - Assemble filesystem and optional database payloads under one staging root and
   publish them with one final rename. A failed second payload must not leave a
-  partial destination. Still open.
+  partial destination. Closed for local restore: both payloads now extract
+  into one sibling staging directory and publish with a single rename,
+  guarded by a fresh existence check immediately before it. Still open for
+  deploy — its two payloads are pushed as independently atomic remote
+  renames, so a failed second push still leaves a live, partially deployed
+  target; closing this needs a two-phase remote staging protocol, not a
+  local rename, and is deliberately its own separate slice.
 - Make attempted/completed/failed audit persistence part of the mutating
   application use case rather than a responsibility duplicated by CLI and
-  Tauri callers. Still open.
-- Add regression tests for each failure mode above. Covered for the three
-  closed items above; not yet for the two still-open ones.
+  Tauri callers. Closed: both `DeploymentComposition::execute` and
+  `FilesystemCaptureComposition::execute` now write their own audit trail
+  unconditionally; every caller (CLI deploy, desktop deploy, desktop
+  capture) dropped its own duplicated wrapping.
+- Add regression tests for each failure mode above. Covered for four of the
+  five closed items above; not yet for deploy's still-open atomicity bullet.
 
 Gate: a failed or cancelled restore/deploy leaves no published partial target,
 does not delete a path it did not create, and records an accurate terminal
-state. Not yet met — blocked on the two still-open bullets above.
+state. Met for local restore and for the audit trail on both restore and
+deploy. Not yet met for deploy's own atomicity — a failed second payload
+push still leaves a live, incomplete target on the remote host.
 
 ### 2. Make encrypted backups independently recoverable
 

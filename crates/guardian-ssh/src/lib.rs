@@ -275,6 +275,15 @@ impl SystemOpenSsh {
         self
     }
 
+    /// Lets a composition that already holds this adapter decide its own
+    /// terminal audit state (cancelled vs. failed) without needing a
+    /// separate copy of the same `CancellationHandle` threaded through
+    /// alongside it.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation.is_cancelled()
+    }
+
     pub fn capture_to(
         &self,
         host: &PinnedHost,

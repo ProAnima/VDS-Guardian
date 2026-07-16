@@ -133,9 +133,6 @@ fn run_blocking(
         }),
         None => None,
     };
-    repository
-        .write_capture_audit(&run_id, "started", None)
-        .map_err(|_| CaptureJobFailure::repository())?;
     let audit = NoopAudit;
     let ssh = SystemOpenSsh::default().with_cancellation(handle.clone());
     let composition = FilesystemCaptureComposition {
@@ -148,18 +145,9 @@ fn run_blocking(
     };
     let sealed = match composition.execute(request, database, &identity) {
         Ok(sealed) => sealed,
-        Err(_) if handle.is_cancelled() => {
-            let _ = repository.write_capture_audit(&run_id, "cancelled", None);
-            return Err(CaptureJobFailure::cancelled());
-        }
-        Err(_) => {
-            let _ = repository.write_capture_audit(&run_id, "failed", None);
-            return Err(CaptureJobFailure::capture());
-        }
+        Err(_) if handle.is_cancelled() => return Err(CaptureJobFailure::cancelled()),
+        Err(_) => return Err(CaptureJobFailure::capture()),
     };
-    repository
-        .write_capture_audit(&run_id, "sealed", Some(&sealed.backup_id))
-        .map_err(|_| CaptureJobFailure::repository())?;
     Ok(CaptureJobSummary {
         backup_id: sealed.backup_id.as_str().to_owned(),
     })

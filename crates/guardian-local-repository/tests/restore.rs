@@ -197,6 +197,81 @@ fn restore_reconstructs_an_encrypted_database_payload_alongside_the_filesystem_p
 }
 
 #[test]
+fn a_failed_second_payload_leaves_no_partial_destination() -> TestResult {
+    let root = TestRoot::new()?;
+    let local_repository = repository(&root)?;
+    let signer = TestSigner::new();
+    let secrets = MemorySecrets::default();
+    let backup_id = BackupId::parse("backup-partial-second-payload")?;
+    let run = RunId::parse("run-partial-second-payload")?;
+    let staging = local_repository.begin_staging(run.clone())?;
+    let filesystem_path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload(
+        "filesystem",
+        filesystem_path.clone(),
+        "application/zstd",
+        &archive()?,
+    )?;
+    let filesystem_payload = staging.encrypt_and_register_payload_file(
+        "filesystem",
+        filesystem_path,
+        "application/zstd",
+        &backup_id,
+        &secrets,
+    )?;
+    let database_bytes =
+        zstd::stream::encode_all(Cursor::new(b"select 1;".repeat(32).as_slice()), 0)?;
+    let database_path = PayloadPath::parse("payload/database.sqlite.zst.enc")?;
+    staging.write_payload(
+        "database",
+        database_path.clone(),
+        "application/vnd.sqlite3+zstd",
+        &database_bytes,
+    )?;
+    let database_payload = staging.encrypt_and_register_payload_file(
+        "database",
+        database_path,
+        "application/vnd.sqlite3+zstd",
+        &backup_id,
+        &secrets,
+    )?;
+    // Only the database payload's key goes missing -- the filesystem
+    // payload's own key stays available, so the filesystem extraction
+    // succeeds before the database extraction fails.
+    let missing_credential_id = database_payload
+        .encryption
+        .clone()
+        .ok_or("database payload is encrypted")?
+        .credential_id;
+    let mut manifest = manifest("backup-partial-second-payload", run)?;
+    manifest.add_payload(filesystem_payload)?;
+    manifest.add_payload(database_payload)?;
+    staging.seal(manifest, timestamp("2026-07-15T09:00:00Z")?, &signer)?;
+    let destination = root.path().join("partial-second-payload-target");
+    let plan = local_repository.plan_restore(&backup_id, &destination, &signer)?;
+    assert!(plan.database_payload.is_some());
+    let secrets_missing_database_key = MissingOneKey {
+        inner: &secrets,
+        missing: missing_credential_id,
+    };
+    assert!(matches!(
+        local_repository.execute_restore(
+            &backup_id,
+            &destination,
+            &plan.confirmation,
+            &signer,
+            &secrets_missing_database_key,
+        ),
+        Err(RepositoryError::Credential)
+    ));
+    // The whole point of this test: a failed *second* payload must not
+    // leave the first payload's already-extracted tree behind at
+    // `destination`, since that would block every future retry.
+    assert!(!destination.exists());
+    Ok(())
+}
+
+#[test]
 fn encrypted_restore_fails_closed_when_the_key_is_missing() -> TestResult {
     let root = TestRoot::new()?;
     let local_repository = repository(&root)?;
@@ -234,6 +309,31 @@ fn encrypted_restore_fails_closed_when_the_key_is_missing() -> TestResult {
     ));
     assert!(!destination.exists());
     Ok(())
+}
+
+/// Delegates to `inner` for every credential except `missing`, which always
+/// reports absent -- simulates exactly one payload's key having gone away
+/// while every other payload's key stays reachable.
+struct MissingOneKey<'a> {
+    inner: &'a MemorySecrets,
+    missing: CredentialId,
+}
+
+impl SecretStore for MissingOneKey<'_> {
+    fn load(&self, id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        if *id == self.missing {
+            return Ok(None);
+        }
+        self.inner.load(id)
+    }
+
+    fn store(&self, id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError> {
+        self.inner.store(id, secret)
+    }
+
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+        self.inner.delete(id)
+    }
 }
 
 struct NoopSecrets;

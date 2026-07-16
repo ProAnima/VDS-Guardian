@@ -18,7 +18,7 @@
 mod support;
 
 use guardian_core::{
-    CredentialId, ProfileId, RemoteTargetPath, RepositoryId, SecretStore, SecretValue,
+    CredentialId, ProfileId, RemoteTargetPath, RepositoryId, RunId, SecretStore, SecretValue,
 };
 use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;
@@ -208,6 +208,7 @@ fn deploy_drill() -> TestResult {
     let deploy_start = Instant::now();
     let plan = deployment.plan(&capture.sealed.backup_id, target_path.clone())?;
     deployment.execute(
+        &RunId::parse("drill-deploy-push")?,
         &target_profile_id,
         &capture.sealed.backup_id,
         target_path,

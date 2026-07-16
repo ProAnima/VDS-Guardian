@@ -277,6 +277,13 @@ impl LocalRepository {
         RestorePlan::build(&manifest, destination).map_err(RepositoryError::RestorePlan)
     }
 
+    /// Stages both payloads under a fresh sibling of `destination`, never
+    /// touching `destination` itself until everything has succeeded — a
+    /// failed second (database) payload must not leave the first
+    /// (filesystem) payload's already-extracted tree sitting at a path that
+    /// then blocks every future retry via `plan_restore`'s own existence
+    /// guard. Mirrors `staging.rs`'s own `publish_backup`: stage, then one
+    /// `fs::rename` guarded by a fresh existence check immediately before it.
     pub fn execute_restore(
         &self,
         backup_id: &BackupId,
@@ -292,24 +299,25 @@ impl LocalRepository {
         let backup_root = self.backups_root().join(backup_id.as_str());
         let manifest = load_verified_manifest(&backup_root, verifier)?;
         let scratch_root = self.restore_scratch_root();
-        extract_payload(
+        let staging = reserve_restore_staging_directory(destination)?;
+        if let Err(error) = stage_restore_payloads(
             &backup_root,
             &manifest,
-            &plan.filesystem_payload,
+            &plan,
             secrets,
-            destination,
+            &staging,
             &scratch_root,
-        )?;
-        if let Some(database_payload) = &plan.database_payload {
-            extract_database_payload(
-                &backup_root,
-                &manifest,
-                database_payload,
-                secrets,
-                destination,
-                &scratch_root,
-            )?;
+        ) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
         }
+        if destination.exists() {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(RepositoryError::RestoreDestinationExists);
+        }
+        fs::rename(&staging, destination)
+            .map_err(|source| RepositoryError::io("publish restored destination", source))?;
+        sync_parent(destination)?;
         Ok(plan)
     }
 
@@ -393,6 +401,60 @@ fn resolve_payload_file(
         return Err(RepositoryError::UnsafeFilesystemEntry);
     }
     Ok((payload, entry.encryption.clone()))
+}
+
+/// Claims a unique, not-yet-existing directory name as a sibling of
+/// `destination` (same parent, so a later rename between them stays a
+/// same-filesystem operation) and immediately frees the name back up —
+/// `extract_tar_zstd` requires a destination that does not yet exist and
+/// creates it itself, so the name can only be reserved, not pre-created.
+/// The small local TOCTOU window this leaves (another process claiming the
+/// same name before extraction starts) has direct precedent in this crate
+/// (`staging.rs`'s `reserve_payload_destination`) and is backed by the same
+/// kind of real guarantee: `extract_tar_zstd`'s own `fs::create_dir` fails
+/// closed, never corrupts, if the name was reclaimed.
+fn reserve_restore_staging_directory(destination: &Path) -> Result<PathBuf, RepositoryError> {
+    let parent = destination
+        .parent()
+        .ok_or(RepositoryError::UnsafeFilesystemEntry)?;
+    let staging = tempfile::Builder::new()
+        .prefix(".guardian-restore-tmp-")
+        .tempdir_in(parent)
+        .map_err(|source| RepositoryError::io("reserve restore staging directory", source))?;
+    let path = staging.path().to_path_buf();
+    staging
+        .close()
+        .map_err(|source| RepositoryError::io("free restore staging directory name", source))?;
+    Ok(path)
+}
+
+fn stage_restore_payloads(
+    backup_root: &Path,
+    manifest: &guardian_core::Manifest,
+    plan: &RestorePlan,
+    secrets: &dyn SecretStore,
+    staging: &Path,
+    scratch_root: &Path,
+) -> Result<(), RepositoryError> {
+    extract_payload(
+        backup_root,
+        manifest,
+        &plan.filesystem_payload,
+        secrets,
+        staging,
+        scratch_root,
+    )?;
+    if let Some(database_payload) = &plan.database_payload {
+        extract_database_payload(
+            backup_root,
+            manifest,
+            database_payload,
+            secrets,
+            staging,
+            scratch_root,
+        )?;
+    }
+    Ok(())
 }
 
 fn extract_payload(

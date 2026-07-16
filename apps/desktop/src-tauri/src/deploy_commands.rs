@@ -121,36 +121,16 @@ fn execute_blocking(
         credentials: &OsCredentialStore,
         verifier: &inputs.identity,
     };
-    inputs
-        .repository
-        .write_deploy_audit(&run_id, "attempted", &backup_id, &target_profile_id)
-        .map_err(|_| DeployFailure::storage())?;
-    match composition.execute(&target_profile_id, &backup_id, target_path, confirmation) {
-        Ok(plan) => {
-            inputs
-                .repository
-                .write_deploy_audit(&run_id, "completed", &backup_id, &target_profile_id)
-                .map_err(|_| DeployFailure::storage())?;
-            Ok(summary(plan, &inputs.target_profile))
-        }
-        Err(_) if handle.is_cancelled() => {
-            let _ = inputs.repository.write_deploy_audit(
-                &run_id,
-                "cancelled",
-                &backup_id,
-                &target_profile_id,
-            );
-            Err(DeployFailure::cancelled())
-        }
-        Err(_) => {
-            let _ = inputs.repository.write_deploy_audit(
-                &run_id,
-                "failed",
-                &backup_id,
-                &target_profile_id,
-            );
-            Err(DeployFailure::rejected())
-        }
+    match composition.execute(
+        &run_id,
+        &target_profile_id,
+        &backup_id,
+        target_path,
+        confirmation,
+    ) {
+        Ok(plan) => Ok(summary(plan, &inputs.target_profile)),
+        Err(_) if handle.is_cancelled() => Err(DeployFailure::cancelled()),
+        Err(_) => Err(DeployFailure::rejected()),
     }
 }
 

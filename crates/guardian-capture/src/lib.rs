@@ -5,11 +5,11 @@ mod embedded_database;
 use fs2::available_space;
 use guardian_archive::{ArchiveLimits, TarZstdInspector, ZstdFileInspector};
 use guardian_core::{
-    AuditPort, BackupStoragePort, CaptureAuditCode, CaptureRequestError, CaptureUseCaseError,
-    EmbeddedDatabaseCaptureRequest, EmbeddedDatabaseCaptureUseCase, FilesystemBackupRequest,
-    FilesystemBackupUseCase, FilesystemCaptureRequest, FilesystemCaptureUseCase, ManifestError,
-    ManifestSigner, PayloadEntry, RunId, SealedBackup, SecretStore, SshCapabilityProbePort,
-    StoragePortError, VdsProfile,
+    AuditPort, BackupId, BackupStoragePort, CaptureAuditCode, CaptureRequestError,
+    CaptureUseCaseError, EmbeddedDatabaseCaptureRequest, EmbeddedDatabaseCaptureUseCase,
+    FilesystemBackupRequest, FilesystemBackupUseCase, FilesystemCaptureRequest,
+    FilesystemCaptureUseCase, ManifestError, ManifestSigner, PayloadEntry, RunId, SealedBackup,
+    SecretStore, SshCapabilityProbePort, StoragePortError, VdsProfile,
 };
 use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
@@ -34,16 +34,49 @@ pub struct FilesystemCaptureComposition<'a> {
 }
 
 impl FilesystemCaptureComposition<'_> {
+    /// Writes the started/sealed/cancelled/failed audit trail itself —
+    /// mandatory, not a responsibility left to whichever caller happens to
+    /// invoke this (today only the desktop app; a future CLI capture
+    /// command must not be able to skip it either). Mirrors
+    /// `DeploymentComposition::execute`'s identical shape: "started" is
+    /// strict, "cancelled"/"failed" are best-effort, "sealed" is strict —
+    /// matching every caller's own prior behavior before this became the
+    /// composition's job. Reuses `request.capture.run_id` rather than
+    /// taking a new parameter — it is already the correlation id this
+    /// exact run was constructed with.
     pub fn execute(
         &self,
         request: FilesystemBackupRequest,
         database: Option<EmbeddedDatabaseCaptureRequest>,
         signer: &dyn ManifestSigner,
     ) -> Result<SealedBackup, CaptureUseCaseError> {
-        match database {
+        let run_id = request.capture.run_id.clone();
+        self.write_audit(&run_id, "started", None)?;
+        let result = match database {
             Some(database) => self.execute_combined(request, database, signer),
             None => self.execute_filesystem_only(request, signer),
+        };
+        match &result {
+            Ok(sealed) => self.write_audit(&run_id, "sealed", Some(&sealed.backup_id))?,
+            Err(_) if self.ssh.is_cancelled() => {
+                let _ = self.write_audit(&run_id, "cancelled", None);
+            }
+            Err(_) => {
+                let _ = self.write_audit(&run_id, "failed", None);
+            }
         }
+        result
+    }
+
+    fn write_audit(
+        &self,
+        run_id: &RunId,
+        state: &'static str,
+        backup_id: Option<&BackupId>,
+    ) -> Result<(), CaptureUseCaseError> {
+        self.repository
+            .write_capture_audit(run_id, state, backup_id)
+            .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Rejected))
     }
 
     /// Unchanged from before `database` existed: exactly today's single-
