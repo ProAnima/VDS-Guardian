@@ -152,7 +152,10 @@ desktop app exposes a Cancel affordance backed by a per-job registry, both
 setting a cross-thread handle the transport polls between reads; the
 spawned child is placed in its own process group so only that cooperative
 signal, not a raw OS interrupt racing it, ends it. Local restore extraction
-has no cancellation path yet. Capture
+has no cancellation path yet. The Docker-backed drill now proves real deploy
+cancellation after the target has accepted an incoming payload byte: the
+remote staging directory and target are absent afterward, and the audit state
+is `cancelled`. Capture
 streams also have a five-minute idle-byte deadline that kills local SSH and
 discards the partial stream regardless of whether cancellation was
 requested. The

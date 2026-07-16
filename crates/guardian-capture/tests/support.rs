@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[path = "support/cancellation_fixture.rs"]
+mod cancellation_fixture;
 #[path = "support/failure_backup.rs"]
 mod failure_backup;
 #[path = "support/recovery.rs"]

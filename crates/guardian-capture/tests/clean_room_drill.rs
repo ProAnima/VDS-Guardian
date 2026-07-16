@@ -15,6 +15,8 @@
 //! yet. Each report records `rollback.proven: false` rather than silently
 //! omitting or overclaiming that clause.
 
+#[path = "clean_room_drill/cancellation.rs"]
+mod cancellation;
 mod support;
 
 use guardian_core::{

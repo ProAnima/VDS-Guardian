@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-RUN apk add --no-cache openssh-server tar zstd sqlite coreutils \
+RUN apk add --no-cache openssh-server tar zstd sqlite coreutils pv \
     && adduser -D -s /bin/sh backup \
     && passwd -d backup \
     && mkdir -p /run/sshd /home/backup/.ssh /srv/app \

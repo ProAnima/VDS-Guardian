@@ -99,8 +99,8 @@ exports recovery material,
 removes the original vault/signing/registry state, imports into clean local
 state, and performs the restore through that compiled CLI. This exact chain
 passed on Linux CI in workflow run `29518019511` for commit `3912a90`.
-The two live drills run serially so constrained CI runners do not race three
-SSH containers and mistake fixture startup contention for a product failure.
+The live drills run serially so constrained CI runners do not race SSH
+containers and mistake fixture startup contention for a product failure.
 The restore drill also exercises three hostile cases through the compiled CLI:
 a wrong bundle passphrase leaves no registry entry, a missing recovery key
 leaves no destination, and a byte-corrupted encrypted filesystem payload is
@@ -110,6 +110,10 @@ modified. A fourth fixture is correctly signed and encrypted and contains a
 valid filesystem payload followed by an intentionally invalid database zstd
 stream. It reaches the second restore phase, fails there, removes the shared
 staging tree, and leaves no published destination.
+A third, real deploy-cancellation case adds incompressible fixture data,
+waits until the target has received the first filesystem-payload byte, then
+cancels through `JobRegistry`. It verifies the cancelled audit record, no
+completed/failed record, no remote target, and no shared remote staging tree.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every

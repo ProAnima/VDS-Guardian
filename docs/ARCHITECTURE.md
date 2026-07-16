@@ -235,7 +235,9 @@ recovery journal, never private key material.
   not duplicated per surface. The spawned child is isolated into its own
   process group so only that cooperative signal, never a raw OS interrupt
   racing it, ends the process. Local restore extraction has no cancellation
-  path yet.
+  path yet. The clean-room drill exercises deploy cancellation after the
+  target accepts payload data and verifies terminal audit state plus remote
+  staging cleanup; live capture cancellation remains unproved.
 - Every external call has connect, idle, and total timeouts.
 - Capture and push streams enforce a maximum byte ceiling so a runaway or
   hostile remote command cannot exhaust local disk or memory.
