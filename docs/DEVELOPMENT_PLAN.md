@@ -209,11 +209,14 @@ independently.
 
 - The desktop setup flow covers repository, server profile, selected paths, and
   recovery-key readiness without exposing internal architecture. Partially
-  closed: it now exports an offline recovery bundle through the shared service;
-  clean-machine bundle import remains to be exposed in desktop.
-- Backup list shows sealed/failed/cancelled state and last verification result.
-- Restore preview states the source backup, destination, expected writes, and
-  rollback posture before confirmation.
+  closed: desktop exports and imports an offline recovery bundle through the
+  shared service; import authenticates the bundle before registering a new
+  repository.
+- Restore picker exposes only sealed, freshly signature-verified backups and
+  labels that verification state; failed and cancelled runs are never offered
+  as restore candidates.
+- Restore preview states the source backup, destination, expected payload, and
+  rollback posture before confirmation. Closed in the UI.
 - Failures tell the operator what is safe, what may have changed, and what to do
   next.
 - Produce signed Windows and Linux installer artifacts with published
