@@ -246,7 +246,10 @@ clean-room restore drills remain mandatory before production use.
 The compiled-CLI drill now mutates only a disposable copy of a sealed
 repository and proves that an encrypted-payload authentication failure leaves
 no published restore destination. It separately proves the same cleanup
-property when the repository recovery key is absent.
+property when the repository recovery key is absent. A separately sealed
+fault fixture has a valid filesystem payload followed by a correctly signed
+and encrypted but invalid database zstd stream; its compiled-CLI restore proves
+that a late second-payload failure removes staging and publishes nothing.
 
 Signing configuration tampering cannot silently select a replacement identity:
 the configured public key ID must match the key loaded through its credential

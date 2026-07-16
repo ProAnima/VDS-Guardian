@@ -16,11 +16,37 @@ pub fn prove_hostile_restore_failures(
     root: &Path,
     fixture: &RecoveryFixture,
     backup_id: &BackupId,
+    second_payload_failure_backup_id: &BackupId,
 ) -> Result<(), Box<dyn Error>> {
     wrong_passphrase_leaves_no_registration(root, fixture)?;
     missing_recovery_key_leaves_no_destination(root, fixture, backup_id)?;
     corrupted_payload_leaves_no_destination(root, fixture, backup_id)?;
+    second_payload_failure_leaves_no_destination(root, fixture, second_payload_failure_backup_id)?;
     Ok(())
+}
+
+fn second_payload_failure_leaves_no_destination(
+    root: &Path,
+    fixture: &RecoveryFixture,
+    backup_id: &BackupId,
+) -> Result<(), Box<dyn Error>> {
+    let repositories = root.join("second-payload-repositories");
+    let vault = root.join("second-payload-vault");
+    let signing = root.join("second-payload-signing");
+    let destination = root.join("second-payload-destination");
+    fs::create_dir(&repositories)?;
+    vault_init(&vault)?;
+    recovery_import_from(&repositories, &vault, fixture, &fixture.repository_path)?;
+    expect_restore_failure(
+        &repositories,
+        &signing,
+        &vault,
+        fixture,
+        backup_id,
+        &destination,
+    )?;
+    assert_destination_absent(&destination, "failed second payload")?;
+    assert_no_restore_staging(root)
 }
 
 fn wrong_passphrase_leaves_no_registration(
@@ -159,6 +185,19 @@ fn expect_restore_failure(
 fn assert_destination_absent(destination: &Path, scenario: &str) -> Result<(), Box<dyn Error>> {
     if destination.exists() {
         return Err(format!("{scenario} published a partial restore destination").into());
+    }
+    Ok(())
+}
+
+fn assert_no_restore_staging(parent: &Path) -> Result<(), Box<dyn Error>> {
+    let staging_exists = fs::read_dir(parent)?.filter_map(Result::ok).any(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".guardian-restore-tmp-")
+    });
+    if staging_exists {
+        return Err("failed second payload left restore staging behind".into());
     }
     Ok(())
 }

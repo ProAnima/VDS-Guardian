@@ -76,6 +76,13 @@ fn restore_drill() -> TestResult {
         "drill-restore-backup",
         "drill-restore-run",
     )?;
+    let second_payload_failure = support::create_second_payload_failure_backup(
+        &repository,
+        &capture.sealed.backup_id,
+        &vault,
+        &signer,
+        &profile,
+    )?;
     drop(signer);
     drop(vault);
     std::fs::remove_dir_all(&vault_dir)?;
@@ -83,7 +90,12 @@ fn restore_drill() -> TestResult {
     std::fs::remove_dir_all(workdir.path().join("original-repositories"))?;
 
     let hostile_start = Instant::now();
-    support::prove_hostile_restore_failures(workdir.path(), &recovery, &capture.sealed.backup_id)?;
+    support::prove_hostile_restore_failures(
+        workdir.path(),
+        &recovery,
+        &capture.sealed.backup_id,
+        &second_payload_failure.backup_id,
+    )?;
     let hostile_phase = Phase::new("hostile_fail_closed", hostile_start.elapsed());
 
     let destination = workdir.path().join("restored");
@@ -140,6 +152,7 @@ fn restore_drill() -> TestResult {
             Check::new("wrong_passphrase_no_registration", true),
             Check::new("missing_recovery_key_no_partial_target", true),
             Check::new("corrupted_payload_no_partial_target", true),
+            Check::new("second_payload_failure_no_partial_target", true),
         ],
         rto_seconds,
     )?;

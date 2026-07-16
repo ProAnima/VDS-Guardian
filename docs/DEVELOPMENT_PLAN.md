@@ -105,12 +105,15 @@ gate.
   unconditionally; every caller (CLI deploy, desktop deploy, desktop
   capture) dropped its own duplicated wrapping.
 - Add regression tests for each failure mode above. Covered for all five
-  closed items above, with one honestly named limitation: simulating "the
-  filesystem push succeeds, the database push then fails" for deploy is not
-  possible at the unit level (the concrete `SystemOpenSsh` a deploy
+  closed items above. Local restore now also has compiled-CLI clean-room proof
+  of the exact late-failure sequence: a valid filesystem payload is processed
+  first, then a correctly signed and encrypted but semantically invalid
+  database payload fails, and no destination is published. Simulating "the
+  filesystem push succeeds, the database push then fails" for deploy is still
+  not possible at the unit level (the concrete `SystemOpenSsh` a deploy
   composition holds fails every push identically once SSH is unreachable at
-  all) — the clean-room drill remains the only realistic end-to-end proof
-  of that specific sequence. That drill's first-ever successful run
+  all); a live deploy fault-injection case remains open. The drill's first-ever
+  successful run
   (2026-07-16) also surfaced and closed two independent, previously
   undiscovered defects in `guardian-archive`'s path validation — see ADR
   0011 — that had silently rejected real captured directories since this
@@ -238,10 +241,12 @@ an ADR.
   Partially closed: the compiled-CLI restore drill now proves that a corrupted
   encrypted filesystem payload and a missing recovery key both fail without
   publishing the destination. It also proves that a wrong recovery-bundle
-  passphrase leaves no repository registration. Cancellation, disk exhaustion,
-  changed host key, and failure of the second payload remain open; hostile
-  archive metadata is covered at the archive boundary but not yet in this live
-  drill.
+  passphrase leaves no repository registration. It also proves local restore's
+  late second-payload failure cleanup with a valid filesystem payload followed
+  by an invalid SQLite zstd stream. Cancellation, disk exhaustion, and changed
+  host key remain open; the equivalent late-failure deploy case remains open,
+  and hostile archive metadata is covered at the archive boundary but not yet
+  in this live drill.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).

@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 
+#[path = "support/failure_backup.rs"]
+mod failure_backup;
 #[path = "support/recovery.rs"]
 mod recovery;
 
+pub use failure_backup::create_second_payload_failure_backup;
 pub use recovery::{
     initialize_and_export, prove_hostile_restore_failures, restore_on_clean_machine,
 };

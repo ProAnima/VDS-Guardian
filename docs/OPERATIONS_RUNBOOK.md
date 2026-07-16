@@ -106,7 +106,10 @@ a wrong bundle passphrase leaves no registry entry, a missing recovery key
 leaves no destination, and a byte-corrupted encrypted filesystem payload is
 rejected without publishing a partial destination. The corruption is applied
 only to a disposable repository copy; the sealed source backup is never
-modified.
+modified. A fourth fixture is correctly signed and encrypted and contains a
+valid filesystem payload followed by an intentionally invalid database zstd
+stream. It reaches the second restore phase, fails there, removes the shared
+staging tree, and leaves no published destination.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
