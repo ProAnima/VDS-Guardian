@@ -17,6 +17,8 @@
 
 #[path = "clean_room_drill/cancellation.rs"]
 mod cancellation;
+#[path = "clean_room_drill/capture_cancellation.rs"]
+mod capture_cancellation;
 mod support;
 
 use guardian_core::{

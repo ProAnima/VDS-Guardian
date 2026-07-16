@@ -110,10 +110,12 @@ modified. A fourth fixture is correctly signed and encrypted and contains a
 valid filesystem payload followed by an intentionally invalid database zstd
 stream. It reaches the second restore phase, fails there, removes the shared
 staging tree, and leaves no published destination.
-A third, real deploy-cancellation case adds incompressible fixture data,
-waits until the target has received the first filesystem-payload byte, then
-cancels through `JobRegistry`. It verifies the cancelled audit record, no
-completed/failed record, no remote target, and no shared remote staging tree.
+A third and fourth real cancellation case add incompressible fixture data,
+wait until the capture source emits or deploy target receives the first
+filesystem-payload byte, then cancel through `JobRegistry`. They verify the
+cancelled audit record with no completed/failed record; capture leaves neither
+local staging nor a sealed backup, and deploy leaves no remote target or shared
+remote staging tree.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every

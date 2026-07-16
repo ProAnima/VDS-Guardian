@@ -243,13 +243,14 @@ an ADR.
   publishing the destination. It also proves that a wrong recovery-bundle
   passphrase leaves no repository registration. It also proves local restore's
   late second-payload failure cleanup with a valid filesystem payload followed
-  by an invalid SQLite zstd stream. A separate live deploy drill now waits for
-  the target to accept the first filesystem-payload byte, cancels through the
-  real `JobRegistry`, and proves `cancelled` (not `failed`) audit state with
-  neither target nor remote staging published. Live capture cancellation, disk
-  exhaustion, and changed host key remain open; the equivalent late-failure
-  deploy case remains open, and hostile archive metadata is covered at the
-  archive boundary but not yet in this live drill.
+  by an invalid SQLite zstd stream. Separate live capture and deploy drills
+  wait until the real stream has transferred its first byte, then cancel
+  through `JobRegistry`. They prove `cancelled` (not `failed`) audit state;
+  capture leaves neither local staging nor a sealed backup, and deploy leaves
+  neither target nor remote staging published. Disk exhaustion and changed
+  host key remain open; the equivalent late-failure deploy case remains open,
+  and hostile archive metadata is covered at the archive boundary but not yet
+  in this live drill.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).

@@ -189,9 +189,10 @@ not close it either; treat it as a pre-existing, still-open gap.
   cancellation path yet (different mechanism, deferred to a follow-up that
   can reuse `CancellationHandle` directly), and the UUIDv7 correlation-id
   invariant remains unmet for both capture and deploy run ids.
-- The clean-room drill now runs a real mid-transfer deploy cancellation:
-  a test-only forced-command fixture throttles an incoming filesystem stream
-  only after accepting its first byte, then the test cancels through the real
-  `JobRegistry`. It proves the `cancelled` audit terminal state and absence of
-  both the target and remote staging directory. Live capture cancellation and
-  CLI Ctrl+C-specific wiring remain unproved end to end.
+- The clean-room drill now runs real mid-transfer capture and deploy
+  cancellation: test-only forced-command fixtures throttle each filesystem
+  stream only after its first byte, then the test cancels through the real
+  `JobRegistry`. They prove the `cancelled` audit terminal state; capture
+  leaves no local staging or sealed backup, while deploy leaves no target or
+  remote staging directory. CLI Ctrl+C-specific wiring remains unproved end
+  to end.
