@@ -104,9 +104,12 @@ Signing status and explicit enrollment were the first infrastructure
 commands: the Overview setup panel reads status, and only calls enrollment
 after an explicit acknowledgement and final confirmation. Their Tauri functions
 only resolve the app config path and dispatch the shared signing service to a
-blocking worker. SSH profile enrollment, repository registration, capture-plan
-save/run, Docker inventory browsing, and restore/deploy preview-and-execute
-now follow the same shape.
+blocking worker. SSH profile enrollment, repository registration, recovery-bundle
+export/import, capture-plan save/run, Docker inventory browsing, and
+restore/deploy preview-and-execute now follow the same shape. Recovery-bundle
+commands call the shared `guardian-local-repository` service; desktop keeps an
+entered passphrase in memory and bundle import authenticates before registering
+an unknown repository. `guardian-mcp` remains excluded from that surface.
 
 ### CLI/service
 

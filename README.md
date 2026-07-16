@@ -20,7 +20,8 @@ and restore it to a new destination without a mandatory cloud service.
 
 > **Project status:** Release 0.1 hardening. Pinned SSH capture, encrypted sealed
 > backups with a portable per-repository recovery key, local restore,
-> new-host deploy, optional SQLite snapshots, an initial desktop flow, and
+> new-host deploy, optional SQLite snapshots, a guided desktop setup/recovery
+> flow, and
 > an automated clean-room drill (including compiled-CLI recovery import on a
 > clean vault and registry, now passing end-to-end locally and on Linux CI)
 > are implemented
@@ -155,6 +156,11 @@ encrypted capture; live capture fails closed otherwise. Export it into a
 passphrase-protected offline bundle and keep that bundle independent of the
 repository disk — an intact backup is only as recoverable as its
 independently stored recovery material:
+
+The guided desktop setup can initialize repository recovery, export an offline
+bundle, and import it on a clean machine. Import authenticates the bundle
+before registering an unknown repository; the passphrase stays in memory for
+the operation. The commands below are the equivalent headless workflow.
 
 ```powershell
 guardian-cli recovery init --repositories-dir D:\VDSGuardian\repositories --repository-id repository-001 --signing-config-dir D:\VDSGuardian\node --json
