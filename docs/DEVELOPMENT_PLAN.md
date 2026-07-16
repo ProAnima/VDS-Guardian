@@ -128,17 +128,41 @@ of payload keys. Losing the operator machine must not make an intact backup
 disk unreadable.
 
 - Decide and document a portable recovery-key model in an ADR that supersedes
-  the local-keyring-only consequence of ADR 0004.
-- Wrap per-backup data keys with a repository recovery key.
+  the local-keyring-only consequence of ADR 0004. Closed: ADR 0013.
+- Wrap per-backup data keys with a repository recovery key. Closed: every
+  payload's data key is additionally wrapped under one repository-wide
+  recovery key and the wrapped copy is signed into that payload's own
+  manifest entry; live capture fails closed if the target repository has no
+  configured recovery key.
 - Provide an explicit encrypted recovery bundle and a documented offline-copy
   procedure; ordinary settings export must still contain no plaintext secret.
+  Closed: `guardian-cli recovery export` seals the repository recovery key
+  under an Argon2id-derived, passphrase-protected bundle bound to the
+  repository id; `docs/OPERATIONS_RUNBOOK.md` documents the offline-copy
+  procedure. No settings-export feature exists yet to carry a plaintext
+  secret in the first place.
 - Prove restore on a clean operator machine that has the repository and recovery
-  bundle but no original OS credential-store state.
+  bundle but no original OS credential-store state. Closed at the CLI/core
+  level: the bundle authenticates both the recovery key and public manifest
+  verification key; `guardian-cli recovery import` installs them for a
+  fresh `SecretStore`, proven by
+  `init_export_import_recovers_byte_identical_key_material_on_a_fresh_secret_store`,
+  which now verifies the sealed manifest and decrypts its real encrypted
+  payload without the original signing seed; restore fallback is also proven by
+  `restore_falls_back_to_the_recovery_key_when_the_primary_key_is_missing`
+  (`crates/guardian-local-repository/tests/restore.rs`). Not yet exercised by
+  the automated clean-room drill specifically — a valuable future extension,
+  not built in this slice.
 - Keep key import/export explicit, confirmation-gated, and testable from CLI.
+  Closed: `recovery export`/`recovery import` both require a typed
+  confirmation phrase computed from the repository id, matching the
+  restore/deploy confirmation-gate convention; neither is exposed through
+  `guardian-mcp`.
 
 Gate: a clean machine can verify and decrypt an existing backup using only the
 documented recovery material, while a missing or incorrect recovery key fails
-closed.
+closed. Met at the CLI/core level by one continuous test (see above); the clean-room drill itself
+has not yet been extended to exercise `recovery import` end to end.
 
 ### 3. Finish one shared application workflow
 

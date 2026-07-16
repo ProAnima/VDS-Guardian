@@ -3,25 +3,25 @@
 mod enrollment;
 mod filesystem;
 mod public;
+mod verifier;
 
-pub use enrollment::{ManagedIdentity, SigningIdentityManager};
+pub use enrollment::{ManagedIdentity, SigningIdentityManager, VerificationIdentity};
 pub use public::{
     EnrollmentDisposition, SigningIdentityDescriptor, SigningIdentityEnrollment,
     SigningIdentityErrorCode, SigningIdentityFailure, SigningIdentityState, SigningIdentityStatus,
 };
+pub use verifier::{Ed25519Verifier, PortableVerificationKey};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_core::{
     CredentialId, ManifestSigner, SecretStore, SecretStoreError, SecretValue, SigningError,
 };
 use rand_core::OsRng;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use zeroize::Zeroizing;
 
 const ALGORITHM: &str = "Ed25519";
 const SEED_LENGTH: usize = 32;
-
 pub struct Ed25519Identity {
     signing_key: SigningKey,
     key_id: String,
@@ -63,6 +63,11 @@ impl Ed25519Identity {
             key_id,
         })
     }
+
+    pub(crate) fn verification_key(&self) -> PortableVerificationKey {
+        let public_key = self.signing_key.verifying_key();
+        PortableVerificationKey::from_public_key(self.key_id.clone(), public_key.as_bytes())
+    }
 }
 
 impl ManifestSigner for Ed25519Identity {
@@ -89,18 +94,7 @@ impl ManifestSigner for Ed25519Identity {
 }
 
 fn key_id(signing_key: &SigningKey) -> String {
-    let digest = Sha256::digest(signing_key.verifying_key().as_bytes());
-    format!("ed25519:{}", hex(&digest))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(char::from(ALPHABET[usize::from(byte >> 4)]));
-        output.push(char::from(ALPHABET[usize::from(byte & 0x0f)]));
-    }
-    output
+    verifier::public_key_id(signing_key.verifying_key().as_bytes())
 }
 
 #[derive(Debug, Error)]
@@ -141,9 +135,10 @@ impl IdentityError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Ed25519Identity, IdentityError};
+    use super::{Ed25519Identity, Ed25519Verifier, IdentityError};
     use guardian_core::{
-        CredentialId, ManifestSigner, SecretStore, SecretStoreError, SecretValue, SigningError,
+        CredentialId, ManifestSigner, ManifestVerifier, SecretStore, SecretStoreError, SecretValue,
+        SigningError,
     };
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -172,6 +167,34 @@ mod tests {
         assert_eq!(
             identity.verify(b"tampered", &signature),
             Err(SigningError::VerificationFailed)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn portable_public_key_verifies_without_the_signing_seed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryStore::default();
+        let id = CredentialId::parse("signing-portable")?;
+        let identity = Ed25519Identity::enroll_exclusive(&store, &id)?;
+        let portable = identity.verification_key();
+        let verifier = Ed25519Verifier::from_portable(&portable)?;
+        let signature = identity.sign(b"sealed manifest")?;
+        verifier.verify_manifest(
+            identity.algorithm(),
+            identity.key_id(),
+            b"sealed manifest",
+            &signature,
+        )?;
+        assert!(
+            verifier
+                .verify_manifest(
+                    identity.algorithm(),
+                    identity.key_id(),
+                    b"tampered manifest",
+                    &signature,
+                )
+                .is_err()
         );
         Ok(())
     }

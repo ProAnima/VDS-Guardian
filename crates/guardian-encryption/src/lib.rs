@@ -3,6 +3,8 @@
 //! The format deliberately authenticates bounded chunks so a multi-gigabyte
 //! archive never needs to be held in memory. Callers persist keys separately.
 
+pub mod recovery_bundle;
+
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, Payload},

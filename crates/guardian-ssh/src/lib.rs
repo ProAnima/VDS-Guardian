@@ -19,7 +19,7 @@ use std::{
     process::{Command, Stdio},
     time::Duration,
 };
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempPath};
 use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
@@ -406,7 +406,7 @@ impl SystemOpenSsh {
         let known_hosts = self.known_hosts_file(host)?;
         let child = self
             .new_command()
-            .args(self.zstd_probe_arguments(host, user, identity_file, known_hosts.path()))
+            .args(self.zstd_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -454,7 +454,7 @@ impl SystemOpenSsh {
                 host,
                 user,
                 identity_file,
-                known_hosts.path(),
+                known_hosts.as_ref(),
                 remote_command,
             ))
             .stdin(Stdio::null())
@@ -539,7 +539,7 @@ impl SystemOpenSsh {
         let known_hosts = self.known_hosts_file(host)?;
         let child = self
             .new_command()
-            .args(self.capability_probe_arguments(host, user, identity_file, known_hosts.path()))
+            .args(self.capability_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -561,7 +561,7 @@ impl SystemOpenSsh {
         let known_hosts = self.known_hosts_file(host)?;
         let child = self
             .new_command()
-            .args(self.sqlite3_probe_arguments(host, user, identity_file, known_hosts.path()))
+            .args(self.sqlite3_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -585,7 +585,7 @@ impl SystemOpenSsh {
                 host,
                 user,
                 identity_file,
-                known_hosts.path(),
+                known_hosts.as_ref(),
                 "true".into(),
             ))
             .stdin(Stdio::null())
@@ -734,13 +734,14 @@ impl SystemOpenSsh {
         )
     }
 
-    fn known_hosts_file(&self, host: &PinnedHost) -> Result<NamedTempFile, SshError> {
+    fn known_hosts_file(&self, host: &PinnedHost) -> Result<TempPath, SshError> {
         let mut known_hosts = NamedTempFile::new().map_err(|_| SshError::LocalIo)?;
         known_hosts
             .write_all(host.known_hosts_line().as_bytes())
             .and_then(|_| known_hosts.flush())
+            .and_then(|_| known_hosts.as_file().sync_all())
             .map_err(|_| SshError::LocalIo)?;
-        Ok(known_hosts)
+        Ok(known_hosts.into_temp_path())
     }
 
     fn arguments_for_command(

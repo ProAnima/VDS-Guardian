@@ -211,9 +211,25 @@ pub fn wait_until_ssh_ready(
             return Ok(());
         }
         if start.elapsed() >= deadline {
-            return Err(
-                "timed out waiting for the fixture's SSH server to accept connections".into(),
-            );
+            let mut known_hosts = tempfile::NamedTempFile::new()?;
+            use std::io::Write as _;
+            known_hosts.write_all(host.known_hosts_line().as_bytes())?;
+            known_hosts.flush()?;
+            let known_hosts = known_hosts.into_temp_path();
+            let output = std::process::Command::new("ssh")
+                .args(ssh.connection_probe_arguments(
+                    host,
+                    user,
+                    identity_path,
+                    known_hosts.as_ref(),
+                ))
+                .output()?;
+            return Err(format!(
+                "timed out waiting for fixture SSH; known_hosts={:?}; final probe: {}",
+                host.known_hosts_line(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )
+            .into());
         }
         std::thread::sleep(Duration::from_millis(200));
     }

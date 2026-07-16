@@ -1,8 +1,14 @@
 mod support;
 
-use guardian_core::{Manifest, ManifestError, PayloadPath, RunId, SigningError, VerificationState};
+use guardian_core::{
+    BackupId, CredentialId, Manifest, ManifestError, PayloadPath, RunId, SecretStore,
+    SecretStoreError, SecretValue, SigningError, VerificationState,
+};
+use guardian_encryption::PayloadKey;
 use guardian_local_repository::RepositoryError;
+use std::collections::HashMap;
 use std::fs;
+use std::sync::Mutex;
 use std::time::Duration;
 use support::{
     RejectingSigner, TestResult, TestRoot, TestSigner, manifest, repository, timestamp,
@@ -278,4 +284,143 @@ fn finalized_manifest_cannot_be_resealed() -> TestResult {
     assert!(!repository.root().join("backups/backup-reseal").exists());
     assert!(repository.root().join("quarantine/run-reseal").is_dir());
     Ok(())
+}
+
+#[test]
+fn configure_recovery_key_is_write_once() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let secrets = MemorySecrets::default();
+    assert!(repository.recovery_credential_id()?.is_none());
+    let first_id = repository.configure_recovery_key(&secrets)?;
+    assert_eq!(repository.recovery_credential_id()?, Some(first_id));
+    // Regenerating would silently orphan every payload already wrapped
+    // under the first key -- must fail closed, not replace it.
+    assert!(matches!(
+        repository.configure_recovery_key(&secrets),
+        Err(RepositoryError::RecoveryKeyAlreadyConfigured)
+    ));
+    Ok(())
+}
+
+#[test]
+fn encrypted_capture_requires_a_configured_recovery_key() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let secrets = MemorySecrets::default();
+    let staging = repository.begin_staging(RunId::parse("run-recovery-required")?)?;
+    let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload("filesystem", path.clone(), "application/zstd", b"plaintext")?;
+    // Without a configured recovery key, every new encrypted payload must
+    // fail closed rather than seal a backup only the current OS keyring can
+    // ever decrypt (ADR 0013). `configure_recovery_key` itself needs the
+    // repository lock this still-live `staging` run already holds, so it is
+    // deliberately not attempted here -- a fresh staging run after
+    // `recovery init` is exercised separately below.
+    assert!(matches!(
+        staging.encrypt_and_register_payload_file(
+            "filesystem",
+            path,
+            "application/zstd",
+            &BackupId::parse("backup-recovery-required")?,
+            &secrets,
+        ),
+        Err(RepositoryError::RecoveryKeyNotConfigured)
+    ));
+    Ok(())
+}
+
+#[test]
+fn import_recovery_key_reuses_an_already_recorded_credential_id() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let original_secrets = MemorySecrets::default();
+    let recorded_id = repository.configure_recovery_key(&original_secrets)?;
+
+    // Simulates a genuine clean-machine restore: the same repository
+    // directory (so `repository.json` already records `recorded_id`), but
+    // a completely different, empty `SecretStore`. Import must reuse the
+    // already-recorded id rather than failing closed as "already
+    // configured" -- that error is for `configure_recovery_key`'s
+    // never-regenerate rule, not for restoring an already-known key.
+    let clean_machine_secrets = MemorySecrets::default();
+    let imported_id =
+        repository.import_recovery_key(&clean_machine_secrets, PayloadKey::generate())?;
+    assert_eq!(imported_id, recorded_id);
+    assert!(clean_machine_secrets.load(&imported_id)?.is_some());
+    Ok(())
+}
+
+#[test]
+fn import_recovery_key_never_overwrites_a_different_existing_secret() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let secrets = MemorySecrets::default();
+    repository.configure_recovery_key(&secrets)?;
+    let original = repository
+        .export_recovery_key(&secrets)?
+        .ok_or("recovery key should exist")?;
+
+    repository.import_recovery_key(&secrets, PayloadKey::from_bytes(original.expose())?)?;
+    assert!(matches!(
+        repository.import_recovery_key(&secrets, PayloadKey::generate()),
+        Err(RepositoryError::RecoveryKeyMismatch)
+    ));
+    let after = repository
+        .export_recovery_key(&secrets)?
+        .ok_or("recovery key should still exist")?;
+    assert_eq!(after.expose(), original.expose());
+    Ok(())
+}
+
+#[test]
+fn encrypted_capture_populates_the_recovery_wrapped_key_field() -> TestResult {
+    let root = TestRoot::new()?;
+    let repository = repository(&root)?;
+    let secrets = MemorySecrets::default();
+    repository.configure_recovery_key(&secrets)?;
+    let staging = repository.begin_staging(RunId::parse("run-recovery-wrap")?)?;
+    let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload("filesystem", path.clone(), "application/zstd", b"plaintext")?;
+    let payload = staging.encrypt_and_register_payload_file(
+        "filesystem",
+        path,
+        "application/zstd",
+        &BackupId::parse("backup-recovery-wrap")?,
+        &secrets,
+    )?;
+    let encryption = payload.encryption.ok_or("payload should be encrypted")?;
+    assert!(encryption.recovery_wrapped_key()?.is_some());
+    Ok(())
+}
+
+#[derive(Default)]
+struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);
+
+impl SecretStore for MemorySecrets {
+    fn load(&self, id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        let values = self
+            .0
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        Ok(values.get(id.as_str()).cloned().map(SecretValue::new))
+    }
+
+    fn store(&self, id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError> {
+        let mut values = self
+            .0
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        values.insert(id.as_str().to_owned(), secret.expose().to_vec());
+        Ok(())
+    }
+
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+        let mut values = self
+            .0
+            .lock()
+            .map_err(|_| SecretStoreError::OperationFailed)?;
+        values.remove(id.as_str());
+        Ok(())
+    }
 }

@@ -287,6 +287,14 @@ pub struct PayloadEncryption {
     pub algorithm: String,
     pub credential_id: CredentialId,
     pub nonce_base64: String,
+    /// A second, independent copy of this payload's data key, wrapped under
+    /// the repository's own recovery key (ADR 0013) via the same
+    /// self-describing AEAD envelope `guardian-encryption` already uses for
+    /// the vault's canary. Absent on any payload sealed before the recovery
+    /// key existed, or in a repository that never configured one — restore
+    /// then relies solely on the primary `SecretStore` entry, as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_wrapped_key_base64: Option<String>,
 }
 
 impl PayloadEncryption {
@@ -301,9 +309,19 @@ impl PayloadEncryption {
             algorithm: algorithm.into(),
             credential_id,
             nonce_base64: STANDARD.encode(nonce),
+            recovery_wrapped_key_base64: None,
         };
         encryption.validate()?;
         Ok(encryption)
+    }
+
+    /// Attaches a recovery-wrapped copy of this payload's data key, encoding
+    /// the raw envelope ciphertext the same way `new` already encodes a raw
+    /// nonce — the caller never handles base64 directly.
+    pub fn with_recovery_wrapped_key(mut self, wrapped: &[u8]) -> Result<Self, ManifestError> {
+        self.recovery_wrapped_key_base64 = Some(STANDARD.encode(wrapped));
+        self.validate()?;
+        Ok(self)
     }
 
     pub fn nonce(&self) -> Result<[u8; 12], ManifestError> {
@@ -315,11 +333,37 @@ impl PayloadEncryption {
             .map_err(|_| ManifestError::EncryptionPolicy)
     }
 
+    /// Decodes the recovery-wrapped copy of this payload's data key, if
+    /// present, sparing every caller from carrying its own base64
+    /// dependency just to read one manifest field.
+    pub fn recovery_wrapped_key(&self) -> Result<Option<Vec<u8>>, ManifestError> {
+        match &self.recovery_wrapped_key_base64 {
+            Some(value) => STANDARD
+                .decode(value)
+                .map(Some)
+                .map_err(|_| ManifestError::EncryptionPolicy),
+            None => Ok(None),
+        }
+    }
+
     fn validate(&self) -> Result<(), ManifestError> {
         (self.envelope_version == 1 && self.algorithm == "AES-256-GCM-CHUNKED")
             .then_some(())
             .ok_or(ManifestError::EncryptionPolicy)?;
-        self.nonce().map(|_| ())
+        self.nonce()?;
+        if let Some(wrapped) = self.recovery_wrapped_key()? {
+            // guardian_encryption's self-describing envelope over a fixed
+            // 32-byte plaintext (a PayloadKey) is always exactly 95 bytes:
+            // an 8-byte magic + 1-byte version + 12-byte nonce (21-byte
+            // header), one 32-byte data frame (1-byte final flag + 4-byte
+            // length + 32-byte plaintext + 16-byte GCM tag = 53 bytes), and
+            // one empty final frame (1 + 4 + 16-byte tag = 21 bytes).
+            const WRAPPED_PAYLOAD_KEY_ENVELOPE_BYTES: usize = 95;
+            (wrapped.len() == WRAPPED_PAYLOAD_KEY_ENVELOPE_BYTES)
+                .then_some(())
+                .ok_or(ManifestError::EncryptionPolicy)?;
+        }
+        Ok(())
     }
 }
 
@@ -375,7 +419,7 @@ pub enum ManifestError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ManifestError, PayloadEntry};
+    use super::{CredentialId, ManifestError, PayloadEncryption, PayloadEntry};
     use crate::PayloadPath;
 
     #[test]
@@ -383,6 +427,34 @@ mod tests {
         let path = PayloadPath::parse("payload/fs.tar.zst")?;
         let result = PayloadEntry::new("filesystem", path, 10, "abcd", "application/zstd");
         assert_eq!(result, Err(ManifestError::InvalidSha256));
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_wrapped_key_of_the_wrong_length_is_rejected()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let encryption = PayloadEncryption::new(
+            1,
+            "AES-256-GCM-CHUNKED",
+            CredentialId::parse("payload-0000")?,
+            &[0_u8; 12],
+        )?;
+        let result = encryption.with_recovery_wrapped_key(&[0_u8; 42]);
+        assert_eq!(result, Err(ManifestError::EncryptionPolicy));
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_wrapped_key_of_exactly_95_bytes_is_accepted()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let encryption = PayloadEncryption::new(
+            1,
+            "AES-256-GCM-CHUNKED",
+            CredentialId::parse("payload-0000")?,
+            &[0_u8; 12],
+        )?;
+        let result = encryption.with_recovery_wrapped_key(&[0_u8; 95]);
+        assert!(result.is_ok());
         Ok(())
     }
 }

@@ -1,6 +1,8 @@
 use guardian_configuration::{RepositoryRegistration, RepositoryStore};
 use guardian_core::RepositoryId;
-use guardian_local_repository::LocalRepository;
+use guardian_local_repository::{LocalRepository, RepositoryError, RepositoryVerificationKey};
+use guardian_os_keyring::OsCredentialStore;
+use guardian_signing::SigningIdentityManager;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -51,6 +53,49 @@ pub async fn list(
     })
     .await
     .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+pub async fn initialize_recovery(
+    app: tauri::AppHandle,
+    repository_id: String,
+) -> Result<(), RepositoryCommandFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| RepositoryCommandFailure::storage())?;
+    tauri::async_runtime::spawn_blocking(move || initialize_recovery_blocking(root, repository_id))
+        .await
+        .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+fn initialize_recovery_blocking(
+    root: PathBuf,
+    repository_id: String,
+) -> Result<(), RepositoryCommandFailure> {
+    let repository_id =
+        RepositoryId::parse(repository_id).map_err(|_| RepositoryCommandFailure::invalid())?;
+    let registration = RepositoryStore::at(root.join("repositories"))
+        .get(&repository_id)
+        .map_err(|_| RepositoryCommandFailure::storage())?
+        .ok_or_else(RepositoryCommandFailure::invalid)?;
+    let repository = LocalRepository::open(&registration.path, repository_id)
+        .map_err(|_| RepositoryCommandFailure::repository())?;
+    let identity = SigningIdentityManager::open(root.join("node"))
+        .map_err(|_| RepositoryCommandFailure::signing())?
+        .load_ready(&OsCredentialStore)
+        .map_err(|_| RepositoryCommandFailure::signing())?;
+    let key = identity.verification_key();
+    repository
+        .pin_verification_key(RepositoryVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        })
+        .map_err(|_| RepositoryCommandFailure::recovery())?;
+    match repository.configure_recovery_key(&OsCredentialStore) {
+        Ok(_) | Err(RepositoryError::RecoveryKeyAlreadyConfigured) => Ok(()),
+        Err(_) => Err(RepositoryCommandFailure::recovery()),
+    }
 }
 
 fn register_blocking(
@@ -124,6 +169,20 @@ impl RepositoryCommandFailure {
             code: "internal_error",
             message: "The desktop command did not complete.",
             remediation: "Try again and export redacted diagnostics if the problem persists.",
+        }
+    }
+    fn signing() -> Self {
+        Self {
+            code: "signing_identity_unavailable",
+            message: "The signing identity is not ready.",
+            remediation: "Create the signing identity first, then prepare repository recovery.",
+        }
+    }
+    fn recovery() -> Self {
+        Self {
+            code: "recovery_setup_failed",
+            message: "Recovery protection could not be prepared.",
+            remediation: "Check credential-store access and retry before starting a backup.",
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::RepositoryError;
 use crate::filesystem::{atomic_write, create_safe_parent, sync_parent, write_new};
-use crate::repository::{LocalRepository, RepositoryLock};
+use crate::repository::{LocalRepository, RepositoryLock, random_credential_id};
 use crate::signature_file::DiskSignature;
 use crate::verification::verify_staged_payloads;
 use guardian_core::{
@@ -8,7 +8,6 @@ use guardian_core::{
     RunId, SecretStore, SecretValue, Timestamp, VerificationState,
 };
 use guardian_encryption::{ALGORITHM, ENVELOPE_VERSION, PayloadKey, encrypt_reader_to};
-use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -108,8 +107,16 @@ impl<'repository> StagingBackup<'repository> {
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err(RepositoryError::UnsafeFilesystemEntry);
         }
+        // Recovery wrapping (ADR 0013) is mandatory for every new payload,
+        // checked before any bytes are touched: a repository that never
+        // ran `recovery init` must fail closed here, not silently seal a
+        // backup only the current OS keyring can ever decrypt.
+        let recovery_key = self
+            .repository
+            .load_recovery_key(secrets)?
+            .ok_or(RepositoryError::RecoveryKeyNotConfigured)?;
         let key = PayloadKey::generate();
-        let credential_id = payload_credential_id()?;
+        let credential_id = random_credential_id("payload")?;
         secrets
             .store(&credential_id, &SecretValue::new(key.expose().to_vec()))
             .map_err(|_| RepositoryError::Credential)?;
@@ -128,8 +135,10 @@ impl<'repository> StagingBackup<'repository> {
             .map_err(|source| RepositoryError::io("remove plaintext staged payload", source))?;
         fs::rename(&temporary, &target)
             .map_err(|source| RepositoryError::io("publish encrypted staged payload", source))?;
+        let wrapped_key = wrap_payload_key(&recovery_key, &key, backup_id, &relative_path)?;
         let encryption =
-            PayloadEncryption::new(ENVELOPE_VERSION, ALGORITHM, credential_id, &header.nonce)?;
+            PayloadEncryption::new(ENVELOPE_VERSION, ALGORITHM, credential_id, &header.nonce)?
+                .with_recovery_wrapped_key(&wrapped_key)?;
         let entry = self.register_payload_file(logical_role, relative_path, media_type)?;
         Ok(entry.encrypted(encryption)?)
     }
@@ -239,6 +248,26 @@ fn encrypt_payload(
     Ok(header)
 }
 
+/// Wraps a payload's data key under the repository recovery key (ADR 0013),
+/// via the same self-describing AEAD envelope `guardian-vault`'s own canary
+/// already uses for a small fixed-size secret — no new crypto primitive.
+fn wrap_payload_key(
+    recovery_key: &PayloadKey,
+    payload_key: &PayloadKey,
+    backup_id: &BackupId,
+    path: &PayloadPath,
+) -> Result<Vec<u8>, RepositoryError> {
+    let mut ciphertext = Vec::new();
+    encrypt_reader_to(
+        recovery_key,
+        &mut std::io::Cursor::new(payload_key.expose()),
+        &mut ciphertext,
+        &recovery_wrap_associated_data(backup_id, path),
+    )
+    .map_err(|_| RepositoryError::Encryption)?;
+    Ok(ciphertext)
+}
+
 pub(crate) fn associated_data(backup_id: &BackupId, path: &PayloadPath) -> Vec<u8> {
     format!(
         "{}|{}|{}",
@@ -249,14 +278,17 @@ pub(crate) fn associated_data(backup_id: &BackupId, path: &PayloadPath) -> Vec<u
     .into_bytes()
 }
 
-fn payload_credential_id() -> Result<CredentialId, RepositoryError> {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    let id = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    CredentialId::parse(format!("payload-{id}")).map_err(|_| RepositoryError::IntegrityFailure)
+/// Associated data for wrapping a payload's data key under the repository
+/// recovery key (ADR 0013) — distinct from `associated_data` (the payload
+/// stream's own AAD) so a wrapped-key ciphertext can never be silently
+/// swapped between two payloads even if the two AADs otherwise collided.
+pub(crate) fn recovery_wrap_associated_data(backup_id: &BackupId, path: &PayloadPath) -> Vec<u8> {
+    format!(
+        "guardian-recovery-wrap-v1|{}|{}",
+        backup_id.as_str(),
+        path.as_str()
+    )
+    .into_bytes()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

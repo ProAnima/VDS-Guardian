@@ -199,6 +199,8 @@ pub enum CaptureUseCaseError {
     Archive,
     #[error("backup manifest could not be finalized")]
     Manifest(#[source] ManifestError),
+    #[error("repository has no configured recovery key; run `recovery init` first")]
+    RecoveryKeyRequired,
 }
 
 pub(crate) fn valid_remote_root(root: &str) -> bool {

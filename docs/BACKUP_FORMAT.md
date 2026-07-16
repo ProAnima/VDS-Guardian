@@ -91,6 +91,11 @@ independence and complicates deletion and recovery.
 - required/optional item results
 - encryption/signature metadata identifiers; a format-v2 payload includes
   envelope version, algorithm, credential reference, and base nonce
+- an optional recovery-wrapped copy of the payload's data key (ADR 0013),
+  present whenever the repository had a configured recovery key at capture
+  time; absent on backups sealed before that key existed or without one
+  configured, which remain restorable only through the primary credential
+  reference
 - warnings and verification state
 
 The manifest uses canonical JSON for signatures. Secret values, raw environment

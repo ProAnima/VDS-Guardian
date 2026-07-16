@@ -158,6 +158,10 @@ export async function listRepositories(): Promise<RepositorySummary[]> {
   if (!hasTauriRuntime()) return [];
   return invoke<RepositorySummary[]>("list_repositories");
 }
+export async function initializeRepositoryRecovery(repositoryId: string): Promise<void> {
+  requireTauriRuntime();
+  return invoke<void>("initialize_repository_recovery", { repositoryId });
+}
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }

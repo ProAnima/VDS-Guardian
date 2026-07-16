@@ -7,7 +7,7 @@ use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
-use guardian_signing::{ManagedIdentity, SigningIdentityManager};
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
 use guardian_ssh::SystemOpenSsh;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -136,7 +136,7 @@ fn execute_blocking(
 struct ResolvedDeployInputs {
     repository: LocalRepository,
     target_profile: guardian_core::VdsProfile,
-    identity: ManagedIdentity,
+    identity: VerificationIdentity,
 }
 
 fn resolve(
@@ -151,9 +151,17 @@ fn resolve(
         .ok_or_else(DeployFailure::rejected)?;
     let repository = LocalRepository::open(&registration.path, repository_id)
         .map_err(|_| DeployFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| DeployFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(root.join("node"))
         .map_err(|_| DeployFailure::storage())?
-        .load_ready(&OsCredentialStore)
+        .load_verifier(&OsCredentialStore, portable.as_ref())
         .map_err(|_| DeployFailure::rejected())?;
     let backup_id = BackupId::parse(&request.backup_id).map_err(|_| DeployFailure::rejected())?;
     let target_profile_id =

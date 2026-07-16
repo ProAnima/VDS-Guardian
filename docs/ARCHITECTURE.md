@@ -133,9 +133,11 @@ rather than creating a new, network-reachable one. `preview_restore`/
 require it back unchanged — the calling agent supplies it explicitly, the
 same as a human copying it from a CLI or desktop preview. Enrollment,
 credential import, repository registration, vault init, signing enrollment,
-and capture-plan creation are deliberately not exposed: each either mints new
-local trust/config state or (for capture-plan creation specifically) has no
-confirmation gate of its own to begin with.
+recovery-key init/export/import (ADR 0013), and capture-plan creation are
+deliberately not exposed: each either mints new local trust/config state,
+carries the single highest-blast-radius secret in the system, or (for
+capture-plan creation specifically) has no confirmation gate of its own to
+begin with.
 
 ## Backup lifecycle
 
@@ -180,9 +182,12 @@ required filesystem archive and, when the manifest carries one, the database
 snapshot) into a fresh sibling directory, publishing all of it to the
 destination with a single atomic rename only after every payload has
 extracted successfully. Encrypted format-v2 payloads resolve their key
-through the secret-store port and are authenticated before extraction. Safety
-backup, switch-over, rollback, health probes, and signed restore reports
-remain separate gates.
+through the secret-store port and are authenticated before extraction;
+since ADR 0013, if the primary secret-store entry is unavailable, restore
+falls back to unwrapping the manifest's own recovery-wrapped copy of the
+same key using the repository's recovery key, when one has been imported
+into that secret store. Safety backup, switch-over, rollback, health
+probes, and signed restore reports remain separate gates.
 
 The local-repository adapter reloads and verifies the manifest signature and
 every payload checksum immediately before it produces this plan. It rejects an

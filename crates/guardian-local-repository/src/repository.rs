@@ -1,24 +1,39 @@
 use crate::RepositoryError;
-use crate::filesystem::{
-    atomic_write, ensure_directory, restrict_to_owner, sync_parent, write_new,
-};
+use crate::filesystem::{atomic_write, ensure_directory, restrict_to_owner, sync_parent};
 use crate::inventory::{TrustedBackup, load_verified_manifest, trusted_inventory};
 use crate::process_lock::ProcessLock;
-use crate::staging::{StagingBackup, associated_data};
+use crate::staging::{StagingBackup, associated_data, recovery_wrap_associated_data};
 use fs2::FileExt;
 use guardian_archive::{ArchiveLimits, decompress_zstd_file, extract_tar_zstd};
 use guardian_core::{
-    BackupId, ManifestVerifier, PayloadPath, ProfileId, RepositoryId, RestorePlan, RunId,
+    BackupId, CredentialId, ManifestVerifier, PayloadPath, RepositoryId, RestorePlan, RunId,
     SecretStore,
 };
-use guardian_encryption::{PayloadKey, decrypt_reader_to};
+use guardian_encryption::{PayloadKey, decrypt_reader_to, decrypt_self_describing_reader_to};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+mod audit;
+mod credential;
+mod recovery;
+mod restore;
+
+pub(crate) use credential::random_credential_id;
+
 const REPOSITORY_FORMAT_VERSION: u32 = 1;
 const RESTORE_SCRATCH_DIR_NAME: &str = "restore";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepositoryVerificationKey {
+    pub algorithm: String,
+    pub key_id: String,
+    pub public_key_base64: String,
+}
+
 pub struct LocalRepository {
     root: PathBuf,
     id: RepositoryId,
@@ -133,16 +148,7 @@ impl LocalRepository {
     fn ensure_metadata(&self) -> Result<(), RepositoryError> {
         let path = self.root.join("repository.json");
         if path.exists() {
-            let file_type = fs::symlink_metadata(&path)
-                .map_err(|source| RepositoryError::io("inspect repository metadata", source))?
-                .file_type();
-            if !file_type.is_file() || file_type.is_symlink() {
-                return Err(RepositoryError::UnsafeFilesystemEntry);
-            }
-            let bytes = fs::read(&path)
-                .map_err(|source| RepositoryError::io("read repository metadata", source))?;
-            let metadata: RepositoryMetadata = serde_json::from_slice(&bytes)
-                .map_err(|_| RepositoryError::IncompatibleMetadata)?;
+            let metadata = self.read_metadata()?;
             if metadata.format_version != REPOSITORY_FORMAT_VERSION
                 || metadata.repository_id != self.id
             {
@@ -150,12 +156,30 @@ impl LocalRepository {
             }
             return Ok(());
         }
-        let metadata = RepositoryMetadata {
+        self.write_metadata(&RepositoryMetadata {
             format_version: REPOSITORY_FORMAT_VERSION,
             repository_id: self.id.clone(),
-        };
-        let bytes = serde_json::to_vec(&metadata).map_err(|_| RepositoryError::Serialization)?;
-        atomic_write(&path, &bytes)
+            recovery_credential_id: None,
+            trusted_verification_key: None,
+        })
+    }
+
+    fn read_metadata(&self) -> Result<RepositoryMetadata, RepositoryError> {
+        let path = self.root.join("repository.json");
+        let file_type = fs::symlink_metadata(&path)
+            .map_err(|source| RepositoryError::io("inspect repository metadata", source))?
+            .file_type();
+        if !file_type.is_file() || file_type.is_symlink() {
+            return Err(RepositoryError::UnsafeFilesystemEntry);
+        }
+        let bytes = fs::read(&path)
+            .map_err(|source| RepositoryError::io("read repository metadata", source))?;
+        serde_json::from_slice(&bytes).map_err(|_| RepositoryError::IncompatibleMetadata)
+    }
+
+    fn write_metadata(&self, metadata: &RepositoryMetadata) -> Result<(), RepositoryError> {
+        let bytes = serde_json::to_vec(metadata).map_err(|_| RepositoryError::Serialization)?;
+        atomic_write(&self.root.join("repository.json"), &bytes)
     }
 
     pub(crate) fn acquire_lock(&self) -> Result<RepositoryLock, RepositoryError> {
@@ -219,376 +243,6 @@ impl LocalRepository {
     pub(crate) fn audit_root(&self) -> PathBuf {
         self.root.join("audit")
     }
-
-    pub fn write_capture_audit(
-        &self,
-        run_id: &RunId,
-        state: &'static str,
-        backup_id: Option<&BackupId>,
-    ) -> Result<(), RepositoryError> {
-        ensure_directory(&self.audit_root())?;
-        let record = CaptureAuditRecord {
-            state,
-            run_id,
-            backup_id,
-        };
-        let path = self
-            .audit_root()
-            .join(format!("capture-{run_id}-{state}.json"));
-        let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
-        write_new(&path, &bytes)?;
-        sync_parent(&path)
-    }
-
-    pub fn list_sealed_backups(
-        &self,
-        verifier: &dyn ManifestVerifier,
-    ) -> Result<Vec<TrustedBackup>, RepositoryError> {
-        let _lock = self.acquire_lock()?;
-        trusted_inventory(&self.backups_root(), verifier)
-    }
-
-    /// Re-verifies a sealed backup's signature and payload checksums fresh
-    /// and returns its manifest. Used by deploy planning, which — unlike
-    /// `plan_restore` — needs the full manifest (payload list, source
-    /// identity) rather than a pre-built `RestorePlan`.
-    pub fn load_verified_manifest(
-        &self,
-        backup_id: &BackupId,
-        verifier: &dyn ManifestVerifier,
-    ) -> Result<guardian_core::Manifest, RepositoryError> {
-        let _lock = self.acquire_lock()?;
-        load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)
-    }
-
-    pub fn plan_restore(
-        &self,
-        backup_id: &BackupId,
-        destination: impl AsRef<Path>,
-        verifier: &dyn ManifestVerifier,
-    ) -> Result<RestorePlan, RepositoryError> {
-        let destination = destination.as_ref();
-        if destination.exists() {
-            return Err(RepositoryError::RestoreDestinationExists);
-        }
-        let _lock = self.acquire_lock()?;
-        let manifest =
-            load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)?;
-        RestorePlan::build(&manifest, destination).map_err(RepositoryError::RestorePlan)
-    }
-
-    /// Stages both payloads under a fresh sibling of `destination`, never
-    /// touching `destination` itself until everything has succeeded — a
-    /// failed second (database) payload must not leave the first
-    /// (filesystem) payload's already-extracted tree sitting at a path that
-    /// then blocks every future retry via `plan_restore`'s own existence
-    /// guard. Mirrors `staging.rs`'s own `publish_backup`: stage, then one
-    /// `fs::rename` guarded by a fresh existence check immediately before it.
-    pub fn execute_restore(
-        &self,
-        backup_id: &BackupId,
-        destination: impl AsRef<Path>,
-        confirmation: &str,
-        verifier: &dyn ManifestVerifier,
-        secrets: &dyn SecretStore,
-    ) -> Result<RestorePlan, RepositoryError> {
-        let destination = destination.as_ref();
-        let plan = self.plan_restore(backup_id, destination, verifier)?;
-        plan.approve(confirmation)
-            .map_err(RepositoryError::RestorePlan)?;
-        let backup_root = self.backups_root().join(backup_id.as_str());
-        let manifest = load_verified_manifest(&backup_root, verifier)?;
-        let scratch_root = self.restore_scratch_root();
-        let staging = reserve_restore_staging_directory(destination)?;
-        if let Err(error) = stage_restore_payloads(
-            &backup_root,
-            &manifest,
-            &plan,
-            secrets,
-            &staging,
-            &scratch_root,
-        ) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(error);
-        }
-        if destination.exists() {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(RepositoryError::RestoreDestinationExists);
-        }
-        fs::rename(&staging, destination)
-            .map_err(|source| RepositoryError::io("publish restored destination", source))?;
-        sync_parent(destination)?;
-        Ok(plan)
-    }
-
-    /// Opens a decrypted, still-compressed reader for one payload of one
-    /// sealed backup, for a remote deploy push, alongside the *measured*
-    /// byte length of that decrypted content. Re-verifies the manifest's
-    /// signature and checksums fresh on *every* call rather than trusting a
-    /// previously-built plan — deploy's two payload pushes are network-bound
-    /// and can each run for minutes, a materially larger time-of-check to
-    /// time-of-use window than local restore's back-to-back extractions, so
-    /// each payload gets its own fresh verification immediately before it is
-    /// read.
-    ///
-    /// The returned length is measured from the decrypted content itself,
-    /// never taken from `PayloadEntry.byte_length` — that field records the
-    /// on-disk (encrypted, when the payload is encrypted) stored size, a
-    /// distinct and strictly larger number checked separately by
-    /// `verify_payload_tree`. A caller that needs an exact expected byte
-    /// count for what this reader will actually produce (a strict push,
-    /// for instance) must use this measured value, not the manifest field.
-    pub fn open_deploy_payload_reader(
-        &self,
-        backup_id: &BackupId,
-        payload_path: &PayloadPath,
-        verifier: &dyn ManifestVerifier,
-        secrets: &dyn SecretStore,
-    ) -> Result<(impl std::io::Read + Send + use<>, u64), RepositoryError> {
-        let _lock = self.acquire_lock()?;
-        let backup_root = self.backups_root().join(backup_id.as_str());
-        let manifest = load_verified_manifest(&backup_root, verifier)?;
-        let (payload, encryption) = resolve_payload_file(&backup_root, &manifest, payload_path)?;
-        let reader = decrypted_payload_reader(
-            &payload,
-            payload_path,
-            encryption.as_ref(),
-            &manifest.backup_id,
-            secrets,
-            &self.restore_scratch_root(),
-        )?;
-        let byte_length = reader.measured_len()?;
-        Ok((reader, byte_length))
-    }
-
-    pub fn write_deploy_audit(
-        &self,
-        run_id: &RunId,
-        state: &'static str,
-        backup_id: &BackupId,
-        target_profile_id: &ProfileId,
-    ) -> Result<(), RepositoryError> {
-        ensure_directory(&self.audit_root())?;
-        let record = DeployAuditRecord {
-            state,
-            run_id,
-            backup_id,
-            target_profile_id,
-        };
-        let path = self
-            .audit_root()
-            .join(format!("deploy-{run_id}-{state}.json"));
-        let bytes = serde_json::to_vec(&record).map_err(|_| RepositoryError::Serialization)?;
-        write_new(&path, &bytes)?;
-        sync_parent(&path)
-    }
-}
-
-fn resolve_payload_file(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
-    payload_path: &PayloadPath,
-) -> Result<(PathBuf, Option<guardian_core::PayloadEncryption>), RepositoryError> {
-    let entry = manifest
-        .payloads
-        .iter()
-        .find(|entry| entry.path == *payload_path)
-        .ok_or(RepositoryError::IntegrityFailure)?;
-    let payload = backup_root.join(entry.path.as_str());
-    let metadata = fs::symlink_metadata(&payload)
-        .map_err(|source| RepositoryError::io("inspect restore payload", source))?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return Err(RepositoryError::UnsafeFilesystemEntry);
-    }
-    Ok((payload, entry.encryption.clone()))
-}
-
-/// Claims a unique, not-yet-existing directory name as a sibling of
-/// `destination` (same parent, so a later rename between them stays a
-/// same-filesystem operation) and immediately frees the name back up —
-/// `extract_tar_zstd` requires a destination that does not yet exist and
-/// creates it itself, so the name can only be reserved, not pre-created.
-/// The small local TOCTOU window this leaves (another process claiming the
-/// same name before extraction starts) has direct precedent in this crate
-/// (`staging.rs`'s `reserve_payload_destination`) and is backed by the same
-/// kind of real guarantee: `extract_tar_zstd`'s own `fs::create_dir` fails
-/// closed, never corrupts, if the name was reclaimed.
-fn reserve_restore_staging_directory(destination: &Path) -> Result<PathBuf, RepositoryError> {
-    let parent = destination
-        .parent()
-        .ok_or(RepositoryError::UnsafeFilesystemEntry)?;
-    let staging = tempfile::Builder::new()
-        .prefix(".guardian-restore-tmp-")
-        .tempdir_in(parent)
-        .map_err(|source| RepositoryError::io("reserve restore staging directory", source))?;
-    let path = staging.path().to_path_buf();
-    staging
-        .close()
-        .map_err(|source| RepositoryError::io("free restore staging directory name", source))?;
-    Ok(path)
-}
-
-fn stage_restore_payloads(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
-    plan: &RestorePlan,
-    secrets: &dyn SecretStore,
-    staging: &Path,
-    scratch_root: &Path,
-) -> Result<(), RepositoryError> {
-    extract_payload(
-        backup_root,
-        manifest,
-        &plan.filesystem_payload,
-        secrets,
-        staging,
-        scratch_root,
-    )?;
-    if let Some(database_payload) = &plan.database_payload {
-        extract_database_payload(
-            backup_root,
-            manifest,
-            database_payload,
-            secrets,
-            staging,
-            scratch_root,
-        )?;
-    }
-    Ok(())
-}
-
-fn extract_payload(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
-    payload_path: &PayloadPath,
-    secrets: &dyn SecretStore,
-    destination: &Path,
-    scratch_root: &Path,
-) -> Result<guardian_archive::ArchiveInspection, RepositoryError> {
-    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
-    let source = decrypted_payload_reader(
-        &payload,
-        payload_path,
-        encryption.as_ref(),
-        &manifest.backup_id,
-        secrets,
-        scratch_root,
-    )?;
-    extract_tar_zstd(source, destination, ArchiveLimits::conservative())
-        .map_err(RepositoryError::RestoreExtraction)
-}
-
-fn extract_database_payload(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
-    payload_path: &PayloadPath,
-    secrets: &dyn SecretStore,
-    destination: &Path,
-    scratch_root: &Path,
-) -> Result<u64, RepositoryError> {
-    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
-    let source = decrypted_payload_reader(
-        &payload,
-        payload_path,
-        encryption.as_ref(),
-        &manifest.backup_id,
-        secrets,
-        scratch_root,
-    )?;
-    // Bounds the *decompressed* database size; the compressed stream itself
-    // was already bounded and digest-verified at capture and load time.
-    decompress_zstd_file(
-        source,
-        &destination.join("database.sqlite"),
-        ArchiveLimits::conservative().max_expanded_bytes,
-    )
-    .map_err(RepositoryError::RestoreExtraction)
-}
-
-/// Decrypts (when the payload is encrypted) into a hardened scratch file and
-/// returns a reader over the plaintext bytes, or opens the payload directly
-/// when it is not encrypted. The scratch file, when used, is kept alive for
-/// as long as the returned reader is, and is removed once the reader (and
-/// its guard) is dropped.
-fn decrypted_payload_reader(
-    payload: &Path,
-    payload_path: &PayloadPath,
-    encryption: Option<&guardian_core::PayloadEncryption>,
-    backup_id: &BackupId,
-    secrets: &dyn SecretStore,
-    scratch_root: &Path,
-) -> Result<DecryptedPayload, RepositoryError> {
-    let Some(encryption) = encryption else {
-        let file = File::open(payload)
-            .map_err(|error| RepositoryError::io("open restore payload", error))?;
-        return Ok(DecryptedPayload::Direct(file));
-    };
-    let secret = secrets
-        .load(&encryption.credential_id)
-        .map_err(|_| RepositoryError::Credential)?;
-    let secret = secret.ok_or(RepositoryError::Credential)?;
-    let key = PayloadKey::from_bytes(secret.expose()).map_err(|_| RepositoryError::Encryption)?;
-    let nonce = encryption.nonce()?;
-    let temporary = tempfile::NamedTempFile::new_in(scratch_root)
-        .map_err(|error| RepositoryError::io("create temporary decrypted payload", error))?;
-    restrict_to_owner(temporary.path())?;
-    let mut encrypted = File::open(payload)
-        .map_err(|error| RepositoryError::io("open encrypted restore payload", error))?;
-    let mut plaintext = temporary
-        .reopen()
-        .map_err(|error| RepositoryError::io("open temporary decrypted payload", error))?;
-    decrypt_reader_to(
-        &key,
-        &mut encrypted,
-        &mut plaintext,
-        &associated_data(backup_id, payload_path),
-        &nonce,
-    )
-    .map_err(|_| RepositoryError::Encryption)?;
-    let file = temporary
-        .reopen()
-        .map_err(|error| RepositoryError::io("read temporary decrypted payload", error))?;
-    Ok(DecryptedPayload::Temporary {
-        _guard: temporary,
-        file,
-    })
-}
-
-enum DecryptedPayload {
-    Temporary {
-        _guard: tempfile::NamedTempFile,
-        file: File,
-    },
-    Direct(File),
-}
-
-impl DecryptedPayload {
-    /// Measures the already-open file handle's real size — never the path —
-    /// so this can never race a concurrent change to what the path itself
-    /// names.
-    fn measured_len(&self) -> Result<u64, RepositoryError> {
-        let file = match self {
-            DecryptedPayload::Temporary { file, .. } => file,
-            DecryptedPayload::Direct(file) => file,
-        };
-        file.metadata()
-            .map(|metadata| metadata.len())
-            .map_err(|source| RepositoryError::io("measure decrypted payload length", source))
-    }
-}
-
-impl std::io::Read for DecryptedPayload {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            DecryptedPayload::Temporary { file, .. } => file.read(buffer),
-            DecryptedPayload::Direct(file) => file.read(buffer),
-        }
-    }
-}
-
-pub(crate) struct RepositoryLock {
-    _file: File,
-    _process_lock: ProcessLock,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -596,23 +250,18 @@ pub(crate) struct RepositoryLock {
 struct RepositoryMetadata {
     format_version: u32,
     repository_id: RepositoryId,
+    /// Public reference to the repository's recovery key (ADR 0013) in
+    /// whichever `SecretStore` configured it — never the key itself.
+    /// Absent on a repository that never ran `recovery init`.
+    #[serde(default)]
+    recovery_credential_id: Option<CredentialId>,
+    #[serde(default)]
+    trusted_verification_key: Option<RepositoryVerificationKey>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CaptureAuditRecord<'a> {
-    state: &'static str,
-    run_id: &'a RunId,
-    backup_id: Option<&'a BackupId>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DeployAuditRecord<'a> {
-    state: &'static str,
-    run_id: &'a RunId,
-    backup_id: &'a BackupId,
-    target_profile_id: &'a ProfileId,
+pub(crate) struct RepositoryLock {
+    _file: File,
+    _process_lock: ProcessLock,
 }
 
 #[derive(Serialize)]

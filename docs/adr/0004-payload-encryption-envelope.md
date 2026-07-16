@@ -35,7 +35,10 @@ The local keyring is a required restore dependency for encrypted backups,
 unless the operator selects ADR 0006's `guardian-vault` explicitly via
 `--vault-dir` — the same per-payload data key stored in a portable encrypted
 file instead of the OS credential store. Cross-node recovery and portable
-key export need a separate explicit wrapped-key decision. Existing format-v1
+key export were an open question at the time this ADR was written;
+delivered by ADR 0013's portable repository recovery key, which wraps every
+payload's data key under a repository-wide key that can itself be exported
+into a passphrase-protected offline bundle. Existing format-v1
 unencrypted backups remain readable only through a compatibility path; new
 live filesystem captures create format-v2 encrypted payloads and cannot
 silently claim encryption.

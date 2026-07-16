@@ -11,6 +11,44 @@ live commands will be enabled by milestones in `DEVELOPMENT_PLAN.md`.
 4. Confirm the result is `sealed`, not merely `captured`.
 5. Review warnings and the verification report.
 
+## Recovery-key setup and offline copy
+
+A repository must have a configured recovery key (ADR 0013) before its first
+encrypted capture — live capture fails closed otherwise. Set one up once per
+repository:
+
+1. `guardian-cli recovery init --repositories-dir <dir> --repository-id <id>
+   --signing-config-dir <node-dir> --json` — generates the repository's one
+   recovery key and pins the active public verification key. Fails closed if
+   one already exists; there is no rotation yet.
+2. `guardian-cli recovery export --repositories-dir <dir> --repository-id
+   <id> --passphrase-file <path> --output <bundle-path> --confirmation
+   "EXPORT RECOVERY BUNDLE FOR <id>" --json` — seals the recovery key into a
+   portable bundle under an operator-supplied passphrase (read from a file,
+   never typed on the command line). Choose a passphrase strong enough to
+   protect the single key that can decrypt every backup in this repository;
+   nothing in this tool enforces passphrase strength.
+3. Copy the bundle file to storage **independent of the repository disk** —
+   a separate drive, a safe, an encrypted password-manager attachment.
+   A bundle kept alongside the repository it recovers defeats its purpose:
+   losing that one disk would then take the recovery material with it.
+4. Record the passphrase somewhere durable and independent of both the
+   repository and the bundle file (a password manager, a sealed physical
+   copy) — losing it makes the bundle undecryptable, by design.
+
+To recover on a clean machine that has the repository directory and the
+bundle, but no state from the original machine's OS credential store:
+
+`guardian-cli recovery import --repositories-dir <dir> --repository-id <id>
+--repository-path <repository-path> --input <bundle-path> --passphrase-file <path> --confirmation "IMPORT
+RECOVERY BUNDLE FOR <id>" --json` — installs the recovered key into this
+machine's own credential store (or `guardian-vault`, via `--vault-dir`) and
+registers the transferred repository when the clean registry has no entry.
+Every subsequent `restore`/`deploy` call verifies with the authenticated
+public key and decrypts with the imported recovery key; the original private
+signing seed is not required. A wrong passphrase, a bundle from a different
+repository, or a corrupted bundle all fail closed with no partial state.
+
 ## Programmatic and agent access
 
 `guardian-mcp` (ADR 0012) exposes the same capture/restore/deploy/discovery
@@ -69,4 +107,3 @@ the automated version does not yet cover, or when CI access is unavailable.
   retention against sealed backups and preserve the configured minimum set.
 - Lost signing key: preserve old public keys and sealed backups; enroll a new
   signer for future backups.
-

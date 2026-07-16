@@ -18,5 +18,5 @@ pub use core_adapter::LocalRepositoryStorageAdapter;
 pub use error::RepositoryError;
 pub use guardian_core::{RetentionOutcome, RetentionPlan};
 pub use inventory::TrustedBackup;
-pub use repository::LocalRepository;
+pub use repository::{LocalRepository, RepositoryVerificationKey};
 pub use staging::{SealedBackup, StagingBackup};

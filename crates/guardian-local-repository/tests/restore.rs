@@ -76,6 +76,7 @@ fn encrypted_payload_restores_only_with_its_keyring_key() -> TestResult {
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let run = RunId::parse("run-encrypted-extract")?;
     let staging = local_repository.begin_staging(run.clone())?;
     let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
@@ -113,6 +114,7 @@ fn discarding_an_encrypted_staging_run_revokes_its_payload_key() -> TestResult {
     let root = TestRoot::new()?;
     let local_repository = repository(&root)?;
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let run = RunId::parse("run-discard-encrypted")?;
     let staging = local_repository.begin_staging(run.clone())?;
     let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
@@ -141,6 +143,7 @@ fn restore_reconstructs_an_encrypted_database_payload_alongside_the_filesystem_p
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let backup_id = BackupId::parse("backup-with-database")?;
     let run = RunId::parse("run-with-database")?;
     let staging = local_repository.begin_staging(run.clone())?;
@@ -202,6 +205,7 @@ fn a_failed_second_payload_leaves_no_partial_destination() -> TestResult {
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let backup_id = BackupId::parse("backup-partial-second-payload")?;
     let run = RunId::parse("run-partial-second-payload")?;
     let staging = local_repository.begin_staging(run.clone())?;
@@ -250,9 +254,17 @@ fn a_failed_second_payload_leaves_no_partial_destination() -> TestResult {
     let destination = root.path().join("partial-second-payload-target");
     let plan = local_repository.plan_restore(&backup_id, &destination, &signer)?;
     assert!(plan.database_payload.is_some());
+    // The recovery fallback (ADR 0013) must also be denied here, or it would
+    // silently recover the "missing" key and defeat the point of this test:
+    // proving a payload whose key is genuinely unavailable through any
+    // channel fails closed without a partial destination.
+    let recovery_credential_id = local_repository
+        .recovery_credential_id()?
+        .ok_or("recovery key should be configured")?;
     let secrets_missing_database_key = MissingOneKey {
         inner: &secrets,
         missing: missing_credential_id,
+        recovery: recovery_credential_id,
     };
     assert!(matches!(
         local_repository.execute_restore(
@@ -277,6 +289,7 @@ fn encrypted_restore_fails_closed_when_the_key_is_missing() -> TestResult {
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let run = RunId::parse("run-missing-key")?;
     let staging = local_repository.begin_staging(run.clone())?;
     let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
@@ -311,17 +324,152 @@ fn encrypted_restore_fails_closed_when_the_key_is_missing() -> TestResult {
     Ok(())
 }
 
-/// Delegates to `inner` for every credential except `missing`, which always
-/// reports absent -- simulates exactly one payload's key having gone away
-/// while every other payload's key stays reachable.
-struct MissingOneKey<'a> {
+#[test]
+fn restore_falls_back_to_the_recovery_key_when_the_primary_key_is_missing() -> TestResult {
+    let root = TestRoot::new()?;
+    let local_repository = repository(&root)?;
+    let signer = TestSigner::new();
+    let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
+    let run = RunId::parse("run-recovery-fallback")?;
+    let staging = local_repository.begin_staging(run.clone())?;
+    let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload("filesystem", path.clone(), "application/zstd", &archive()?)?;
+    let payload = staging.encrypt_and_register_payload_file(
+        "filesystem",
+        path,
+        "application/zstd",
+        &BackupId::parse("backup-recovery-fallback")?,
+        &secrets,
+    )?;
+    let primary_credential_id = payload
+        .encryption
+        .clone()
+        .ok_or("payload is encrypted")?
+        .credential_id;
+    let mut manifest = manifest("backup-recovery-fallback", run)?;
+    manifest.add_payload(payload)?;
+    staging.seal(manifest, timestamp("2026-07-16T09:00:00Z")?, &signer)?;
+    let destination = root.path().join("recovery-fallback-target");
+    let plan = local_repository.plan_restore(
+        &BackupId::parse("backup-recovery-fallback")?,
+        &destination,
+        &signer,
+    )?;
+    let secrets_missing_primary_key = MissingPrimaryKey {
+        inner: &secrets,
+        missing: primary_credential_id,
+    };
+    // The primary `SecretStore` entry is gone -- this must still succeed via
+    // the manifest's own recovery-wrapped copy of the same key (ADR 0013).
+    local_repository.execute_restore(
+        &BackupId::parse("backup-recovery-fallback")?,
+        &destination,
+        &plan.confirmation,
+        &signer,
+        &secrets_missing_primary_key,
+    )?;
+    assert_eq!(std::fs::read(destination.join("srv/app/config"))?, b"safe");
+    Ok(())
+}
+
+#[test]
+fn restore_fails_closed_when_the_wrong_recovery_key_is_present() -> TestResult {
+    let root = TestRoot::new()?;
+    let local_repository = repository(&root)?;
+    let signer = TestSigner::new();
+    let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
+    let recovery_credential_id = local_repository
+        .recovery_credential_id()?
+        .ok_or("recovery key should be configured")?;
+    let run = RunId::parse("run-recovery-wrong-key")?;
+    let staging = local_repository.begin_staging(run.clone())?;
+    let path = PayloadPath::parse("payload/filesystem.tar.zst.enc")?;
+    staging.write_payload("filesystem", path.clone(), "application/zstd", &archive()?)?;
+    let payload = staging.encrypt_and_register_payload_file(
+        "filesystem",
+        path,
+        "application/zstd",
+        &BackupId::parse("backup-recovery-wrong-key")?,
+        &secrets,
+    )?;
+    let primary_credential_id = payload
+        .encryption
+        .clone()
+        .ok_or("payload is encrypted")?
+        .credential_id;
+    let mut manifest = manifest("backup-recovery-wrong-key", run)?;
+    manifest.add_payload(payload)?;
+    staging.seal(manifest, timestamp("2026-07-16T09:30:00Z")?, &signer)?;
+    // Simulates an operator installing the wrong recovery bundle: the
+    // recovery credential id is unchanged, but the bytes behind it are not
+    // the key this payload was actually wrapped under.
+    secrets.store(&recovery_credential_id, &SecretValue::new(vec![0_u8; 32]))?;
+    let destination = root.path().join("recovery-wrong-key-target");
+    let plan = local_repository.plan_restore(
+        &BackupId::parse("backup-recovery-wrong-key")?,
+        &destination,
+        &signer,
+    )?;
+    let secrets_missing_primary_key = MissingPrimaryKey {
+        inner: &secrets,
+        missing: primary_credential_id,
+    };
+    assert!(matches!(
+        local_repository.execute_restore(
+            &BackupId::parse("backup-recovery-wrong-key")?,
+            &destination,
+            &plan.confirmation,
+            &signer,
+            &secrets_missing_primary_key,
+        ),
+        Err(RepositoryError::Credential)
+    ));
+    assert!(!destination.exists());
+    Ok(())
+}
+
+/// Delegates to `inner` for every credential except `missing` -- simulates
+/// only the primary payload key being gone while the repository's recovery
+/// key remains reachable, proving the ADR 0013 fallback works (or, when the
+/// stored recovery key itself is wrong, that it still fails closed).
+struct MissingPrimaryKey<'a> {
     inner: &'a MemorySecrets,
     missing: CredentialId,
 }
 
-impl SecretStore for MissingOneKey<'_> {
+impl SecretStore for MissingPrimaryKey<'_> {
     fn load(&self, id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
         if *id == self.missing {
+            return Ok(None);
+        }
+        self.inner.load(id)
+    }
+
+    fn store(&self, id: &CredentialId, secret: &SecretValue) -> Result<(), SecretStoreError> {
+        self.inner.store(id, secret)
+    }
+
+    fn delete(&self, id: &CredentialId) -> Result<(), SecretStoreError> {
+        self.inner.delete(id)
+    }
+}
+
+/// Delegates to `inner` for every credential except `missing` (the target
+/// payload's own primary key) and `recovery` (the repository's recovery
+/// credential) — both must be unavailable to simulate a payload's key being
+/// truly gone now that a recovery-key fallback exists (ADR 0013), while
+/// every other payload's own primary key stays reachable.
+struct MissingOneKey<'a> {
+    inner: &'a MemorySecrets,
+    missing: CredentialId,
+    recovery: CredentialId,
+}
+
+impl SecretStore for MissingOneKey<'_> {
+    fn load(&self, id: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        if *id == self.missing || *id == self.recovery {
             return Ok(None);
         }
         self.inner.load(id)

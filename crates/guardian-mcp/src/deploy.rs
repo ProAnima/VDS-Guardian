@@ -14,7 +14,7 @@ use guardian_core::{
 use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;
 use guardian_profile_store::ProfileStore;
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
 use guardian_ssh::SystemOpenSsh;
 use serde::Serialize;
 use std::sync::Arc;
@@ -110,7 +110,7 @@ fn summary(
 struct ResolvedDeployInputs {
     repository: LocalRepository,
     target_profile: guardian_core::VdsProfile,
-    identity: guardian_signing::ManagedIdentity,
+    identity: VerificationIdentity,
 }
 
 fn resolve(
@@ -130,9 +130,17 @@ fn resolve(
         .map_err(|_| DeployFailure::storage())?;
     let secrets =
         resolve_store(config.vault_dir.as_deref()).map_err(|_| DeployFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| DeployFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(&config.config_dir)
         .map_err(|_| DeployFailure::storage())?
-        .load_ready(&secrets)
+        .load_verifier(&secrets, portable.as_ref())
         .map_err(|_| DeployFailure::signing())?;
     let backup_id = BackupId::parse(backup_id).map_err(|_| DeployFailure::not_found())?;
     let target_profile_id =

@@ -11,7 +11,7 @@ use crate::secret_store::resolve_store;
 use guardian_configuration::RepositoryStore;
 use guardian_core::{BackupId, RepositoryId};
 use guardian_local_repository::LocalRepository;
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
 use serde::Serialize;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
@@ -110,7 +110,7 @@ fn resolve(
     config: &ServerConfig,
     repository_id: &str,
     backup_id: &str,
-) -> Result<(LocalRepository, BackupId, guardian_signing::ManagedIdentity), RestoreFailure> {
+) -> Result<(LocalRepository, BackupId, VerificationIdentity), RestoreFailure> {
     let repository_id =
         RepositoryId::parse(repository_id).map_err(|_| RestoreFailure::not_found())?;
     let registration = RepositoryStore::at(&config.repositories_dir)
@@ -121,9 +121,17 @@ fn resolve(
         .map_err(|_| RestoreFailure::storage())?;
     let secrets =
         resolve_store(config.vault_dir.as_deref()).map_err(|_| RestoreFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| RestoreFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(&config.config_dir)
         .map_err(|_| RestoreFailure::storage())?
-        .load_ready(&secrets)
+        .load_verifier(&secrets, portable.as_ref())
         .map_err(|_| RestoreFailure::signing())?;
     let backup_id = BackupId::parse(backup_id).map_err(|_| RestoreFailure::not_found())?;
     Ok((repository, backup_id, identity))

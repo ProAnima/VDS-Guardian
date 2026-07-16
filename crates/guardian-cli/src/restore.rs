@@ -2,7 +2,7 @@ use crate::secret_store::resolve_store;
 use guardian_configuration::RepositoryStore;
 use guardian_core::{BackupId, RepositoryId, RestorePlan, SecretStore};
 use guardian_local_repository::{LocalRepository, TrustedBackup};
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager};
 use serde::Serialize;
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
@@ -121,9 +121,17 @@ fn execute(
         .ok_or_else(RestoreFailure::input)?;
     let repository = LocalRepository::open(&registration.path, repository_id)
         .map_err(|_| RestoreFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| RestoreFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(&command.config_dir)
         .map_err(|_| RestoreFailure::storage())?
-        .load_ready(secrets)
+        .load_verifier(secrets, portable.as_ref())
         .map_err(|_| RestoreFailure::signing())?;
     match command.action {
         RestoreAction::List => repository

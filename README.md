@@ -19,12 +19,13 @@ explicitly selected data, store a verified backup on a local or removable disk,
 and restore it to a new destination without a mandatory cloud service.
 
 > **Project status:** Release 0.1 hardening. Pinned SSH capture, encrypted sealed
-> backups, local restore, new-host deploy, optional SQLite snapshots, an
-> initial desktop flow, and an automated clean-room drill (now passing
-> end-to-end) are implemented foundations. Portable recovery keys and full
-> desktop/MCP workflow parity remain release blockers. Do not use the
-> application as a disaster-recovery system until the Release 0.1 exit gate
-> passes.
+> backups with a portable per-repository recovery key, local restore,
+> new-host deploy, optional SQLite snapshots, an initial desktop flow, and
+> an automated clean-room drill (now passing end-to-end) are implemented
+> foundations. A complete operator-facing setup/status flow and a
+> clean-machine drill proven on Linux CI remain release blockers. Do not use
+> the application as a disaster-recovery system until the Release 0.1 exit
+> gate passes.
 
 ## Design goals
 
@@ -70,7 +71,7 @@ crates/guardian-local-repository/  Cross-platform staging and seal adapter
 crates/guardian-signing/  Ed25519 backup-node identity lifecycle
 crates/guardian-os-keyring/  Windows/Linux secure credential-store adapter
 crates/guardian-vault/  Encrypted local file vault fallback for headless nodes
-crates/guardian-cli/   Headless enrollment/restore/deploy entrypoint
+crates/guardian-cli/   Headless enrollment/restore/deploy/recovery entrypoint
 crates/guardian-mcp/   MCP server for headless/AI-agent capture/restore/deploy
 docs/                  Architecture, security, backup format, and roadmap
 scripts/               Canonical doctor and verification entrypoints
@@ -145,6 +146,24 @@ yet.
 
 ```powershell
 guardian-cli credential register-agent-key --credential-id credential-002 --public-key-file D:\VDSGuardian\backup.pub --json
+```
+
+Every repository needs a configured recovery key (ADR 0013) before its first
+encrypted capture; live capture fails closed otherwise. Export it into a
+passphrase-protected offline bundle and keep that bundle independent of the
+repository disk — an intact backup is only as recoverable as its
+independently stored recovery material:
+
+```powershell
+guardian-cli recovery init --repositories-dir D:\VDSGuardian\repositories --repository-id repository-001 --signing-config-dir D:\VDSGuardian\node --json
+guardian-cli recovery export --repositories-dir D:\VDSGuardian\repositories --repository-id repository-001 --passphrase-file D:\VDSGuardian\passphrase.txt --output D:\VDSGuardian\recovery-bundle.json --confirmation "EXPORT RECOVERY BUNDLE FOR repository-001" --json
+```
+
+On a clean machine that has the repository directory and the bundle, but no
+state from the original machine's OS credential store:
+
+```powershell
+guardian-cli recovery import --repositories-dir D:\VDSGuardian\repositories --repository-id repository-001 --repository-path E:\VDSGuardianBackup --input D:\VDSGuardian\recovery-bundle.json --passphrase-file D:\VDSGuardian\passphrase.txt --confirmation "IMPORT RECOVERY BUNDLE FOR repository-001" --json
 ```
 
 The pinned SSH profile is the only VDS transport boundary. Live filesystem

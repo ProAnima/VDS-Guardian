@@ -1,6 +1,7 @@
 mod credential;
 mod deploy;
 mod profile;
+mod recovery;
 mod restore;
 mod secret_store;
 mod vault;
@@ -32,6 +33,9 @@ pub fn run(arguments: impl Iterator<Item = OsString>) -> ExitCode {
     }
     if arguments.first().and_then(|value| value.to_str()) == Some("deploy") {
         return deploy::run(&arguments[1..]);
+    }
+    if arguments.first().and_then(|value| value.to_str()) == Some("recovery") {
+        return recovery::run(&arguments[1..]);
     }
     match parse(arguments) {
         Ok(Command::Foundation) => write_plain(&FoundationStatus::current()),

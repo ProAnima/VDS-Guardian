@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, FolderArchive, HardDrive, LoaderCircle } from "lucide-react";
 import {
-  hasTauriRuntime, listRepositories, pickRepositoryPath, registerRepository,
+  hasTauriRuntime, initializeRepositoryRecovery, listRepositories, pickRepositoryPath, registerRepository,
   type RepositoryFailure, type RepositoryRequest, type RepositorySummary,
 } from "../shared/commands";
 
@@ -18,7 +18,7 @@ export function RepositoryPanel() {
     </form>
     {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
     {model.result && <p className="repository-panel__success"><CircleCheck size={16} />{model.result}</p>}
-    {model.repositories.length > 0 && <div className="repository-panel__items">{model.repositories.map((repository) => <span key={repository.repositoryId}>{repository.label} · {repository.path}</span>)}</div>}
+    {model.repositories.length > 0 && <div className="repository-panel__items">{model.repositories.map((repository) => <span key={repository.repositoryId}>{repository.label} · {repository.path}<button className="button button--secondary" type="button" disabled={model.working} onClick={() => void model.prepare(repository)}>Подготовить recovery</button></span>)}</div>}
   </section>;
 }
 
@@ -39,10 +39,18 @@ function useRepository() {
     try {
       const repository = await registerRepository(form);
       setRepositories((current) => [...current, repository]); setForm(emptyForm);
-      setResult(`Хранилище «${repository.label}» создано и готово к настройке capture plan.`);
+      await initializeRepositoryRecovery(repository.repositoryId);
+      setResult(`Хранилище «${repository.label}» создано и защищено recovery-ключом.`);
     } catch (error) { setFailure(errorText(error)); } finally { setWorking(false); }
   };
-  return { repositories, form, working, result, failure, setForm, submit };
+  const prepare = async (repository: RepositorySummary) => {
+    setWorking(true); setFailure(undefined); setResult(undefined);
+    try {
+      await initializeRepositoryRecovery(repository.repositoryId);
+      setResult(`Recovery для «${repository.label}» готово.`);
+    } catch (error) { setFailure(errorText(error)); } finally { setWorking(false); }
+  };
+  return { repositories, form, working, result, failure, setForm, submit, prepare };
 }
 
 function errorText(error: unknown): string {

@@ -60,6 +60,7 @@ fn restore_drill() -> TestResult {
         workdir.path().join("repository"),
         RepositoryId::parse("drill-restore-repo")?,
     )?;
+    repository.configure_recovery_key(&vault)?;
     let signer = support::TestSigner::new();
 
     let capture = support::capture_drill_backup(
@@ -191,6 +192,7 @@ fn deploy_drill() -> TestResult {
         workdir.path().join("repository"),
         RepositoryId::parse("drill-deploy-repo")?,
     )?;
+    repository.configure_recovery_key(&vault)?;
     let signer = support::TestSigner::new();
 
     let capture = support::capture_drill_backup(

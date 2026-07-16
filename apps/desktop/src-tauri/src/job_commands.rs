@@ -1,9 +1,9 @@
 use guardian_capture::FilesystemCaptureComposition;
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, CancellationHandle, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest,
-    FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath, PlanReference, Producer,
-    ProfileStorePort, RunId, SourceIdentity, Timestamp,
+    BackupId, CancellationHandle, CaptureUseCaseError, EmbeddedDatabaseCaptureRequest,
+    FilesystemBackupRequest, FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath,
+    PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity, Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
@@ -144,6 +144,9 @@ fn run_blocking(
     };
     let sealed = match composition.execute(request, database, &identity) {
         Ok(sealed) => sealed,
+        Err(CaptureUseCaseError::RecoveryKeyRequired) => {
+            return Err(CaptureJobFailure::recovery_key_required());
+        }
         Err(_) if handle.is_cancelled() => return Err(CaptureJobFailure::cancelled()),
         Err(_) => return Err(CaptureJobFailure::capture()),
     };
@@ -234,6 +237,13 @@ impl CaptureJobFailure {
             code: "capture_cancelled",
             message: "The backup was cancelled by the operator.",
             remediation: "Start a new backup run if it should still happen.",
+        }
+    }
+    fn recovery_key_required() -> Self {
+        Self {
+            code: "recovery_key_not_configured",
+            message: "This repository has no configured recovery key.",
+            remediation: "Run `guardian-cli recovery init` for this repository before capturing.",
         }
     }
     fn storage() -> Self {

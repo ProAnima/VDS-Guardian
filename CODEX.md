@@ -12,8 +12,9 @@ surfaces:
 
 - a Tauri desktop application, the sole first-class human interface, for
   Windows and Linux operators;
-- a headless CLI (`guardian-cli`) scoped to enrollment, restore, and deploy —
-  it deliberately does not grow a capture command;
+- a headless CLI (`guardian-cli`) scoped to enrollment, restore, deploy, and
+  portable recovery-key management (ADR 0013) — it deliberately does not
+  grow a capture command;
 - an MCP server (`guardian-mcp`, ADR 0012, stdio transport only) exposing
   capture, restore, deploy, discovery, and cancellation for external tools
   and AI agents.

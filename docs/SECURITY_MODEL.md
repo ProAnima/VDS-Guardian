@@ -68,6 +68,43 @@
   discloses everything in it — the same blast radius the OS credential store
   already has within one account, not a new weakness.
 
+### Portable repository recovery
+
+- Every repository has, since ADR 0013, one recovery key that wraps every
+  payload's primary data key as a second, additional copy signed into that
+  payload's own manifest entry — the primary `SecretStore` reference is
+  unchanged and remains the first key resolution always tries. Live capture
+  fails closed before touching SSH if the target repository has no
+  configured recovery key (`recovery init`), so an encrypted backup can
+  never be sealed with no independent recovery path.
+- `recovery export` wraps the repository recovery key itself under an
+  Argon2id-derived key from an operator-supplied passphrase (read only from
+  a file, never a bare CLI argument) into a portable bundle file, bound via
+  authenticated associated data to the specific repository id and active
+  Ed25519 public verification key — a bundle
+  exported from one repository fails closed if fed into another, even with
+  the correct passphrase. `recovery import` reverses this on a clean
+  machine, installing the recovered key into whatever `SecretStore` that
+  machine is configured to use. The authenticated public key is pinned in
+  repository metadata and verifies manifests without copying the private
+  signing seed; a wrong passphrase, wrong repository, substituted key, or
+  corrupted bundle all fail closed via the same AEAD authentication check,
+  never a separate one. Import accepts only the pinned format-v1 Argon2id
+  cost profile, is idempotent for the same key, and refuses to overwrite a
+  different working recovery key.
+- Both `recovery export` and `recovery import` require a typed confirmation
+  phrase computed from the repository id, matching the confirmation-gate
+  convention restore and deploy already use. Neither `guardian-mcp` nor any
+  other headless surface exposes these tools — the single
+  highest-blast-radius secret in the system is deliberately excluded from
+  MCP the same way profile enrollment, vault init, and signing enrollment
+  already are.
+- The recovery bundle must be stored independently of the repository disk
+  (an offline copy — a separate drive, a safe, a password manager) to serve
+  its purpose; a bundle kept alongside the repository it recovers is a
+  single point of failure again. Recovery-key rotation and bundle
+  replacement remain open, deferred to Release 0.2.
+
 ### SSH
 
 - First connection shows the fingerprint and requires explicit trust.
@@ -134,14 +171,22 @@ The capture is rejected before opening staging if the reserve is unavailable.
 
 New live filesystem captures replace the inspected staging archive with a
 streaming AES-256-GCM ciphertext before it can enter a sealed directory. A
-fresh payload key is stored only in the OS credential store under a random
-reference; ciphertext digest, envelope version, nonce, algorithm, and that
-reference are signed in the format-v2 manifest. Failed staging cleanup removes
-payload files before quarantine so a plaintext archive is never retained as a
-quarantine artifact. Restore verifies the sealed ciphertext first, resolves the
-key through the OS store, fully authenticates into a transient file, and only
-then extracts to the requested new destination. Key rotation and portable
-recovery are still open.
+fresh payload key is stored in the OS credential store (or, when selected via
+`--vault-dir`, `guardian-vault`) under a random reference; ciphertext digest,
+envelope version, nonce, algorithm, and that reference are signed in the
+format-v2 manifest. Since ADR 0013, capture also requires the target
+repository to have a configured recovery key and fails closed if it does
+not: the same payload key is additionally wrapped under that repository-wide
+recovery key and the wrapped copy is signed into the manifest alongside the
+primary reference, so restore can recover it independently of the original
+machine's credential-store state (see "### Portable repository recovery"
+below). Failed staging cleanup removes payload files before quarantine so a
+plaintext archive is never retained as a quarantine artifact. Restore
+verifies the sealed ciphertext first, resolves the key through the primary
+credential-store reference or, when that is unavailable, through the
+manifest's recovery-wrapped copy, fully authenticates into a transient file,
+and only then extracts to the requested new destination. Key rotation is
+still open.
 
 The desktop enrollment screen follows the same boundary: the operator supplies
 an absolute path to a dedicated unencrypted OpenSSH or PEM private key and explicitly confirms

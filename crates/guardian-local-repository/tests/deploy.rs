@@ -13,6 +13,7 @@ fn open_deploy_payload_reader_re_verifies_the_manifest_fresh_on_every_call() -> 
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let backup_id = BackupId::parse("backup-deploy-reverify")?;
     let run = RunId::parse("run-deploy-reverify")?;
     let staging = local_repository.begin_staging(run.clone())?;
@@ -65,6 +66,7 @@ fn open_deploy_payload_reader_fails_closed_when_the_key_is_missing() -> TestResu
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let backup_id = BackupId::parse("backup-deploy-missing-key")?;
     let run = RunId::parse("run-deploy-missing-key")?;
     let staging = local_repository.begin_staging(run.clone())?;
@@ -95,6 +97,7 @@ fn open_deploy_payload_reader_returns_the_exact_verified_bytes() -> TestResult {
     let local_repository = repository(&root)?;
     let signer = TestSigner::new();
     let secrets = MemorySecrets::default();
+    local_repository.configure_recovery_key(&secrets)?;
     let backup_id = BackupId::parse("backup-deploy-length")?;
     let run = RunId::parse("run-deploy-length")?;
     let staging = local_repository.begin_staging(run.clone())?;

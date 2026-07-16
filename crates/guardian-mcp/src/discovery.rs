@@ -10,7 +10,7 @@ use guardian_docker::SshDockerInventoryAdapter;
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager};
 use guardian_ssh::SystemOpenSsh;
 use serde::Serialize;
 
@@ -237,9 +237,17 @@ pub(crate) fn list_backups(
         .ok_or_else(DiscoveryFailure::not_found)?;
     let repository = LocalRepository::open(&registration.path, repository_id)
         .map_err(|_| DiscoveryFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| DiscoveryFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(&config.config_dir)
         .map_err(|_| DiscoveryFailure::storage())?
-        .load_ready(&OsCredentialStore)
+        .load_verifier(&OsCredentialStore, portable.as_ref())
         .map_err(|_| DiscoveryFailure::signing())?;
     repository
         .list_sealed_backups(&identity)

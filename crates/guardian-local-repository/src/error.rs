@@ -47,6 +47,14 @@ pub enum RepositoryError {
     Encryption,
     #[error("the operating-system credential store is unavailable")]
     Credential,
+    #[error("repository has no configured recovery key")]
+    RecoveryKeyNotConfigured,
+    #[error("repository already has a configured recovery key")]
+    RecoveryKeyAlreadyConfigured,
+    #[error("imported recovery key does not match the configured key")]
+    RecoveryKeyMismatch,
+    #[error("trusted signing key does not match the configured key")]
+    TrustedSigningKeyMismatch,
     #[error("could not restrict a temporary file's permissions to the current user")]
     PermissionHardening,
     #[error("manifest signing or verification failed")]

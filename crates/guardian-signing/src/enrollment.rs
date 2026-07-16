@@ -5,8 +5,8 @@ use crate::public::{
     EnrollmentDisposition, SigningIdentityDescriptor, SigningIdentityEnrollment,
     SigningIdentityState, SigningIdentityStatus,
 };
-use crate::{Ed25519Identity, IdentityError};
-use guardian_core::{CredentialId, ManifestSigner, SecretStore, SigningError};
+use crate::{Ed25519Identity, IdentityError, PortableVerificationKey};
+use guardian_core::{CredentialId, ManifestSigner, ManifestVerifier, SecretStore, SigningError};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -65,6 +65,21 @@ impl SigningIdentityManager {
         let config =
             read_optional::<SigningConfig>(&self.config_path())?.ok_or(IdentityError::Missing)?;
         self.load_committed_read_only(store, config)
+    }
+
+    pub fn load_verifier(
+        &self,
+        store: &dyn SecretStore,
+        portable: Option<&PortableVerificationKey>,
+    ) -> Result<VerificationIdentity, IdentityError> {
+        match self.load_ready(store) {
+            Ok(identity) => Ok(VerificationIdentity::Managed(identity)),
+            Err(IdentityError::Missing) => portable
+                .ok_or(IdentityError::Missing)
+                .and_then(crate::Ed25519Verifier::from_portable)
+                .map(VerificationIdentity::Portable),
+            Err(error) => Err(error),
+        }
     }
 
     fn load_committed(
@@ -182,6 +197,30 @@ pub struct ManagedIdentity {
     identity: Ed25519Identity,
 }
 
+pub enum VerificationIdentity {
+    Managed(ManagedIdentity),
+    Portable(crate::Ed25519Verifier),
+}
+
+impl ManifestVerifier for VerificationIdentity {
+    fn verify_manifest(
+        &self,
+        algorithm: &str,
+        key_id: &str,
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), SigningError> {
+        match self {
+            Self::Managed(identity) => {
+                identity.verify_manifest(algorithm, key_id, message, signature)
+            }
+            Self::Portable(identity) => {
+                identity.verify_manifest(algorithm, key_id, message, signature)
+            }
+        }
+    }
+}
+
 impl ManagedIdentity {
     #[must_use]
     pub fn credential_id(&self) -> &CredentialId {
@@ -204,6 +243,11 @@ impl ManagedIdentity {
             disposition: self.disposition,
             identity: self.descriptor(),
         }
+    }
+
+    #[must_use]
+    pub fn verification_key(&self) -> PortableVerificationKey {
+        self.identity.verification_key()
     }
 }
 

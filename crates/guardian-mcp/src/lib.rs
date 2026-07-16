@@ -381,8 +381,11 @@ mod tests {
     fn excluded_tools_stay_excluded() {
         // Real database (`enroll_or_load` etc.) never appears as a tool name,
         // so an enrollment/credential-import/vault-init/signing-enroll/
-        // save_capture_plan tool can never be accidentally reintroduced
-        // without this test failing.
+        // save_capture_plan/recovery-key tool can never be accidentally
+        // reintroduced without this test failing. `recovery` alone (ADR
+        // 0013) covers init/export/import together — the single
+        // highest-blast-radius secret in the system, for the same
+        // one-time-bootstrap/secret-bearing reason the others are excluded.
         let forbidden = [
             "enroll",
             "import_ssh_key",
@@ -391,6 +394,7 @@ mod tests {
             "vault_init",
             "signing_enroll",
             "save_capture_plan",
+            "recovery",
         ];
         let tools = GuardianMcpServer::tool_router().list_all();
         for tool in &tools {

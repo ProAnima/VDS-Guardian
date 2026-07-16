@@ -11,12 +11,14 @@ repository.workspace = true
 guardian-configuration = { path = "../guardian-configuration" }
 guardian-core.workspace = true
 guardian-deploy = { path = "../guardian-deploy" }
+guardian-encryption.workspace = true
 guardian-local-repository.workspace = true
 guardian-os-keyring = { path = "../guardian-os-keyring" }
 guardian-profile-store = { path = "../guardian-profile-store" }
 guardian-signing = { path = "../guardian-signing" }
 guardian-ssh.workspace = true
 guardian-vault = { path = "../guardian-vault" }
+base64.workspace = true
 ctrlc.workspace = true
 fs2.workspace = true
 rand_core.workspace = true
@@ -24,7 +26,6 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-base64.workspace = true
 tempfile.workspace = true
 
 [lints]

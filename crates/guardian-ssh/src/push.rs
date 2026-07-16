@@ -120,7 +120,7 @@ impl SystemOpenSsh {
                 host,
                 user,
                 identity_file,
-                known_hosts.path(),
+                known_hosts.as_ref(),
                 staging,
             ))
             .stdin(Stdio::null())
@@ -155,7 +155,7 @@ impl SystemOpenSsh {
                 host,
                 user,
                 identity_file,
-                known_hosts.path(),
+                known_hosts.as_ref(),
                 target_path,
             ))
             .stdin(Stdio::null())
@@ -274,7 +274,7 @@ impl SystemOpenSsh {
                 host,
                 user,
                 identity_file,
-                known_hosts.path(),
+                known_hosts.as_ref(),
                 remote_command.into(),
             ))
             .stdin(Stdio::piped())

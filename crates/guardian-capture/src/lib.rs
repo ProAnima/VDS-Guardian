@@ -88,6 +88,7 @@ impl FilesystemCaptureComposition<'_> {
     ) -> Result<SealedBackup, CaptureUseCaseError> {
         self.validate_profile(&request.capture)?;
         self.require_encrypted_payload_path(&request.capture)?;
+        self.require_recovery_key()?;
         self.require_preflight()?;
         self.require_disk_budget(false)?;
         let host = self.pinned_host()?;
@@ -127,6 +128,7 @@ impl FilesystemCaptureComposition<'_> {
     ) -> Result<SealedBackup, CaptureUseCaseError> {
         self.validate_profile(&request.capture)?;
         self.require_encrypted_payload_path(&request.capture)?;
+        self.require_recovery_key()?;
         self.require_preflight()?;
         self.require_matching_database_request(&request.capture, &database)?;
         self.require_disk_budget(true)?;
@@ -333,6 +335,17 @@ impl FilesystemCaptureComposition<'_> {
             ))
     }
 
+    /// Every new payload must be recovery-wrapped (ADR 0013); checked here,
+    /// before any network round-trip, so a repository that never ran
+    /// `recovery init` fails fast rather than sealing a backup only the
+    /// current OS keyring can ever decrypt. `staging.rs` re-checks this
+    /// itself as the real fail-closed guard — this is the fast preflight.
+    fn require_recovery_key(&self) -> Result<(), CaptureUseCaseError> {
+        self.repository
+            .require_recovery_key(self.credentials)
+            .map_err(|_| CaptureUseCaseError::RecoveryKeyRequired)
+    }
+
     fn require_disk_budget(&self, include_database: bool) -> Result<(), CaptureUseCaseError> {
         let available = available_space(self.repository.root())
             .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
@@ -463,6 +476,29 @@ mod tests {
             Err(CaptureUseCaseError::Request(
                 CaptureRequestError::DatabaseRequestMismatch
             ))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_preflight_rejects_a_dangling_credential_reference()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-dangling")?)?;
+        repository.configure_recovery_key(&NoopCredentialStore)?;
+        let profile = profile()?;
+        let audit = NoopAudit;
+        let composition = FilesystemCaptureComposition {
+            repository: &repository,
+            ssh: &SystemOpenSsh::default(),
+            profile: &profile,
+            credentials: &NoopCredentialStore,
+            audit: &audit,
+            archive_limits: ArchiveLimits::conservative(),
+        };
+        assert!(matches!(
+            composition.require_recovery_key(),
+            Err(CaptureUseCaseError::RecoveryKeyRequired)
         ));
         Ok(())
     }

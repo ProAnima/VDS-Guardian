@@ -2,7 +2,7 @@ use guardian_configuration::RepositoryStore;
 use guardian_core::{BackupId, RepositoryId};
 use guardian_local_repository::{LocalRepository, TrustedBackup};
 use guardian_os_keyring::OsCredentialStore;
-use guardian_signing::{ManagedIdentity, SigningIdentityManager};
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
@@ -131,7 +131,7 @@ fn execute_blocking(
 fn resolve(
     root: PathBuf,
     request: &RestoreRequest,
-) -> Result<(LocalRepository, BackupId, ManagedIdentity), RestoreFailure> {
+) -> Result<(LocalRepository, BackupId, VerificationIdentity), RestoreFailure> {
     let backup_id = BackupId::parse(&request.backup_id).map_err(|_| RestoreFailure::rejected())?;
     let (repository, identity) = resolve_repository(&root, &request.repository_id)?;
     Ok((repository, backup_id, identity))
@@ -140,7 +140,7 @@ fn resolve(
 fn resolve_repository(
     root: &Path,
     repository_id: &str,
-) -> Result<(LocalRepository, ManagedIdentity), RestoreFailure> {
+) -> Result<(LocalRepository, VerificationIdentity), RestoreFailure> {
     let repository_id =
         RepositoryId::parse(repository_id).map_err(|_| RestoreFailure::rejected())?;
     let registration = RepositoryStore::at(root.join("repositories"))
@@ -149,9 +149,17 @@ fn resolve_repository(
         .ok_or_else(RestoreFailure::rejected)?;
     let repository = LocalRepository::open(&registration.path, repository_id)
         .map_err(|_| RestoreFailure::storage())?;
+    let portable = repository
+        .trusted_verification_key()
+        .map_err(|_| RestoreFailure::storage())?
+        .map(|key| PortableVerificationKey {
+            algorithm: key.algorithm,
+            key_id: key.key_id,
+            public_key_base64: key.public_key_base64,
+        });
     let identity = SigningIdentityManager::open(root.join("node"))
         .map_err(|_| RestoreFailure::storage())?
-        .load_ready(&OsCredentialStore)
+        .load_verifier(&OsCredentialStore, portable.as_ref())
         .map_err(|_| RestoreFailure::rejected())?;
     Ok((repository, identity))
 }

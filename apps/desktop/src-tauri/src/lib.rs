@@ -80,6 +80,14 @@ async fn list_repositories(
 }
 
 #[tauri::command]
+async fn initialize_repository_recovery(
+    app: tauri::AppHandle,
+    repository_id: String,
+) -> Result<(), repository_commands::RepositoryCommandFailure> {
+    repository_commands::initialize_recovery(app, repository_id).await
+}
+
+#[tauri::command]
 async fn save_capture_plan(
     app: tauri::AppHandle,
     request: plan_commands::SavePlanRequest,
@@ -178,6 +186,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preflight_ssh_profile,
             register_repository,
             list_repositories,
+            initialize_repository_recovery,
             save_capture_plan,
             list_capture_plans,
             run_capture_plan,

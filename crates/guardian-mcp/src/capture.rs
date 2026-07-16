@@ -10,9 +10,9 @@ use crate::secret_store::resolve_store;
 use guardian_capture::FilesystemCaptureComposition;
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, CancellationHandle, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest,
-    FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath, PlanReference, Producer,
-    ProfileStorePort, RunId, SourceIdentity, Timestamp,
+    BackupId, CancellationHandle, CaptureUseCaseError, EmbeddedDatabaseCaptureRequest,
+    FilesystemBackupRequest, FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath,
+    PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity, Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_profile_store::ProfileStore;
@@ -59,6 +59,12 @@ impl CaptureFailure {
         Self {
             code: "capture_cancelled",
             message: "The capture was cancelled by the operator.",
+        }
+    }
+    fn recovery_key_required() -> Self {
+        Self {
+            code: "recovery_key_not_configured",
+            message: "This repository has no configured recovery key; run `recovery init` for it first.",
         }
     }
     fn internal() -> Self {
@@ -207,6 +213,9 @@ pub(crate) fn run_capture(
         Ok(sealed) => Ok(CaptureJobSummary {
             backup_id: sealed.backup_id.as_str().to_owned(),
         }),
+        Err(CaptureUseCaseError::RecoveryKeyRequired) => {
+            Err(CaptureFailure::recovery_key_required())
+        }
         Err(_) if handle.is_cancelled() => Err(CaptureFailure::cancelled()),
         Err(_) => Err(CaptureFailure::capture()),
     }

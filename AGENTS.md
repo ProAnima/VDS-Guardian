@@ -6,15 +6,20 @@ this repository. Read this file, `CODEX.md`, and the relevant document under
 
 ## Current status
 
-Release 0.1 hardening: pinned system-OpenSSH capture can seal encrypted
-format-v2 filesystem backups with an optional SQLite snapshot; verified local
-restore and new-host deploy foundations exist, and capture/deploy cancellation
-is wired through CLI and desktop adapters. The release is not production-ready:
-restore/deploy must become one safe multi-payload transaction, portable recovery
-keys are not implemented, the shared CLI/desktop workflow is incomplete, and a
-clean-machine drill must prove the compiled production path. Docker discovery,
-additional databases, scheduling, retention automation, and updater work are
-outside Release 0.1. The ordered scope and gates live in
+Release 0.1 hardening: pinned system-OpenSSH capture seals encrypted
+format-v2 filesystem backups with an optional SQLite snapshot into one safe
+multi-payload restore/deploy transaction; every payload's data key is also
+wrapped under a portable, per-repository recovery key that an operator can
+export into a passphrase-protected offline bundle and import on a clean
+machine (ADR 0013); capture/deploy cancellation is wired through CLI,
+desktop, and `guardian-mcp` adapters; and the desktop app, CLI, and
+`guardian-mcp` share one application-service boundary (ADR 0012). The
+release is not production-ready: the operator-facing setup/status/restore
+flow is incomplete (section 4), and a clean-machine drill must still prove
+the compiled production path end to end on Linux CI, including the
+recovery-key import path specifically (section 5). Docker discovery,
+additional databases, scheduling, retention automation, and updater work
+are outside Release 0.1. The ordered scope and gates live in
 `docs/DEVELOPMENT_PLAN.md`.
 
 ## Source of truth
