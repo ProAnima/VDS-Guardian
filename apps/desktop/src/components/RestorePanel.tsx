@@ -191,7 +191,7 @@ function BackupField({ model, t }: { model: RestoreModel; t: Translate }) {
       <span>{t("restoreBackupsTitle")}</span>
       <select value={model.backupId} onChange={(event) => model.setBackupId(event.target.value)} required>
         {model.backups.map((backup) => (
-          <option key={backup.backupId} value={backup.backupId}>{backup.backupId} — {backup.sealedAt}</option>
+          <option key={backup.backupId} value={backup.backupId}>{backup.backupId} — {backup.sealedAt} — verified</option>
         ))}
       </select>
     </label>

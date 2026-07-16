@@ -38,6 +38,7 @@ pub struct RestoreFailure {
 pub struct BackupSummary {
     pub backup_id: String,
     pub sealed_at: String,
+    pub verification: &'static str,
 }
 
 impl From<&TrustedBackup> for BackupSummary {
@@ -45,6 +46,7 @@ impl From<&TrustedBackup> for BackupSummary {
         Self {
             backup_id: value.backup_id.as_str().to_owned(),
             sealed_at: value.sealed_at.as_str().to_owned(),
+            verification: "verified",
         }
     }
 }

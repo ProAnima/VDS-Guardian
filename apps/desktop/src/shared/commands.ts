@@ -98,7 +98,7 @@ export interface CapturePlanRequest { profileId: string; repositoryId: string; r
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CaptureJobSummary { backupId: string; }
 
-export interface BackupSummary { backupId: string; sealedAt: string; }
+export interface BackupSummary { backupId: string; sealedAt: string; verification: "verified"; }
 export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; }
 export interface RestorePreview { backupId: string; destination: string; confirmation: string; payload: string; }
 export interface RestoreFailure { code: string; message: string; remediation: string; }
