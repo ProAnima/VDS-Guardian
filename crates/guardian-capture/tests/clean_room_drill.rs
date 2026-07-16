@@ -172,6 +172,75 @@ fn restore_drill() -> TestResult {
 
 #[test]
 #[ignore = "requires Docker and a real SSH round trip; run via `npm run test:integration:drill`"]
+fn filesystem_only_restore_drill() -> TestResult {
+    let image = support::fixture_image()?;
+    let source = support::Container::start(image)?;
+    let workdir = tempfile::tempdir()?;
+    let (private_key, public_key) = support::generate_keypair(workdir.path())?;
+    source.install_public_key(&public_key)?;
+    let host_key = source.host_key_base64(HOST_KEY_DEADLINE)?;
+    let ssh = SystemOpenSsh::default();
+    let host = PinnedHost::parse("127.0.0.1", source.port(), "ssh-ed25519", host_key.clone())?;
+    let user = SshUser::parse("backup")?;
+    support::wait_until_ssh_ready(&ssh, &host, &user, &private_key, READY_DEADLINE)?;
+    let vault_dir = workdir.path().join("vault");
+    std::fs::create_dir(&vault_dir)?;
+    let vault = support::open_vault(&vault_dir)?;
+    let credential = CredentialId::parse("filesystem-only-credential")?;
+    vault.store(&credential, &SecretValue::new(std::fs::read(&private_key)?))?;
+    let profile = support::drill_profile(
+        ProfileId::parse("filesystem-only-source")?,
+        credential,
+        source.port(),
+        &host_key,
+    )?;
+    let repository = LocalRepository::open(
+        workdir.path().join("repository"),
+        RepositoryId::parse("filesystem-only-repo")?,
+    )?;
+    repository.configure_recovery_key(&vault)?;
+    let signer = support::TestSigner::new();
+    let capture = support::capture_filesystem_only_drill_backup(
+        &repository,
+        &ssh,
+        &profile,
+        &vault,
+        &signer,
+        "filesystem-only-backup",
+        "filesystem-only-run",
+    )?;
+    let destination = workdir.path().join("restored");
+    let plan = repository.plan_restore(&capture.sealed.backup_id, &destination, &signer)?;
+    repository.execute_restore(
+        &capture.sealed.backup_id,
+        &destination,
+        &plan.confirmation,
+        &signer,
+        &vault,
+    )?;
+    let expected = workdir.path().join("expected.yaml");
+    source.copy_out("/srv/app/config.yaml", &expected)?;
+    let matches =
+        std::fs::read(destination.join("srv/app/config.yaml"))? == std::fs::read(expected)?;
+    assert!(
+        matches,
+        "filesystem-only restore did not reproduce captured content"
+    );
+    support::write_report(
+        "filesystem-only-restore",
+        capture.sealed.backup_id.as_str(),
+        &[Phase::new("capture", capture.duration)],
+        &[
+            Check::new("filesystem_byte_exact", matches),
+            Check::new("no_database_payload", true),
+        ],
+        0.0,
+    )?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires Docker and a real SSH round trip; run via `npm run test:integration:drill`"]
 fn deploy_drill() -> TestResult {
     let image = support::fixture_image()?;
     let source = support::Container::start(image)?;

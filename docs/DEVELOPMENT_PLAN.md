@@ -242,9 +242,11 @@ an ADR.
   imports through the compiled `guardian-cli`, and executes restore through
   that same binary. Closed on Linux CI too: workflow run `29518019511` passed
   this path for commit `3912a90`.
-- Test filesystem-only and filesystem-plus-SQLite backups. Filesystem-
-  plus-SQLite is now covered as above; filesystem-only is not yet exercised
-  by the drill.
+- Test filesystem-only and filesystem-plus-SQLite backups. Closed: the
+  filesystem-only drill captures `/srv/app` over pinned SSH, seals one
+  encrypted filesystem payload, restores it through the production repository
+  path, and byte-compares the captured configuration; the existing combined
+  drill covers filesystem plus SQLite.
 - Cover cancellation, corrupted payload, missing recovery key, disk exhaustion,
   changed host key, hostile archive metadata, and failure of the second payload.
   Partially closed: the compiled-CLI restore drill now proves that a corrupted

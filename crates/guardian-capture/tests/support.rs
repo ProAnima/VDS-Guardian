@@ -411,6 +411,44 @@ pub fn capture_drill_backup(
     })
 }
 
+pub fn capture_filesystem_only_drill_backup(
+    repository: &LocalRepository,
+    ssh: &SystemOpenSsh,
+    profile: &VdsProfile,
+    credentials: &dyn SecretStore,
+    signer: &dyn ManifestSigner,
+    backup_id: &str,
+    run_id: &str,
+) -> Result<CaptureOutcome, Box<dyn Error>> {
+    let audit = NoopAudit;
+    let composition = FilesystemCaptureComposition {
+        repository,
+        ssh,
+        profile,
+        credentials,
+        audit: &audit,
+        disk_space: &SYSTEM_DISK_SPACE,
+        archive_limits: ArchiveLimits::conservative(),
+    };
+    let run_id = RunId::parse(run_id)?;
+    let request = FilesystemBackupRequest {
+        capture: FilesystemCaptureRequest {
+            run_id: run_id.clone(),
+            profile_id: profile.profile_id.clone(),
+            roots: vec!["/srv/app".to_owned()],
+            payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst.enc")?,
+        },
+        manifest: drill_manifest(backup_id, run_id, profile)?,
+        sealed_at: Timestamp::parse("2026-07-15T12:00:01Z")?,
+    };
+    let start = Instant::now();
+    let sealed = composition.execute(request, None, signer)?;
+    Ok(CaptureOutcome {
+        sealed,
+        duration: start.elapsed(),
+    })
+}
+
 pub fn write_known_hosts(directory: &Path, host: &PinnedHost) -> Result<PathBuf, Box<dyn Error>> {
     let path = directory.join("known_hosts");
     std::fs::write(&path, host.known_hosts_line())?;
