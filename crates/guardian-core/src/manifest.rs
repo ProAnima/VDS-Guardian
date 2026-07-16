@@ -183,6 +183,13 @@ pub enum ConsistencyLevel {
 pub struct PayloadEntry {
     pub logical_role: String,
     pub path: PayloadPath,
+    /// The payload's size *as stored on disk at `path`* — the encrypted
+    /// ciphertext size when `encryption` is `Some`, strictly larger than the
+    /// plaintext it decrypts to. Checked byte-for-byte against the real file
+    /// on every verification pass; not a stand-in for "how many bytes will a
+    /// decrypted reader over this payload actually produce." A consumer that
+    /// needs that number — deploy's push, for instance — must measure it
+    /// from the decrypted content directly rather than reading this field.
     pub byte_length: u64,
     pub sha256: String,
     pub media_type: String,

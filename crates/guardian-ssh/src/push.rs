@@ -227,14 +227,22 @@ fn target_absence_probe_command(target_path: &str) -> String {
 /// sibling would let an unconditional cleanup step destroy something
 /// unrelated that happened to already exist there) and atomically renames it
 /// into place only on full success. `--no-same-owner --no-same-permissions`
-/// mean the extracted tree lands owned by the SSH session's own account with
-/// ordinary umask-based permissions, never the archive-recorded owner or
-/// mode bits (including setuid/setgid) — see `docs/adr/0007-remote-deploy-
-/// to-a-new-vds.md` and `docs/SECURITY_MODEL.md`.
+/// mean every entry *inside* the extracted tree lands owned by the SSH
+/// session's own account with ordinary umask-based permissions, never the
+/// archive-recorded owner or mode bits (including setuid/setgid) — see
+/// `docs/adr/0007-remote-deploy-to-a-new-vds.md` and `docs/SECURITY_
+/// MODEL.md`. The root of that tree is a different case: `mktemp -d` always
+/// creates it `0700` regardless of umask (that restriction is the whole
+/// point of `mktemp` — a predictable, umask-derived mode on a temp path
+/// would defeat it), and `mv -n` renames that entry as-is, so without an
+/// explicit `chmod` the *renamed* target itself — not its contents — would
+/// stay owner-only and lock out whatever account is actually meant to use
+/// the deployed tree. `chmod 755` restores an ordinary, predictable mode
+/// before anything is extracted into it.
 fn push_filesystem_command(target_path: &str) -> String {
     let target = shell_quote(target_path);
     format!(
-        "target={target}; parent=$(dirname -- \"$target\"); [ ! -e \"$target\" ] || exit 1; mkdir -p -- \"$parent\" || exit 1; tmp=$(mktemp -d -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1; tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$tmp\" --; status=$?; if [ \"$status\" -eq 0 ]; then mv -n -- \"$tmp\" \"$target\"; [ ! -e \"$tmp\" ] || status=1; fi; [ \"$status\" -eq 0 ] || rm -rf -- \"$tmp\"; exit \"$status\""
+        "target={target}; parent=$(dirname -- \"$target\"); [ ! -e \"$target\" ] || exit 1; mkdir -p -- \"$parent\" || exit 1; tmp=$(mktemp -d -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1; chmod 755 -- \"$tmp\" || exit 1; tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$tmp\" --; status=$?; if [ \"$status\" -eq 0 ]; then mv -n -- \"$tmp\" \"$target\"; [ ! -e \"$tmp\" ] || status=1; fi; [ \"$status\" -eq 0 ] || rm -rf -- \"$tmp\"; exit \"$status\""
     )
 }
 
@@ -245,10 +253,14 @@ fn push_filesystem_command(target_path: &str) -> String {
 /// which is therefore also already the guaranteed-existing parent this
 /// function's own temp file is created inside. Uses a freshly created,
 /// uniquely named sibling temp file for the same reason `push_filesystem_
-/// command` does.
+/// command` does, and the same reason it needs an explicit `chmod`: bare
+/// `mktemp` always creates its file `0600`, and `mv -n` renames it as-is,
+/// so `chmod 644` restores an ordinary, predictable mode before the renamed
+/// file replaces the umask-based mode a plain shell redirect used to leave
+/// it with.
 fn push_database_command(target_path: &str) -> String {
     let target = shell_quote(&format!("{target_path}/database.sqlite"));
     format!(
-        "target={target}; parent=$(dirname -- \"$target\"); [ ! -e \"$target\" ] || exit 1; tmp=$(mktemp -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1; zstd -q -d -c > \"$tmp\"; status=$?; if [ \"$status\" -eq 0 ]; then mv -n -- \"$tmp\" \"$target\"; [ ! -e \"$tmp\" ] || status=1; fi; [ \"$status\" -eq 0 ] || rm -f -- \"$tmp\"; exit \"$status\""
+        "target={target}; parent=$(dirname -- \"$target\"); [ ! -e \"$target\" ] || exit 1; tmp=$(mktemp -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1; chmod 644 -- \"$tmp\" || exit 1; zstd -q -d -c > \"$tmp\"; status=$?; if [ \"$status\" -eq 0 ]; then mv -n -- \"$tmp\" \"$target\"; [ ! -e \"$tmp\" ] || status=1; fi; [ \"$status\" -eq 0 ] || rm -f -- \"$tmp\"; exit \"$status\""
     )
 }

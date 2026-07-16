@@ -42,13 +42,15 @@ failure" (trivial: same process, same machine), a failed deploy's partial
 state is on a third-party remote host, and any cleanup attempt needs a
 second SSH round-trip that can fail for the identical underlying reason.
 Both push commands (`guardian-ssh`'s `push_filesystem_command`/
-`push_database_command`) instead extract/write into a sibling
-`<path>.guardian-deploy-tmp` path and atomically rename into place only on
-success, using `mv -n` (no-clobber) plus a post-move absence check on the
-temp path — not a bare `mv` — so a value that raced into the target during
-the transfer is never silently clobbered. The remote shell's own control
-flow does the cleanup; no second connection is needed, because `tar`/`zstd`
-detect a truncated stream and exit non-zero on their own.
+`push_database_command`) instead extract/write into a freshly created,
+uniquely named sibling temp path (via `mktemp -d`/`mktemp`, never a fixed
+guessable name — see the 2026-07-16 amendment below) and atomically rename
+into place only on success, using `mv -n` (no-clobber) plus a post-move
+absence check on the temp path — not a bare `mv` — so a value that raced
+into the target during the transfer is never silently clobbered. The remote
+shell's own control flow does the cleanup; no second connection is needed,
+because `tar`/`zstd` detect a truncated stream and exit non-zero on their
+own.
 
 The database push guards `<path>/database.sqlite` specifically, not `<path>`
 itself — the filesystem push (when present) already legitimately created
@@ -163,9 +165,11 @@ something a bare `File` cannot represent; the public `push_filesystem_to`/
 `push_database_to` methods accept `impl Read + Send + 'static` and box it
 internally, so callers never see the boxing.
 
-Since `PayloadEntry.byte_length` is already verified against the signed
-manifest before the reader is ever opened, the push pump takes
-`expected_bytes: u64` and fails closed on an **exact** mismatch — too few
+The push pump takes `expected_bytes: u64` — measured directly from the
+decrypted content `open_deploy_payload_reader` actually produces, never
+taken from `PayloadEntry.byte_length` (an earlier version of this mechanism
+used that manifest field directly; see the 2026-07-16 amendment below for
+why that was wrong) — and fails closed on an **exact** mismatch — too few
 bytes at EOF, not just too many mid-stream — stronger than the pull side's
 ceiling-only check, and it catches a local scratch-file truncation the
 ceiling alone would miss. EOF is signaled by explicitly dropping `ChildStdin`

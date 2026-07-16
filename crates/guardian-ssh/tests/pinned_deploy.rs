@@ -17,12 +17,45 @@ fn push_filesystem_command_uses_the_atomic_rename_template()
     assert!(rendered.contains("target='/srv/app'"));
     assert!(rendered.contains("[ ! -e \"$target\" ] || exit 1"));
     assert!(rendered.contains("mktemp -d -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1"));
+    assert!(rendered.contains("chmod 755 -- \"$tmp\" || exit 1"));
     assert!(rendered.contains(
         "tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$tmp\" --"
     ));
     assert!(rendered.contains("mv -n -- \"$tmp\" \"$target\""));
     assert!(rendered.contains("[ ! -e \"$tmp\" ] || status=1"));
     assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
+fn push_filesystem_command_restores_an_ordinary_mode_after_mktemp()
+-> Result<(), Box<dyn std::error::Error>> {
+    // `mktemp -d` always creates its directory `0700` regardless of the
+    // remote umask -- that restriction is the whole point of `mktemp` -- and
+    // `mv -n` renames it as-is into the final target, so without an explicit
+    // `chmod` the *deployed directory itself* (not its extracted contents,
+    // which `--no-same-permissions` already governs) would silently end up
+    // owner-only and lock out whatever account the deployed tree is meant
+    // to actually serve.
+    let arguments = SystemOpenSsh::default().push_filesystem_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app",
+    );
+    let rendered = render(&arguments);
+    let mktemp_position = rendered
+        .find("mktemp -d --")
+        .ok_or("push_filesystem_command must create its temp directory via mktemp -d")?;
+    let chmod_position = rendered
+        .find("chmod 755 -- \"$tmp\"")
+        .ok_or("push_filesystem_command must restore an ordinary mode on its temp directory")?;
+    let tar_position = rendered
+        .find("tar --extract")
+        .ok_or("push_filesystem_command must extract via tar")?;
+    assert!(mktemp_position < chmod_position);
+    assert!(chmod_position < tar_position);
     Ok(())
 }
 
@@ -65,11 +98,41 @@ fn push_database_command_guards_the_database_file_not_the_target_directory()
     let rendered = render(&arguments);
     assert!(rendered.contains("target='/srv/app/database.sqlite'"));
     assert!(rendered.contains("[ ! -e \"$target\" ] || exit 1"));
+    assert!(rendered.contains("chmod 644 -- \"$tmp\" || exit 1"));
     assert!(rendered.contains("zstd -q -d -c > \"$tmp\""));
     assert!(rendered.contains("mv -n -- \"$tmp\" \"$target\""));
     // The database push must guard the file, never the directory itself --
     // a preceding filesystem push may have already legitimately created it.
     assert!(!rendered.contains("target='/srv/app'"));
+    Ok(())
+}
+
+#[test]
+fn push_database_command_restores_an_ordinary_mode_after_mktemp()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Bare `mktemp` always creates its file `0600` regardless of the remote
+    // umask, and `mv -n` renames it as-is -- without an explicit `chmod` the
+    // deployed database file would silently end up owner-only instead of the
+    // umask-based mode a plain shell redirect used to leave it with.
+    let arguments = SystemOpenSsh::default().push_database_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app",
+    );
+    let rendered = render(&arguments);
+    let mktemp_position = rendered
+        .find("mktemp --")
+        .ok_or("push_database_command must create its temp file via mktemp")?;
+    let chmod_position = rendered
+        .find("chmod 644 -- \"$tmp\"")
+        .ok_or("push_database_command must restore an ordinary mode on its temp file")?;
+    let zstd_position = rendered
+        .find("zstd -q -d -c")
+        .ok_or("push_database_command must decompress via zstd")?;
+    assert!(mktemp_position < chmod_position);
+    assert!(chmod_position < zstd_position);
     Ok(())
 }
 
