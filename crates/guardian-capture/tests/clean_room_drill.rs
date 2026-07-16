@@ -19,6 +19,8 @@
 mod cancellation;
 #[path = "clean_room_drill/capture_cancellation.rs"]
 mod capture_cancellation;
+#[path = "clean_room_drill/deploy_second_payload_failure.rs"]
+mod deploy_second_payload_failure;
 #[path = "clean_room_drill/disk_exhaustion.rs"]
 mod disk_exhaustion;
 #[path = "clean_room_drill/host_key_rejection.rs"]

@@ -124,6 +124,10 @@ A sixth case completes SSH preflight against a real source, then supplies the
 capture composition a deterministic zero-free-space repository boundary. It
 must fail before staging or sealing and records `started` then `failed`; this
 tests the production disk-budget decision without consuming operator storage.
+A seventh case performs a combined remote deploy where the filesystem payload
+is staged successfully, then the database payload is a signed and encrypted
+but invalid zstd stream. The second push must fail, remove the whole remote
+staging tree, leave the target absent, and record `attempted` then `failed`.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
