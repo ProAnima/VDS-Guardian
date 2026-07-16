@@ -8,6 +8,8 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
 fs2.workspace = true
 guardian-archive.workspace = true
 guardian-core.workspace = true
@@ -20,7 +22,6 @@ thiserror.workspace = true
 tempfile.workspace = true
 
 [dev-dependencies]
-ed25519-dalek.workspace = true
 zstd.workspace = true
 
 [lints]

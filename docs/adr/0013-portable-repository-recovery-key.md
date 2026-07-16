@@ -189,10 +189,11 @@ Bundle file (JSON, matching every other metadata file in this codebase —
  {"algorithm":"Ed25519","keyId":"ed25519:...","publicKeyBase64":"..."}}
 ```
 No separate nonce field — already embedded in the self-describing envelope.
-`guardian_encryption::recovery_bundle` itself stays JSON-agnostic (matching
-this crate's existing minimal-dependency philosophy — no serde anywhere in
-it before this); `guardian-cli` owns the JSON shape and file I/O, since it
-already depends on `serde`/`serde_json` for its own command output.
+`guardian_encryption::recovery_bundle` stays JSON-agnostic. The shared
+`guardian-local-repository::recovery_bundle` service owns the JSON shape,
+strict file-boundary validation, pinned KDF validation, bundle binding, and
+typed confirmation gate; desktop and CLI call that service. The CLI retains
+only its adapter-specific passphrase-file input policy.
 
 `guardian-cli recovery import --repositories-dir <dir> --repository-id <id>
 --repository-path <path> --input <path> --passphrase-file <path> --confirmation "IMPORT RECOVERY
@@ -292,8 +293,10 @@ round trip
   `RecoveryKeyAlreadyConfigured` variants — **not** reusing the existing
   `RecoveryRequired` variant, which already means something unrelated: an
   interrupted retention move needing manual inspection).
-- New `crates/guardian-cli/src/recovery.rs`: `init`/`status`/`export`/
-  `import`, mirroring `vault.rs`'s file-per-subsystem shape.
+- New `crates/guardian-local-repository/src/recovery_bundle.rs`: the shared
+  export/import use case, JSON contract, safe bundle file I/O, KDF policy,
+  repository/signing binding, and confirmation phrases. `guardian-cli`
+  remains the headless adapter for `init`/`status`/`export`/`import`.
 - `crates/guardian-capture/src/lib.rs`: new `require_recovery_key`; new
   `CaptureUseCaseError::RecoveryKeyRequired` (`guardian-core/src/
   capture.rs`). `apps/desktop/src-tauri/src/job_commands.rs` and
@@ -304,8 +307,9 @@ round trip
   adapter... prefer a module").
 - **Desktop repository recovery initialization is part of Release 0.1
   section 4** so a GUI-created repository can capture without a CLI detour.
-  Bundle export/import remains a deliberate CLI-only secret-handling path.
-  This slice is CLI + core logic only.
+  Desktop export/import must call the same shared recovery service; MCP
+  remains excluded from recovery-bundle operations. This slice establishes
+  the shared service and keeps the CLI as a thin headless adapter.
 - `guardian-mcp` explicitly excludes any `recovery`-named tool from its
   surface, for the same reason ADR 0012 already excludes `vault init`/
   `register_repository`/`signing enroll` — one-time bootstrap/secret-

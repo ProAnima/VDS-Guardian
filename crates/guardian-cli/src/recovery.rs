@@ -1,17 +1,17 @@
-mod bundle;
 mod output;
 mod parser;
 
 use crate::secret_store::resolve_store;
-use bundle::{RecoveryBundleFile, read_bundle_file, read_passphrase, write_bundle_file};
 use guardian_configuration::{RepositoryRegistration, RepositoryStore};
 use guardian_core::{RepositoryId, SecretStore};
-use guardian_encryption::recovery_bundle::{self, KdfParams};
-use guardian_local_repository::{LocalRepository, RepositoryError, RepositoryVerificationKey};
-use guardian_signing::{Ed25519Verifier, PortableVerificationKey, SigningIdentityManager};
+use guardian_local_repository::{
+    LocalRepository, RecoveryBundleError, RepositoryError, RepositoryVerificationKey,
+    export_recovery_bundle, import_recovery_bundle,
+};
+use guardian_signing::{PortableVerificationKey, SigningIdentityManager};
 use output::{RecoveryFailure, RecoveryOutput, write_error, write_success};
 use parser::{RecoveryAction, RecoveryCommand, parse};
-use std::{ffi::OsString, process::ExitCode};
+use std::{ffi::OsString, fs, path::Path, process::ExitCode};
 
 pub(super) fn run(arguments: &[OsString]) -> ExitCode {
     match parse(arguments).and_then(|command| {
@@ -128,35 +128,25 @@ fn execute_export(
         .confirmation
         .as_deref()
         .ok_or_else(RecoveryFailure::usage)?;
-    if confirmation != export_confirmation_phrase(repository_id) {
-        return Err(RecoveryFailure::confirmation_mismatch());
-    }
-    let key = repository
-        .export_recovery_key(secrets)
-        .map_err(|_| RecoveryFailure::storage())?
-        .ok_or_else(RecoveryFailure::not_configured)?;
-    let verification_key = repository
-        .trusted_verification_key()
-        .map_err(|_| RecoveryFailure::storage())?
-        .ok_or_else(RecoveryFailure::signing)?;
     let passphrase = read_passphrase(
         command
             .passphrase_file
             .as_deref()
             .ok_or_else(RecoveryFailure::usage)?,
     )?;
-    let params = KdfParams::recommended();
-    let binding = bundle_binding(repository_id, &verification_key);
-    let wrapped = recovery_bundle::wrap_recovery_key(&passphrase, &key, &binding, params)
-        .map_err(|_| RecoveryFailure::bundle_operation())?;
     let output_path = command
         .output
         .as_deref()
         .ok_or_else(RecoveryFailure::usage)?;
-    write_bundle_file(
+    export_recovery_bundle(
+        repository,
+        secrets,
+        repository_id,
+        &passphrase,
         output_path,
-        &RecoveryBundleFile::from_wrapped(&wrapped, params, verification_key),
-    )?;
+        confirmation,
+    )
+    .map_err(map_bundle_error)?;
     Ok(RecoveryOutput::Export {
         output: output_path.display().to_string(),
     })
@@ -172,66 +162,30 @@ fn execute_import(
         .confirmation
         .as_deref()
         .ok_or_else(RecoveryFailure::usage)?;
-    if confirmation != import_confirmation_phrase(repository_id) {
-        return Err(RecoveryFailure::confirmation_mismatch());
-    }
-    let bundle = read_bundle_file(
-        command
-            .input
-            .as_deref()
-            .ok_or_else(RecoveryFailure::usage)?,
-    )?;
-    let verification_key = bundle.verification_key();
-    Ed25519Verifier::from_portable(&to_portable_key(&verification_key))
-        .map_err(|_| RecoveryFailure::bundle_operation())?;
-    if repository
-        .trusted_verification_key()
-        .map_err(|_| RecoveryFailure::storage())?
-        .is_some_and(|existing| existing != verification_key)
-    {
-        return Err(RecoveryFailure::bundle_operation());
-    }
     let passphrase = read_passphrase(
         command
             .passphrase_file
             .as_deref()
             .ok_or_else(RecoveryFailure::usage)?,
     )?;
-    let params = bundle.kdf_params();
-    let wrapped = bundle.to_wrapped()?;
-    let binding = bundle_binding(repository_id, &verification_key);
-    let key = recovery_bundle::unwrap_recovery_key(&passphrase, &wrapped, &binding, params)
-        .map_err(|_| RecoveryFailure::bundle_operation())?;
-    let output = repository
-        .import_recovery_key(secrets, key)
-        .map(|credential_id| RecoveryOutput::Import { credential_id })
-        .map_err(map_install_error)?;
-    repository
-        .pin_verification_key(verification_key)
-        .map_err(map_install_error)?;
-    Ok(output)
-}
-
-fn bundle_binding(repository_id: &RepositoryId, key: &RepositoryVerificationKey) -> String {
-    format!(
-        "{}|{}|{}|{}",
-        repository_id.as_str(),
-        key.algorithm,
-        key.key_id,
-        key.public_key_base64
+    let input = command
+        .input
+        .as_deref()
+        .ok_or_else(RecoveryFailure::usage)?;
+    let credential_id = import_recovery_bundle(
+        repository,
+        secrets,
+        repository_id,
+        &passphrase,
+        input,
+        confirmation,
     )
+    .map_err(map_bundle_error)?;
+    Ok(RecoveryOutput::Import { credential_id })
 }
 
 fn to_repository_key(key: &PortableVerificationKey) -> RepositoryVerificationKey {
     RepositoryVerificationKey {
-        algorithm: key.algorithm.clone(),
-        key_id: key.key_id.clone(),
-        public_key_base64: key.public_key_base64.clone(),
-    }
-}
-
-fn to_portable_key(key: &RepositoryVerificationKey) -> PortableVerificationKey {
-    PortableVerificationKey {
         algorithm: key.algorithm.clone(),
         key_id: key.key_id.clone(),
         public_key_base64: key.public_key_base64.clone(),
@@ -248,12 +202,34 @@ fn map_install_error(error: RepositoryError) -> RecoveryFailure {
     }
 }
 
-fn export_confirmation_phrase(repository_id: &RepositoryId) -> String {
-    format!("EXPORT RECOVERY BUNDLE FOR {}", repository_id.as_str())
+fn map_bundle_error(error: RecoveryBundleError) -> RecoveryFailure {
+    match error {
+        RecoveryBundleError::ConfirmationMismatch => RecoveryFailure::confirmation_mismatch(),
+        RecoveryBundleError::NotConfigured => RecoveryFailure::not_configured(),
+        RecoveryBundleError::Repository(error) => map_install_error(error),
+        RecoveryBundleError::InvalidBundle | RecoveryBundleError::Crypto => {
+            RecoveryFailure::bundle_operation()
+        }
+        RecoveryBundleError::Io => RecoveryFailure::bundle_io(),
+    }
 }
 
-fn import_confirmation_phrase(repository_id: &RepositoryId) -> String {
-    format!("IMPORT RECOVERY BUNDLE FOR {}", repository_id.as_str())
+fn read_passphrase(path: &Path) -> Result<Vec<u8>, RecoveryFailure> {
+    const MAX_PASSPHRASE_FILE_BYTES: u64 = 4 * 1024;
+    let metadata = fs::symlink_metadata(path).map_err(|_| RecoveryFailure::passphrase_input())?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_PASSPHRASE_FILE_BYTES
+    {
+        return Err(RecoveryFailure::passphrase_input());
+    }
+    let bytes = fs::read(path).map_err(|_| RecoveryFailure::passphrase_input())?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| RecoveryFailure::passphrase_input())?;
+    let trimmed = text.trim_end_matches(['\r', '\n']);
+    if trimmed.is_empty() {
+        return Err(RecoveryFailure::passphrase_input());
+    }
+    Ok(trimmed.as_bytes().to_vec())
 }
 
 #[cfg(test)]

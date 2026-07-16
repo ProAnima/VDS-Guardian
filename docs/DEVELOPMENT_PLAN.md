@@ -139,11 +139,11 @@ disk unreadable.
   configured recovery key.
 - Provide an explicit encrypted recovery bundle and a documented offline-copy
   procedure; ordinary settings export must still contain no plaintext secret.
-  Closed: `guardian-cli recovery export` seals the repository recovery key
-  under an Argon2id-derived, passphrase-protected bundle bound to the
-  repository id; `docs/OPERATIONS_RUNBOOK.md` documents the offline-copy
-  procedure. No settings-export feature exists yet to carry a plaintext
-  secret in the first place.
+  Closed at the shared-service/CLI level: `guardian-local-repository` seals
+  the repository recovery key under an Argon2id-derived, passphrase-protected
+  bundle bound to the repository id; `guardian-cli recovery export` is its
+  headless adapter, and `docs/OPERATIONS_RUNBOOK.md` documents the offline-copy
+  procedure. No settings-export feature exists yet to carry a plaintext secret.
 - Prove restore on a clean operator machine that has the repository and recovery
   bundle but no original OS credential-store state. Closed at the CLI/core
   level: the bundle authenticates both the recovery key and public manifest

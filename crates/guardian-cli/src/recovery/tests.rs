@@ -1,13 +1,12 @@
-use super::{
-    RecoveryAction, RecoveryCommand, RecoveryFailure, RecoveryOutput, execute,
-    export_confirmation_phrase, import_confirmation_phrase, parse, to_portable_key,
-};
+use super::{RecoveryAction, RecoveryCommand, RecoveryFailure, RecoveryOutput, execute, parse};
 use guardian_core::{
     BackupId, CredentialId, PayloadPath, PlanId, PlanReference, Producer, ProfileId, RepositoryId,
     RunId, SecretStore, SecretStoreError, SecretValue, SourceIdentity, Timestamp,
 };
-use guardian_local_repository::LocalRepository;
-use guardian_signing::{Ed25519Verifier, SigningIdentityManager};
+use guardian_local_repository::{
+    LocalRepository, export_confirmation_phrase, import_confirmation_phrase,
+};
+use guardian_signing::SigningIdentityManager;
 use std::{collections::HashMap, ffi::OsString, fs, io::Read, path::PathBuf, sync::Mutex};
 
 #[test]
@@ -201,14 +200,10 @@ fn init_export_import_recovers_byte_identical_key_material_on_a_fresh_secret_sto
         .ok_or("recovery key should be importable")?;
     assert_eq!(original_key.expose(), recovered_key.expose());
 
-    let trusted = repository
-        .trusted_verification_key()?
-        .ok_or("trusted verification key should be imported")?;
-    let verifier = Ed25519Verifier::from_portable(&to_portable_key(&trusted))?;
     let (mut plaintext, expected_bytes) = repository.open_deploy_payload_reader(
         &BackupId::parse("backup-recovery-cli")?,
         &PayloadPath::parse("payload/filesystem.tar.zst.enc")?,
-        &verifier,
+        &identity,
         &clean_machine_secrets,
     )?;
     let mut restored = Vec::new();

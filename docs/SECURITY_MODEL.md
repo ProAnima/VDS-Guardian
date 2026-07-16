@@ -78,8 +78,8 @@
   configured recovery key (`recovery init`), so an encrypted backup can
   never be sealed with no independent recovery path.
 - `recovery export` wraps the repository recovery key itself under an
-  Argon2id-derived key from an operator-supplied passphrase (read only from
-  a file, never a bare CLI argument) into a portable bundle file, bound via
+  Argon2id-derived key from an operator-supplied passphrase into a portable
+  bundle file, bound via
   authenticated associated data to the specific repository id and active
   Ed25519 public verification key — a bundle
   exported from one repository fails closed if fed into another, even with
@@ -94,7 +94,10 @@
   passphrase leaves neither imported key material nor a repository
   registration. Import accepts only the pinned format-v1 Argon2id
   cost profile, is idempotent for the same key, and refuses to overwrite a
-  different working recovery key.
+  different working recovery key. The shared recovery service accepts only
+  passphrase bytes from its adapter; the CLI reads them from a validated file,
+  never a bare command-line argument, and the future desktop flow must keep
+  them in memory only.
 - Both `recovery export` and `recovery import` require a typed confirmation
   phrase computed from the repository id, matching the confirmation-gate
   convention restore and deploy already use. Neither `guardian-mcp` nor any
