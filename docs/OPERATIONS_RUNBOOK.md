@@ -29,14 +29,21 @@ An automated version now exists (`npm run test:integration:drill`,
 `crates/guardian-capture/tests/clean_room_drill.rs`): it captures a real
 filesystem-plus-database backup from a disposable container, restores it to
 a fresh local target, and separately deploys it to a second fresh disposable
-host, verifying byte-exact filesystem/database content and, for the deploy
-path, a real `PRAGMA integrity_check` and row query over SSH. It records
-elapsed time and a machine-readable JSON report per run. It does not prove
-rollback for any stack type — restore/deploy rollback is not implemented —
-and does not cover every supported stack type, so it does not by itself
-satisfy the requirement above for a release claim. Run the drill manually
-for anything the automated version does not yet cover, or when CI access is
-unavailable.
+host — verifying byte-exact filesystem content plus a real `PRAGMA
+integrity_check` and row query against the database, both locally after
+restore and over SSH after deploy (a SQLite `.backup` is a logical copy
+through the database engine, not a raw byte copy, so its own bookkeeping
+header fields legitimately differ from the source; only the filesystem
+payload is verified byte-exact). It records elapsed time and a
+machine-readable JSON report per run. Both `restore_drill` and
+`deploy_drill` passed end to end for the first time on 2026-07-16, after
+fixing two previously undiscovered defects in archive path validation and
+one drill-fixture permission gap (see ADR 0011) that had silently blocked
+every earlier attempt. It does not prove rollback for any stack type —
+restore/deploy rollback is not implemented — and does not cover every
+supported stack type or failure mode, so it does not by itself satisfy the
+requirement above for a release claim. Run the drill manually for anything
+the automated version does not yet cover, or when CI access is unavailable.
 
 ## Incident rules
 

@@ -54,8 +54,17 @@ impl<W: Write> TarZstdWriter<W> {
         header.set_mtime(0);
         header.set_size(size);
         header.set_cksum();
+        // Real tar writers always suffix a directory member's own name with
+        // `/`; matching that here keeps this writer's output shaped like a
+        // real tar stream, which is what the reader side actually has to
+        // handle (see `parse_entry_path` in `lib.rs`).
+        let name = if entry_type == EntryType::Directory {
+            format!("{}/", path.as_str())
+        } else {
+            path.as_str().to_owned()
+        };
         self.builder
-            .append_data(&mut header, path.as_str(), source)
+            .append_data(&mut header, name, source)
             .map_err(|_| ArchiveWriteError::Write)
     }
 }

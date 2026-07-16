@@ -47,6 +47,7 @@ tempfile = "3"
 zeroize = "1.8"
 zstd = "0.13"
 ctrlc = "3"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

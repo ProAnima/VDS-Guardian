@@ -4,8 +4,12 @@ use tar::EntryType;
 
 #[test]
 fn inspect_accepts_regular_files_and_directories() -> Result<(), Box<dyn std::error::Error>> {
+    // Real tar writers (GNU tar, BSD tar) always suffix a directory member's
+    // own name with `/` on the wire — this is deliberately reproduced here,
+    // not a typo, since a hand-built archive without it would silently miss
+    // testing the shape every real capture actually produces.
     let archive = archive(&[
-        ("srv/app", EntryType::Directory, b""),
+        ("srv/app/", EntryType::Directory, b""),
         ("srv/app/config.yaml", EntryType::Regular, b"safe"),
     ])?;
     let inspection = inspect_tar_zstd(archive.as_slice(), ArchiveLimits::conservative())?;
@@ -23,6 +27,10 @@ fn inspection_rejects_hostile_paths_and_link_entries() -> Result<(), Box<dyn std
         ("C:/Windows", EntryType::Regular),
         ("safe/link", EntryType::Symlink),
         ("safe/hard-link", EntryType::Link),
+        // A trailing slash is only tolerated for a real directory entry
+        // (see `inspect_accepts_regular_files_and_directories`) — a file
+        // entry claiming one is not real tar output and stays rejected.
+        ("safe/trailing-slash/", EntryType::Regular),
     ] {
         let archive = archive(&[(path, kind, b"content")])?;
         assert!(matches!(

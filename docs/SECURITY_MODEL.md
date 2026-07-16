@@ -213,7 +213,12 @@ clears that acknowledgement.
 
 - Archive entry names use a dedicated cross-platform relative-path type that
   rejects absolute paths, traversal, empty segments, Windows separators/drive
-  syntax, alternate streams, and NUL bytes before extraction exists.
+  syntax, alternate streams, and NUL bytes before extraction exists. A real
+  tar directory entry's own trailing slash (`srv/app/`, not `srv/app`) is
+  stripped before this validation runs, but only for directory-type entries —
+  a file entry ending in `/` is not real tar output and stays rejected (ADR
+  0011, 2026-07-16; this closes a defect that had rejected every real
+  captured directory since this validator was first written).
 - Verification hashes bytes without executing or previewing them.
 - The current streaming tar.zst inspector rejects unsafe paths and every entry
   type except regular files and directories, including links, device nodes, and
@@ -221,9 +226,15 @@ clears that acknowledgement.
   stream-byte limits before extraction exists.
 - The initial extractor accepts only a new destination it creates itself, uses
   validated relative paths rather than archive-provided extraction helpers,
-  requires listed parent directories, never preserves ownership or permissions,
-  and removes its partial destination on failure. Depth and expansion-ratio
-  limits remain required before general-purpose restore support.
+  never preserves ownership or permissions, and removes its partial
+  destination on failure. Missing ancestor directories between the
+  destination and an entry's own parent are created as needed (real tar never
+  emits a separate entry for a path segment above a multi-segment capture
+  root) and hardened identically to every other directory this extractor
+  creates; this can never escape the destination, since every path component
+  was already validated and no entry type other than a regular file or
+  directory is ever extracted (ADR 0011). Depth and expansion-ratio limits
+  remain required before general-purpose restore support.
 - Restores and remote deploy extraction never preserve setuid/setgid bits or
   archive-recorded ownership by default: local restore's Rust-native
   extractor never applies filesystem ownership/permission metadata from the

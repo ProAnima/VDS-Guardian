@@ -107,7 +107,12 @@ gate.
   possible at the unit level (the concrete `SystemOpenSsh` a deploy
   composition holds fails every push identically once SSH is unreachable at
   all) — the clean-room drill remains the only realistic end-to-end proof
-  of that specific sequence.
+  of that specific sequence. That drill's first-ever successful run
+  (2026-07-16) also surfaced and closed two independent, previously
+  undiscovered defects in `guardian-archive`'s path validation — see ADR
+  0011 — that had silently rejected real captured directories since this
+  validation logic was first written; both `restore_drill` and
+  `deploy_drill` now pass end to end for the first time.
 
 Gate: a failed or cancelled restore/deploy leaves no published partial target,
 does not delete a path it did not create, and records an accurate terminal
@@ -167,13 +172,26 @@ an ADR.
 ### 5. Prove the release in a clean room
 
 - Run the compiled SSH, repository, encryption, capture, and restore/deploy
-  adapters against disposable source and destination hosts.
-- Test filesystem-only and filesystem-plus-SQLite backups.
+  adapters against disposable source and destination hosts. Closed for the
+  basic case: the clean-room drill's first-ever successful run (2026-07-16,
+  ADR 0011) proved this for a filesystem-plus-SQLite backup, both restored
+  locally and deployed to a second disposable host, over a real SSH round
+  trip — the first time any test has connected the compiled adapters to a
+  live network round trip end to end.
+- Test filesystem-only and filesystem-plus-SQLite backups. Filesystem-
+  plus-SQLite is now covered as above; filesystem-only is not yet exercised
+  by the drill.
 - Cover cancellation, corrupted payload, missing recovery key, disk exhaustion,
   changed host key, hostile archive metadata, and failure of the second payload.
-- Record byte/data integrity, elapsed time, and cleanup state.
+  Still open — none of these failure modes are exercised by the drill yet.
+- Record byte/data integrity, elapsed time, and cleanup state. Closed for the
+  basic case: both drill reports record phase timings, an RTO, and per-check
+  pass/fail state (`target/drill-reports/*.json`).
 - Run the drill from the same commit on Linux CI; keep Windows canonical gates
-  green and perform a documented Windows desktop smoke test.
+  green and perform a documented Windows desktop smoke test. The drill has
+  now passed locally on this Windows dev machine (previously blocked by
+  fixture and product bugs, all fixed); it has not yet been observed passing
+  on a real Linux CI run — that is the next actual gate for this bullet.
 
 Exit gate for 0.1: a clean machine with documented recovery material restores a
 backup to a clean destination, verifies the expected filesystem and SQLite

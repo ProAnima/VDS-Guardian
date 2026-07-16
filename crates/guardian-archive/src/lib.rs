@@ -132,9 +132,8 @@ fn extract_entry<R: Read>(
     inspection: &mut ArchiveInspection,
 ) -> Result<(), ArchiveError> {
     let header = entry.header();
-    let path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
-    let path = ArchivePath::parse(path.to_string_lossy().into_owned())
-        .map_err(|_| ArchiveError::UnsafePath)?;
+    let raw_path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
+    let path = parse_entry_path(&raw_path, header.entry_type().is_dir())?;
     inspection.entries = inspection
         .entries
         .checked_add(1)
@@ -144,9 +143,7 @@ fn extract_entry<R: Read>(
     }
     let output = destination.join(path.as_str());
     let parent = output.parent().ok_or(ArchiveError::UnsafePath)?;
-    if !parent.is_dir() {
-        return Err(ArchiveError::UnsafePath);
-    }
+    ensure_parent_directories(destination, parent)?;
     if header.entry_type().is_dir() {
         fs::create_dir(&output).map_err(|_| ArchiveError::Invalid)?;
         restrict_directory(&output)?;
@@ -178,6 +175,32 @@ fn extract_entry<R: Read>(
         .regular_files
         .checked_add(1)
         .ok_or(ArchiveError::Invalid)?;
+    Ok(())
+}
+
+/// Real tar output only ever includes entries for the capture root itself
+/// and its descendants — never separate entries for path segments *above*
+/// a multi-segment root (capturing `/srv/app` yields an entry named
+/// `srv/app`, never a lone `srv` entry first). Creating any missing
+/// ancestor here — hardened exactly like every other directory this
+/// extractor creates — is safe: `parent` is always `destination` joined
+/// with a prefix of an already-`ArchivePath`-validated relative path (no
+/// `..`, no absolute segments, no symlink entries ever extracted by this
+/// code), so it can never resolve outside `destination`.
+fn ensure_parent_directories(destination: &Path, parent: &Path) -> Result<(), ArchiveError> {
+    let mut missing = Vec::new();
+    let mut current = parent;
+    while current != destination {
+        if current.is_dir() {
+            break;
+        }
+        missing.push(current);
+        current = current.parent().ok_or(ArchiveError::UnsafePath)?;
+    }
+    for directory in missing.into_iter().rev() {
+        fs::create_dir(directory).map_err(|_| ArchiveError::Invalid)?;
+        restrict_directory(directory)?;
+    }
     Ok(())
 }
 
@@ -237,15 +260,34 @@ pub(crate) fn drain_expanded_stream(source: &mut impl Read) -> Result<(), Archiv
     }
 }
 
+/// Real tar writers (GNU tar, BSD tar, and every other implementation this
+/// project's own remote capture command relies on) always suffix a
+/// directory member's own name with `/` — the entry type byte already says
+/// it's a directory, so the trailing slash is pure wire-format convention,
+/// not an extra path segment. Strip exactly one before validating, but only
+/// for directory entries: a *file* entry ending in `/` is not real tar
+/// output and stays rejected. This project's own `TarZstdWriter` never
+/// produces this shape (`ArchivePath` itself cannot hold a trailing slash),
+/// which is why no existing test archive ever exercised this path before a
+/// real `tar`-produced archive did.
+fn parse_entry_path(path: &Path, is_directory: bool) -> Result<ArchivePath, ArchiveError> {
+    let raw = path.to_string_lossy();
+    let candidate = if is_directory {
+        raw.strip_suffix('/').unwrap_or(&raw)
+    } else {
+        raw.as_ref()
+    };
+    ArchivePath::parse(candidate).map_err(|_| ArchiveError::UnsafePath)
+}
+
 fn inspect_entry<R: Read>(
     entry: tar::Entry<'_, R>,
     limits: ArchiveLimits,
     inspection: &mut ArchiveInspection,
 ) -> Result<(), ArchiveError> {
     let header = entry.header();
-    let path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
-    ArchivePath::parse(path.to_string_lossy().into_owned())
-        .map_err(|_| ArchiveError::UnsafePath)?;
+    let raw_path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
+    parse_entry_path(&raw_path, header.entry_type().is_dir())?;
     inspection.entries = inspection
         .entries
         .checked_add(1)

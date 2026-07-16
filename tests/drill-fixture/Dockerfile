@@ -4,7 +4,7 @@ RUN apk add --no-cache openssh-server tar zstd sqlite coreutils \
     && adduser -D -s /bin/sh backup \
     && passwd -d backup \
     && mkdir -p /run/sshd /home/backup/.ssh /srv/app \
-    && chown -R backup:backup /home/backup /srv/app \
+    && chown -R backup:backup /home/backup /srv \
     && chmod 700 /home/backup/.ssh
 
 COPY payload/ /srv/app/
