@@ -3,6 +3,7 @@
 
 use crate::stream;
 use crate::{PinnedHost, SshError, SshUser, SystemOpenSsh, map_wait_error, process, shell_quote};
+use guardian_core::RunId;
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::Path;
@@ -10,6 +11,18 @@ use std::process::Stdio;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PushResult {}
+
+/// A remote deploy root plus the deploy attempt's own `RunId` — together
+/// they identify one combined deploy's shared staging directory. Bundled
+/// into one type specifically to keep `push_filesystem_into_staging_to`/
+/// `push_database_into_staging_to`/`finalize_deploy_to` under this
+/// workspace's argument-count budget; `target_path` and `run_id` are always
+/// used together to compute the same staging name regardless.
+#[derive(Debug, Clone, Copy)]
+pub struct StagingTarget<'a> {
+    pub target_path: &'a str,
+    pub run_id: &'a RunId,
+}
 
 impl SystemOpenSsh {
     /// Pushes a decrypted, still-compressed tar.zst stream onto a remote
@@ -36,14 +49,21 @@ impl SystemOpenSsh {
         )
     }
 
-    /// Pushes a decrypted, still-compressed raw zstd stream onto
-    /// `<target_path>/database.sqlite`, which must not already exist.
-    pub fn push_database_to(
+    /// Pushes a decrypted, still-compressed tar.zst stream into a shared
+    /// staging directory sibling to `target_path` — never renamed into
+    /// place by this call. Used only when a database payload also exists:
+    /// a combined deploy stages both payloads first and finalizes with one
+    /// separate `finalize_deploy_to` call, so a failed second payload never
+    /// leaves the first payload's content live at `target_path`. When there
+    /// is no database payload, `push_filesystem_to` (single push, immediate
+    /// rename) is already fully atomic and is used instead — see
+    /// `docs/adr/0007-remote-deploy-to-a-new-vds.md`.
+    pub fn push_filesystem_into_staging_to(
         &self,
         host: &PinnedHost,
         user: &SshUser,
         identity_file: &Path,
-        target_path: &str,
+        staging: StagingTarget<'_>,
         source: impl Read + Send + 'static,
         expected_bytes: u64,
     ) -> Result<PushResult, SshError> {
@@ -51,10 +71,69 @@ impl SystemOpenSsh {
             host,
             user,
             identity_file,
-            push_database_command(target_path),
+            push_filesystem_into_staging_command(staging),
             Box::new(source),
             expected_bytes,
         )
+    }
+
+    /// Pushes a decrypted, still-compressed raw zstd stream into
+    /// `<staging>/database.sqlite`, where `<staging>` must already exist —
+    /// created by a preceding `push_filesystem_into_staging_to` call in the
+    /// same deploy attempt. Never renamed into place by this call; see
+    /// `push_filesystem_into_staging_to`'s doc comment for why.
+    pub fn push_database_into_staging_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        staging: StagingTarget<'_>,
+        source: impl Read + Send + 'static,
+        expected_bytes: u64,
+    ) -> Result<PushResult, SshError> {
+        self.push_to(
+            host,
+            user,
+            identity_file,
+            push_database_into_staging_command(staging),
+            Box::new(source),
+            expected_bytes,
+        )
+    }
+
+    /// Publishes a combined deploy's staged payloads with the single final
+    /// rename that makes both visible at `target_path` atomically. Re-checks
+    /// `target_path` is still absent immediately before the rename, and
+    /// cleans up the staging directory on any failure (including a
+    /// mid-rename race where something else claimed `target_path` first).
+    pub fn finalize_deploy_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        staging: StagingTarget<'_>,
+    ) -> Result<(), SshError> {
+        let known_hosts = self.known_hosts_file(host)?;
+        let child = self
+            .new_command()
+            .args(self.finalize_deploy_arguments(
+                host,
+                user,
+                identity_file,
+                known_hosts.path(),
+                staging,
+            ))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| SshError::LaunchFailed)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
+        status
+            .success()
+            .then_some(())
+            .ok_or(SshError::CaptureFailed)
     }
 
     /// Read-only preflight: reports whether `target_path` is currently
@@ -126,20 +205,56 @@ impl SystemOpenSsh {
     }
 
     #[must_use]
-    pub fn push_database_arguments(
+    pub fn push_filesystem_into_staging_arguments(
         &self,
         host: &PinnedHost,
         user: &SshUser,
         identity_file: &Path,
         known_hosts: &Path,
-        target_path: &str,
+        staging: StagingTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
             identity_file,
             known_hosts,
-            push_database_command(target_path).into(),
+            push_filesystem_into_staging_command(staging).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn push_database_into_staging_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        staging: StagingTarget<'_>,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            push_database_into_staging_command(staging).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn finalize_deploy_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        staging: StagingTarget<'_>,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            finalize_deploy_command(staging).into(),
         )
     }
 
@@ -246,21 +361,65 @@ fn push_filesystem_command(target_path: &str) -> String {
     )
 }
 
-/// Decompresses a raw zstd stream (read from stdin) to
-/// `<target_path>/database.sqlite`, which must not already exist. Guards
-/// that file specifically, not `target_path` itself, since a preceding
-/// filesystem push may have already legitimately created `target_path` —
-/// which is therefore also already the guaranteed-existing parent this
-/// function's own temp file is created inside. Uses a freshly created,
-/// uniquely named sibling temp file for the same reason `push_filesystem_
-/// command` does, and the same reason it needs an explicit `chmod`: bare
-/// `mktemp` always creates its file `0600`, and `mv -n` renames it as-is,
-/// so `chmod 644` restores an ordinary, predictable mode before the renamed
-/// file replaces the umask-based mode a plain shell redirect used to leave
-/// it with.
-fn push_database_command(target_path: &str) -> String {
-    let target = shell_quote(&format!("{target_path}/database.sqlite"));
+/// The shared staging-directory name a combined deploy's three separate SSH
+/// invocations (filesystem-into-staging, database-into-staging, finalize)
+/// all agree on, without any of them reading a prior invocation's output —
+/// `run_id` is fresh per deploy attempt and validated (`guardian-core::
+/// RunId`) to ASCII alphanumeric plus `-`/`_` only, so it can be embedded
+/// directly with no `shell_quote` escaping, unlike `target_path` (arbitrary
+/// POSIX path text, always quoted). Centralized here so the three templates
+/// below can never drift onto different naming schemes. Trusts that callers
+/// mint high-entropy run ids (both current callers do: CLI's `OsRng`-backed
+/// `random_run_id()`, desktop's `crypto.randomUUID()`) — `RunId::parse`
+/// itself only validates charset and length, not entropy.
+fn deploy_staging_assignment(run_id: &RunId) -> String {
     format!(
-        "target={target}; parent=$(dirname -- \"$target\"); [ ! -e \"$target\" ] || exit 1; tmp=$(mktemp -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1; chmod 644 -- \"$tmp\" || exit 1; zstd -q -d -c > \"$tmp\"; status=$?; if [ \"$status\" -eq 0 ]; then mv -n -- \"$tmp\" \"$target\"; [ ! -e \"$tmp\" ] || status=1; fi; [ \"$status\" -eq 0 ] || rm -f -- \"$tmp\"; exit \"$status\""
+        "staging=\"$parent/.guardian-deploy-staging.{}\"",
+        run_id.as_str()
+    )
+}
+
+/// Extracts a tar.zst stream (read from stdin) into a shared staging
+/// directory sibling to `target_path`, without renaming it into place —
+/// see `SystemOpenSsh::push_filesystem_into_staging_to`'s doc comment. Fails
+/// closed if either `target_path` or the staging directory already exist,
+/// and cleans up the staging directory entirely on its own failure (a
+/// failed first stage abandons the whole combined-deploy attempt).
+fn push_filesystem_into_staging_command(staging: StagingTarget<'_>) -> String {
+    let target = shell_quote(staging.target_path);
+    let staging_assignment = deploy_staging_assignment(staging.run_id);
+    format!(
+        "target={target}; parent=$(dirname -- \"$target\"); {staging_assignment}; [ ! -e \"$target\" ] || exit 1; [ ! -e \"$staging\" ] || exit 1; mkdir -p -- \"$parent\" || exit 1; mkdir -- \"$staging\" || exit 1; chmod 755 -- \"$staging\" || exit 1; tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$staging\" --; status=$?; [ \"$status\" -eq 0 ] || rm -rf -- \"$staging\"; exit \"$status\""
+    )
+}
+
+/// Decompresses a raw zstd stream (read from stdin) to
+/// `<staging>/database.sqlite`, where `<staging>` must already exist —
+/// created by a preceding `push_filesystem_into_staging_command` run in the
+/// same deploy attempt (same `run_id`, so the same staging name). Never
+/// renames into place. On its own failure, cleans up the *entire* staging
+/// tree, not just the one file it was writing — a failed second stage
+/// abandons the whole attempt, including the first stage's already-staged
+/// content.
+fn push_database_into_staging_command(staging: StagingTarget<'_>) -> String {
+    let target = shell_quote(staging.target_path);
+    let staging_assignment = deploy_staging_assignment(staging.run_id);
+    format!(
+        "target={target}; parent=$(dirname -- \"$target\"); {staging_assignment}; [ -d \"$staging\" ] || exit 1; [ ! -e \"$target\" ] || exit 1; zstd -q -d -c > \"$staging/database.sqlite\"; status=$?; [ \"$status\" -eq 0 ] || rm -rf -- \"$staging\"; exit \"$status\""
+    )
+}
+
+/// Publishes a combined deploy's staged payloads with the one rename that
+/// makes both visible at `target_path` atomically — see
+/// `SystemOpenSsh::finalize_deploy_to`'s doc comment. Requires the staging
+/// directory to exist and `target_path` to still be absent immediately
+/// before the rename; cleans up the staging directory on any failure,
+/// including a mid-rename race where something else claimed `target_path`
+/// first.
+fn finalize_deploy_command(staging: StagingTarget<'_>) -> String {
+    let target = shell_quote(staging.target_path);
+    let staging_assignment = deploy_staging_assignment(staging.run_id);
+    format!(
+        "target={target}; parent=$(dirname -- \"$target\"); {staging_assignment}; [ -e \"$staging\" ] || exit 1; [ ! -e \"$target\" ] || exit 1; mv -n -- \"$staging\" \"$target\"; status=$?; [ \"$status\" -ne 0 ] || [ ! -e \"$staging\" ] || status=1; [ \"$status\" -eq 0 ] || rm -rf -- \"$staging\"; exit \"$status\""
     )
 }

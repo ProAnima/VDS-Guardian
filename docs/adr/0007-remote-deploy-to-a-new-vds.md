@@ -308,9 +308,11 @@ Not addressed by this amendment, named explicitly rather than silently
 left: assembling the filesystem and optional database payload under one
 remote staging root with a single final rename (today they are still two
 independently atomic pushes — a failed second payload leaves a live,
-partially deployed target with no database file), and making attempted/
-completed/failed audit persistence part of this composition itself rather
-than a responsibility duplicated by every caller. Both are tracked in
+partially deployed target with no database file — closed by the
+2026-07-16 "staged deploy protocol" amendment further below), and making
+attempted/completed/failed audit persistence part of this composition
+itself rather than a responsibility duplicated by every caller (closed by
+the audit amendment immediately below). Both were tracked in
 `docs/DEVELOPMENT_PLAN.md`.
 
 ## Amendment (2026-07-16): audit persistence moved into the composition
@@ -353,6 +355,90 @@ today, so it is untouched by this amendment — but it would silently lack a
 real audit trail the moment something calls it directly, and whoever wires
 it up next should give it the same treatment rather than rediscovering this
 gap.
+
+## Amendment (2026-07-16): staged deploy protocol closes cross-payload atomicity
+
+The first non-goal named several paragraphs above is now closed: a failed
+database push can no longer leave a live, partially deployed target on the
+remote host. Local restore's identical bug was fixed first (a separate
+crate, `guardian-local-repository`) by staging both payloads under one
+local sibling directory and doing a single `fs::rename`; deploy's version
+is structurally harder because each payload push is its own separate SSH
+round-trip — no local call can span a rename across two independent
+process spawns the way a single filesystem call can.
+
+**A filesystem-only deploy needed no change at all.** `DeploymentPlan.
+database_payload: Option<PayloadPath>` is `None` whenever the sealed
+backup has no database payload, and the existing single push-then-rename
+(`push_filesystem_command`) is already fully atomic in that case — there
+is no second payload to race against. Every change below lives behind
+`execute_pushes`'s `Some(database_payload)` branch.
+
+**For a combined deploy**, two independently atomic pushes were replaced
+with stage → stage → one finalize rename (three remote round-trips): the
+filesystem payload extracts into a shared staging directory without
+renaming (`push_filesystem_into_staging_to`); the database payload writes
+into `<staging>/database.sqlite`, also without renaming
+(`push_database_into_staging_to`); a new `finalize_deploy_to` does the
+one rename that publishes both payloads at the real target atomically.
+The old direct-to-target `push_database_to`/`push_database_arguments`/
+`push_database_command` were deleted outright — a database payload never
+exists without a filesystem payload (`select_payloads` requires exactly
+one filesystem payload), so the old direct-to-target database push was
+never reachable once staging landed.
+
+**The staging directory's name is chosen on the Rust side, not by remote
+`mktemp`**: three separate SSH invocations need to agree on one path, and
+reading a `mktemp`-chosen name back over stdout would require changing
+`push_to`'s `Stdio::null()` stdout handling. Instead, the name is
+`<parent>/.guardian-deploy-staging.<run_id>` — `RunId` (already threaded
+through `execute()` for the audit amendment above) is fresh per deploy
+attempt and its validator (`guardian-core::identifiers`) restricts it to
+ASCII alphanumeric plus `-`/`_` only, so it can be embedded directly with
+no `shell_quote` escaping, unlike `target_path` (arbitrary POSIX path
+text, always quoted). This closure depends on callers minting high-entropy
+run ids — both current callers do (CLI's `OsRng`-backed `random_run_id()`,
+desktop's `crypto.randomUUID()`) — but `RunId::parse` itself only checks
+charset and length, not entropy; that is a caller convention being relied
+on, not something the type enforces, named here rather than left implicit.
+
+**Cleanup stays entirely inside each remote script**, matching this ADR's
+existing philosophy ("the remote shell's own control flow does the
+cleanup; no second connection is needed"): a Rust-side cleanup call after
+a failed database push was considered and rejected, since it would itself
+be a mutating remote operation that can fail for the identical reason the
+thing it's cleaning up after failed. `push_database_into_staging_command`
+cleans up the *entire* staging tree on its own failure, not just the one
+file it was writing, since a failed second stage abandons the whole
+attempt including the first stage's already-staged content.
+
+**Residual risk, alongside the existing mktemp-orphan disclosure above**:
+if the SSH session drops entirely between stages (a real gap of possibly
+minutes, matching this ADR's own "fresh-per-payload re-verification"
+reasoning for why the two pushes aren't done back-to-back trustingly), the
+orphaned staging directory is never cleaned automatically. This is
+accepted, not overlooked: a later deploy attempt mints its own fresh
+`run_id`, so it gets a differently-named staging directory and can never
+collide with the orphan — inert garbage, not a correctness risk. The
+exposure window is now bounded by up to two extra SSH round trips instead
+of one continuous script, a quantitatively larger version of the same
+residual risk class, not a new kind of one.
+
+**Test coverage, honestly bounded**: the three new remote command
+templates are covered by the same string-assertion convention every
+template in this crate already uses (`crates/guardian-ssh/tests/
+pinned_deploy.rs`), including a dedicated test proving all three agree on
+the same staging path for one `run_id`. Simulating "the filesystem push
+succeeds, the database push then fails" at the unit level is not
+realistically possible here — `DeploymentComposition.ssh` is a concrete
+`SystemOpenSsh`, and the existing missing-ssh-binary test trick fails
+every push identically, unlike local restore's equivalent test, which
+could selectively deny just one payload's key via a custom `SecretStore`.
+The clean-room drill (`deploy_drill`) already deploys a combined backup
+end to end and remains the only realistic proof of the staged protocol's
+cross-payload behavior; deliberately failing the second push mid-drill
+would be a valuable future addition to that harness, not built in this
+slice.
 
 ## Consequences
 

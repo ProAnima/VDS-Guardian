@@ -90,25 +90,28 @@ gate.
   publish them with one final rename. A failed second payload must not leave a
   partial destination. Closed for local restore: both payloads now extract
   into one sibling staging directory and publish with a single rename,
-  guarded by a fresh existence check immediately before it. Still open for
-  deploy — its two payloads are pushed as independently atomic remote
-  renames, so a failed second push still leaves a live, partially deployed
-  target; closing this needs a two-phase remote staging protocol, not a
-  local rename, and is deliberately its own separate slice.
+  guarded by a fresh existence check immediately before it. Closed for
+  deploy too: a combined deploy now stages both payloads under one shared
+  remote directory (neither push renames into place) and publishes with a
+  single separate finalize rename; a filesystem-only deploy is unchanged,
+  since a single push with an immediate rename was already fully atomic.
 - Make attempted/completed/failed audit persistence part of the mutating
   application use case rather than a responsibility duplicated by CLI and
   Tauri callers. Closed: both `DeploymentComposition::execute` and
   `FilesystemCaptureComposition::execute` now write their own audit trail
   unconditionally; every caller (CLI deploy, desktop deploy, desktop
   capture) dropped its own duplicated wrapping.
-- Add regression tests for each failure mode above. Covered for four of the
-  five closed items above; not yet for deploy's still-open atomicity bullet.
+- Add regression tests for each failure mode above. Covered for all five
+  closed items above, with one honestly named limitation: simulating "the
+  filesystem push succeeds, the database push then fails" for deploy is not
+  possible at the unit level (the concrete `SystemOpenSsh` a deploy
+  composition holds fails every push identically once SSH is unreachable at
+  all) — the clean-room drill remains the only realistic end-to-end proof
+  of that specific sequence.
 
 Gate: a failed or cancelled restore/deploy leaves no published partial target,
 does not delete a path it did not create, and records an accurate terminal
-state. Met for local restore and for the audit trail on both restore and
-deploy. Not yet met for deploy's own atomicity — a failed second payload
-push still leaves a live, incomplete target on the remote host.
+state. Met for both restore and deploy, and for the audit trail on both.
 
 ### 2. Make encrypted backups independently recoverable
 

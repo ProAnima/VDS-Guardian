@@ -23,7 +23,7 @@ use tempfile::NamedTempFile;
 use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
-pub use push::PushResult;
+pub use push::{PushResult, StagingTarget};
 pub use secret_identity::SshIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use guardian_ssh::{PinnedHost, SshUser, SystemOpenSsh};
+use guardian_core::RunId;
+use guardian_ssh::{PinnedHost, SshUser, StagingTarget, SystemOpenSsh};
 use std::path::Path;
 
 #[test]
@@ -86,53 +87,124 @@ fn push_filesystem_command_never_deletes_before_creating_its_own_temp_directory(
 }
 
 #[test]
-fn push_database_command_guards_the_database_file_not_the_target_directory()
+fn push_filesystem_into_staging_command_never_renames_into_place()
 -> Result<(), Box<dyn std::error::Error>> {
-    let arguments = SystemOpenSsh::default().push_database_arguments(
+    let run_id = RunId::parse("run-staging-fs")?;
+    let arguments = SystemOpenSsh::default().push_filesystem_into_staging_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
         Path::new("C:/keys/backup.key"),
         Path::new("C:/known_hosts"),
-        "/srv/app",
+        StagingTarget {
+            target_path: "/srv/app",
+            run_id: &run_id,
+        },
     );
     let rendered = render(&arguments);
-    assert!(rendered.contains("target='/srv/app/database.sqlite'"));
+    assert!(rendered.contains("target='/srv/app'"));
+    assert!(rendered.contains("staging=\"$parent/.guardian-deploy-staging.run-staging-fs\""));
     assert!(rendered.contains("[ ! -e \"$target\" ] || exit 1"));
-    assert!(rendered.contains("chmod 644 -- \"$tmp\" || exit 1"));
-    assert!(rendered.contains("zstd -q -d -c > \"$tmp\""));
-    assert!(rendered.contains("mv -n -- \"$tmp\" \"$target\""));
-    // The database push must guard the file, never the directory itself --
-    // a preceding filesystem push may have already legitimately created it.
-    assert!(!rendered.contains("target='/srv/app'"));
+    assert!(rendered.contains("[ ! -e \"$staging\" ] || exit 1"));
+    assert!(rendered.contains("mkdir -- \"$staging\" || exit 1"));
+    assert!(rendered.contains("chmod 755 -- \"$staging\" || exit 1"));
+    assert!(rendered.contains(
+        "tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$staging\" --"
+    ));
+    // The whole point of staging: this command never renames anything into
+    // place, so a database push that never runs (or fails) can never leave
+    // `target` half-populated.
+    assert!(!rendered.contains("mv -n"));
     Ok(())
 }
 
 #[test]
-fn push_database_command_restores_an_ordinary_mode_after_mktemp()
+fn push_database_into_staging_command_requires_an_existing_staging_directory()
 -> Result<(), Box<dyn std::error::Error>> {
-    // Bare `mktemp` always creates its file `0600` regardless of the remote
-    // umask, and `mv -n` renames it as-is -- without an explicit `chmod` the
-    // deployed database file would silently end up owner-only instead of the
-    // umask-based mode a plain shell redirect used to leave it with.
-    let arguments = SystemOpenSsh::default().push_database_arguments(
+    let run_id = RunId::parse("run-staging-db")?;
+    let arguments = SystemOpenSsh::default().push_database_into_staging_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
         Path::new("C:/keys/backup.key"),
         Path::new("C:/known_hosts"),
-        "/srv/app",
+        StagingTarget {
+            target_path: "/srv/app",
+            run_id: &run_id,
+        },
     );
     let rendered = render(&arguments);
-    let mktemp_position = rendered
-        .find("mktemp --")
-        .ok_or("push_database_command must create its temp file via mktemp")?;
-    let chmod_position = rendered
-        .find("chmod 644 -- \"$tmp\"")
-        .ok_or("push_database_command must restore an ordinary mode on its temp file")?;
-    let zstd_position = rendered
-        .find("zstd -q -d -c")
-        .ok_or("push_database_command must decompress via zstd")?;
-    assert!(mktemp_position < chmod_position);
-    assert!(chmod_position < zstd_position);
+    assert!(rendered.contains("target='/srv/app'"));
+    assert!(rendered.contains("staging=\"$parent/.guardian-deploy-staging.run-staging-db\""));
+    assert!(rendered.contains("[ -d \"$staging\" ] || exit 1"));
+    assert!(rendered.contains("zstd -q -d -c > \"$staging/database.sqlite\""));
+    // On its own failure this cleans up the *whole* staging tree, not just
+    // the database file it was writing -- a failed second stage abandons
+    // the entire attempt, including the filesystem payload already staged.
+    assert!(rendered.contains("rm -rf -- \"$staging\""));
+    assert!(!rendered.contains("mv -n"));
+    Ok(())
+}
+
+#[test]
+fn finalize_deploy_command_publishes_the_staging_directory_with_one_rename()
+-> Result<(), Box<dyn std::error::Error>> {
+    let run_id = RunId::parse("run-staging-finalize")?;
+    let arguments = SystemOpenSsh::default().finalize_deploy_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        StagingTarget {
+            target_path: "/srv/app",
+            run_id: &run_id,
+        },
+    );
+    let rendered = render(&arguments);
+    assert!(rendered.contains("target='/srv/app'"));
+    assert!(rendered.contains("staging=\"$parent/.guardian-deploy-staging.run-staging-finalize\""));
+    assert!(rendered.contains("[ -e \"$staging\" ] || exit 1"));
+    assert!(rendered.contains("[ ! -e \"$target\" ] || exit 1"));
+    assert!(rendered.contains("mv -n -- \"$staging\" \"$target\""));
+    assert!(rendered.contains("[ ! -e \"$staging\" ] || status=1"));
+    Ok(())
+}
+
+#[test]
+fn the_three_staging_commands_agree_on_the_same_staging_path_for_one_run_id()
+-> Result<(), Box<dyn std::error::Error>> {
+    // The three separate SSH invocations of one combined deploy attempt
+    // never share process state -- they can only agree on the staging
+    // directory's name because all three render it from the exact same
+    // `run_id`. Prove they can't drift onto different naming schemes.
+    let host = pinned_host()?;
+    let user = SshUser::parse("backup")?;
+    let identity = Path::new("C:/keys/backup.key");
+    let known_hosts = Path::new("C:/known_hosts");
+    let run_id = RunId::parse("run-staging-agree")?;
+    let ssh = SystemOpenSsh::default();
+    let staging = StagingTarget {
+        target_path: "/srv/app",
+        run_id: &run_id,
+    };
+    let stage_fs = render(&ssh.push_filesystem_into_staging_arguments(
+        &host,
+        &user,
+        identity,
+        known_hosts,
+        staging,
+    ));
+    let stage_db = render(&ssh.push_database_into_staging_arguments(
+        &host,
+        &user,
+        identity,
+        known_hosts,
+        staging,
+    ));
+    let finalize =
+        render(&ssh.finalize_deploy_arguments(&host, &user, identity, known_hosts, staging));
+    let staging_assignment = "staging=\"$parent/.guardian-deploy-staging.run-staging-agree\"";
+    assert!(stage_fs.contains(staging_assignment));
+    assert!(stage_db.contains(staging_assignment));
+    assert!(finalize.contains(staging_assignment));
     Ok(())
 }
 
@@ -154,14 +226,18 @@ fn push_commands_safely_quote_a_target_path_containing_a_single_quote()
     );
     assert!(render(&filesystem).contains(r#"target='/srv/app'"'"'s data'"#));
 
-    let database = SystemOpenSsh::default().push_database_arguments(
+    let run_id = RunId::parse("run-quoting")?;
+    let staging = SystemOpenSsh::default().push_filesystem_into_staging_arguments(
         &host,
         &user,
         identity,
         known_hosts,
-        target,
+        StagingTarget {
+            target_path: target,
+            run_id: &run_id,
+        },
     );
-    assert!(render(&database).contains(r#"target='/srv/app'"'"'s data/database.sqlite'"#));
+    assert!(render(&staging).contains(r#"target='/srv/app'"'"'s data'"#));
     Ok(())
 }
 

@@ -8,7 +8,7 @@ use guardian_core::{
     RemoteTargetPath, RunId, SecretStore, VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
-use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
+use guardian_ssh::{PinnedHost, SshIdentity, SshUser, StagingTarget, SystemOpenSsh};
 use thiserror::Error;
 
 pub struct DeploymentComposition<'a> {
@@ -70,6 +70,7 @@ impl DeploymentComposition<'_> {
     ) -> Result<DeploymentPlan, DeployError> {
         self.write_audit(run_id, "attempted", backup_id)?;
         let result = self.execute_pushes(
+            run_id,
             expected_target_profile_id,
             backup_id,
             target_path,
@@ -104,8 +105,17 @@ impl DeploymentComposition<'_> {
     /// filesystem and database pushes are each network-bound and can run
     /// for minutes, so the second push must not rely on a verification
     /// already minutes stale by the time it starts.
+    ///
+    /// A filesystem-only deploy is already fully atomic as a single push
+    /// with an immediate remote rename — no second payload exists to race
+    /// against, so it is unchanged. A combined deploy instead stages both
+    /// payloads under one shared remote directory (neither push renames
+    /// into place) and finalizes with one separate rename, so a failed
+    /// second payload never leaves the first payload's content live at the
+    /// target — see `docs/adr/0007-remote-deploy-to-a-new-vds.md`.
     fn execute_pushes(
         &self,
+        run_id: &RunId,
         expected_target_profile_id: &ProfileId,
         backup_id: &BackupId,
         target_path: RemoteTargetPath,
@@ -122,21 +132,33 @@ impl DeploymentComposition<'_> {
         plan.approve(confirmation)?;
         let session = self.resolve_ssh_session()?;
 
-        self.push_payload(
-            &session,
-            backup_id,
-            &plan.filesystem_payload,
-            plan.target_path.as_str(),
-            PushKind::Filesystem,
-        )?;
-        if let Some(database_payload) = &plan.database_payload {
-            self.push_payload(
-                &session,
-                backup_id,
-                database_payload,
-                plan.target_path.as_str(),
-                PushKind::Database,
-            )?;
+        match &plan.database_payload {
+            None => {
+                self.push_payload(
+                    &session,
+                    backup_id,
+                    &plan.filesystem_payload,
+                    plan.target_path.as_str(),
+                    PushKind::FilesystemOnly,
+                )?;
+            }
+            Some(database_payload) => {
+                self.push_payload(
+                    &session,
+                    backup_id,
+                    &plan.filesystem_payload,
+                    plan.target_path.as_str(),
+                    PushKind::FilesystemIntoStaging { run_id },
+                )?;
+                self.push_payload(
+                    &session,
+                    backup_id,
+                    database_payload,
+                    plan.target_path.as_str(),
+                    PushKind::DatabaseIntoStaging { run_id },
+                )?;
+                self.finalize_deploy(&session, plan.target_path.as_str(), run_id)?;
+            }
         }
         Ok(plan)
     }
@@ -147,7 +169,7 @@ impl DeploymentComposition<'_> {
         backup_id: &BackupId,
         payload_path: &PayloadPath,
         target_path: &str,
-        kind: PushKind,
+        kind: PushKind<'_>,
     ) -> Result<(), DeployError> {
         // Re-verifies the manifest fresh, immediately before this specific
         // payload is read — not once for the whole `execute` call. The
@@ -161,7 +183,7 @@ impl DeploymentComposition<'_> {
             .map_err(|_| DeployError::Storage)?;
         let identity_path = session.identity.path();
         let result = match kind {
-            PushKind::Filesystem => self.ssh.push_filesystem_to(
+            PushKind::FilesystemOnly => self.ssh.push_filesystem_to(
                 &session.host,
                 &session.user,
                 identity_path,
@@ -169,16 +191,49 @@ impl DeploymentComposition<'_> {
                 reader,
                 expected_bytes,
             ),
-            PushKind::Database => self.ssh.push_database_to(
+            PushKind::FilesystemIntoStaging { run_id } => self.ssh.push_filesystem_into_staging_to(
                 &session.host,
                 &session.user,
                 identity_path,
-                target_path,
+                StagingTarget {
+                    target_path,
+                    run_id,
+                },
+                reader,
+                expected_bytes,
+            ),
+            PushKind::DatabaseIntoStaging { run_id } => self.ssh.push_database_into_staging_to(
+                &session.host,
+                &session.user,
+                identity_path,
+                StagingTarget {
+                    target_path,
+                    run_id,
+                },
                 reader,
                 expected_bytes,
             ),
         };
         result.map(|_| ()).map_err(|_| DeployError::PushFailed)
+    }
+
+    fn finalize_deploy(
+        &self,
+        session: &SshSession,
+        target_path: &str,
+        run_id: &RunId,
+    ) -> Result<(), DeployError> {
+        self.ssh
+            .finalize_deploy_to(
+                &session.host,
+                &session.user,
+                session.identity.path(),
+                StagingTarget {
+                    target_path,
+                    run_id,
+                },
+            )
+            .map_err(|_| DeployError::PushFailed)
     }
 
     fn resolve_ssh_session(&self) -> Result<SshSession, DeployError> {
@@ -208,9 +263,10 @@ struct SshSession {
     identity: SshIdentity,
 }
 
-enum PushKind {
-    Filesystem,
-    Database,
+enum PushKind<'a> {
+    FilesystemOnly,
+    FilesystemIntoStaging { run_id: &'a RunId },
+    DatabaseIntoStaging { run_id: &'a RunId },
 }
 
 #[derive(Debug, Error)]
@@ -367,6 +423,98 @@ mod tests {
             &confirmation,
         );
         assert!(matches!(result, Err(DeployError::PushFailed)));
+        Ok(())
+    }
+
+    /// Confirms a combined (filesystem+database) deploy attempt still fails
+    /// closed the same way a filesystem-only one does when SSH cannot
+    /// launch at all. This cannot isolate "the filesystem push succeeded but
+    /// the database push then failed" -- `DeploymentComposition.ssh` is a
+    /// concrete `SystemOpenSsh`, and pointing it at a missing binary fails
+    /// every push identically, unlike local restore's equivalent test, which
+    /// could selectively deny just one payload's key. The clean-room drill
+    /// (`crates/guardian-capture/tests/clean_room_drill.rs`) is the only
+    /// realistic place left to prove the staged protocol's cross-payload
+    /// behavior end to end.
+    #[test]
+    fn execute_returns_a_push_error_for_a_combined_deploy_when_ssh_cannot_launch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-005")?)?;
+        let signer = TestSigner::new();
+        let secrets = MemorySecrets::default();
+        let backup_id = BackupId::parse("backup-005")?;
+        seal_combined_backup(&repository, &signer, &backup_id)?;
+        let target = target_profile("profile-target", 1)?;
+        secrets_store_valid_key(&secrets, &target.credential_id)?;
+        let composition = DeploymentComposition {
+            repository: &repository,
+            ssh: &SystemOpenSsh::with_binary(root.path().join("missing-ssh")),
+            target_profile: &target,
+            credentials: &secrets,
+            verifier: &signer,
+        };
+        let target_path = RemoteTargetPath::parse("/srv/app")?;
+        let confirmation = format!(
+            "DEPLOY {} TO {}:{}",
+            backup_id.as_str(),
+            target.profile_id.as_str(),
+            target_path.as_str()
+        );
+        let result = composition.execute(
+            &RunId::parse("run-005")?,
+            &target.profile_id,
+            &backup_id,
+            target_path,
+            &confirmation,
+        );
+        assert!(matches!(result, Err(DeployError::PushFailed)));
+        Ok(())
+    }
+
+    fn seal_combined_backup(
+        repository: &LocalRepository,
+        signer: &TestSigner,
+        backup_id: &BackupId,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let run = RunId::parse(format!("run-{}", backup_id.as_str()))?;
+        let staging = repository.begin_staging(run.clone())?;
+        let filesystem_path = PayloadPath::parse("payload/filesystem.tar.zst")?;
+        let filesystem_payload = staging.write_payload(
+            "filesystem",
+            filesystem_path,
+            "application/zstd",
+            b"payload-bytes",
+        )?;
+        let database_path = PayloadPath::parse("payload/database.sqlite.zst")?;
+        let database_payload = staging.write_payload(
+            "database",
+            database_path,
+            "application/vnd.sqlite3+zstd",
+            b"database-bytes",
+        )?;
+        let mut manifest = Manifest::new(
+            backup_id.clone(),
+            run,
+            Timestamp::parse("2026-07-15T19:00:00Z")?,
+            Producer {
+                name: "VDS Guardian test source".to_owned(),
+                version: "0.1.0".to_owned(),
+                platform: "test".to_owned(),
+            },
+            SourceIdentity {
+                profile_id: ProfileId::parse("profile-source")?,
+                host_key_fingerprint: "SHA256:source-fixture".to_owned(),
+            },
+            PlanReference {
+                plan_id: PlanId::parse("plan-test")?,
+                version: 1,
+                sha256: "a".repeat(64),
+            },
+        );
+        manifest.add_payload(filesystem_payload)?;
+        manifest.add_payload(database_payload)?;
+        staging.seal(manifest, Timestamp::parse("2026-07-15T19:00:01Z")?, signer)?;
         Ok(())
     }
 
