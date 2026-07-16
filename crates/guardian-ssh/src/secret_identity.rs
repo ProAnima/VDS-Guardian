@@ -256,7 +256,7 @@ pub(crate) fn restrict_permissions(path: &Path) -> Result<(), SshError> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))
             .map_err(|_| SshError::TemporaryIdentityFile)?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(windows)]
     {

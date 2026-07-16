@@ -365,10 +365,9 @@ precondition, restore-time AEAD authentication, bundle-level AEAD
 authentication), matching the Gate this ADR exists to close.
 
 Explicitly not delivered by this slice: key rotation, recovery-bundle
-replacement, desktop bundle export/import, retroactive wrapping of pre-existing v2 backups,
-and any live-round-trip proof via the clean-room drill (the drill was not
-extended in this slice; the CLI-level `init → export → import → verify → decrypt` round trip
-and the repository-level restore-fallback tests together already prove the
-Gate directly, per the plan's own scoping — extending the drill to also
-exercise recovery import end-to-end remains valuable future work, not
-built here).
+replacement, desktop bundle export/import, and retroactive wrapping of
+pre-existing v2 backups. Follow-up on 2026-07-16: the clean-room restore drill
+was extended to build the production CLI, remove the original operator state,
+import the recovery bundle into a clean vault and registry, and restore through
+that compiled CLI. Linux CI observation and the broader hostile-failure matrix
+remain release work rather than consequences of this ADR.

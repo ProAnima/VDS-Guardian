@@ -17,7 +17,7 @@
     "build:web": "npm run build --workspace @vds-guardian/desktop",
     "test:rust": "cargo test --workspace --all-targets",
     "test:integration:ssh": "node scripts/test-ssh-integration.mjs",
-    "test:integration:drill": "cargo test --package guardian-capture --test clean_room_drill -- --ignored --nocapture",
+    "test:integration:drill": "node scripts/test-clean-room-drill.mjs",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings"
   }
 }

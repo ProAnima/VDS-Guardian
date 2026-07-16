@@ -56,12 +56,16 @@ fn restore_drill() -> TestResult {
     let profile_id = ProfileId::parse("drill-restore-source")?;
     let profile = support::drill_profile(profile_id, credential_id, source.port(), &host_key)?;
 
-    let repository = LocalRepository::open(
-        workdir.path().join("repository"),
-        RepositoryId::parse("drill-restore-repo")?,
+    let repository_id = RepositoryId::parse("drill-restore-repo")?;
+    let repository =
+        LocalRepository::open(workdir.path().join("repository"), repository_id.clone())?;
+    let (recovery, signer) = support::initialize_and_export(
+        workdir.path(),
+        &repository,
+        repository_id,
+        &vault_dir,
+        &vault,
     )?;
-    repository.configure_recovery_key(&vault)?;
-    let signer = support::TestSigner::new();
 
     let capture = support::capture_drill_backup(
         &repository,
@@ -72,16 +76,19 @@ fn restore_drill() -> TestResult {
         "drill-restore-backup",
         "drill-restore-run",
     )?;
+    drop(signer);
+    drop(vault);
+    std::fs::remove_dir_all(&vault_dir)?;
+    std::fs::remove_dir_all(workdir.path().join("original-signing"))?;
+    std::fs::remove_dir_all(workdir.path().join("original-repositories"))?;
 
     let destination = workdir.path().join("restored");
     let restore_start = Instant::now();
-    let plan = repository.plan_restore(&capture.sealed.backup_id, &destination, &signer)?;
-    repository.execute_restore(
+    support::restore_on_clean_machine(
+        workdir.path(),
+        &recovery,
         &capture.sealed.backup_id,
         &destination,
-        &plan.confirmation,
-        &signer,
-        &vault,
     )?;
     let restore_phase = Phase::new("restore", restore_start.elapsed());
 
@@ -124,6 +131,7 @@ fn restore_drill() -> TestResult {
         &[
             Check::new("filesystem_byte_exact", filesystem_matches),
             Check::new("database_integrity_and_content", database_matches),
+            Check::new("compiled_cli_clean_machine_recovery", true),
         ],
         rto_seconds,
     )?;

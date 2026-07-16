@@ -150,9 +150,10 @@ disk unreadable.
   which now verifies the sealed manifest and decrypts its real encrypted
   payload without the original signing seed; restore fallback is also proven by
   `restore_falls_back_to_the_recovery_key_when_the_primary_key_is_missing`
-  (`crates/guardian-local-repository/tests/restore.rs`). Not yet exercised by
-  the automated clean-room drill specifically — a valuable future extension,
-  not built in this slice.
+  (`crates/guardian-local-repository/tests/restore.rs`). The automated
+  clean-room `restore_drill` now also builds the production CLI, removes the
+  original vault/signing/registry state, imports the bundle into a new vault
+  and registry, and performs the restore through that compiled CLI.
 - Keep key import/export explicit, confirmation-gated, and testable from CLI.
   Closed: `recovery export`/`recovery import` both require a typed
   confirmation phrase computed from the repository id, matching the
@@ -161,8 +162,8 @@ disk unreadable.
 
 Gate: a clean machine can verify and decrypt an existing backup using only the
 documented recovery material, while a missing or incorrect recovery key fails
-closed. Met at the CLI/core level by one continuous test (see above); the clean-room drill itself
-has not yet been extended to exercise `recovery import` end to end.
+closed. Met both by the continuous CLI/core test and by the compiled-CLI
+clean-room restore drill described above.
 
 ### 3. Finish one shared application workflow
 
@@ -223,6 +224,11 @@ an ADR.
   locally and deployed to a second disposable host, over a real SSH round
   trip — the first time any test has connected the compiled adapters to a
   live network round trip end to end.
+- Import the offline recovery bundle on a clean operator machine before
+  restore. Closed locally: `restore_drill` removes the original vault,
+  signing configuration, and repository registry, initializes clean state,
+  imports through the compiled `guardian-cli`, and executes restore through
+  that same binary. The corresponding Linux CI observation remains open.
 - Test filesystem-only and filesystem-plus-SQLite backups. Filesystem-
   plus-SQLite is now covered as above; filesystem-only is not yet exercised
   by the drill.
@@ -235,8 +241,11 @@ an ADR.
 - Run the drill from the same commit on Linux CI; keep Windows canonical gates
   green and perform a documented Windows desktop smoke test. The drill has
   now passed locally on this Windows dev machine (previously blocked by
-  fixture and product bugs, all fixed); it has not yet been observed passing
-  on a real Linux CI run — that is the next actual gate for this bullet.
+  fixture and product bugs, all fixed). The latest published Linux run for
+  commit `73f41ba` stopped in `npm run verify` on a Unix-only Clippy finding
+  in SSH identity permission hardening before reaching the drill. That lint is
+  fixed in the current slice and reproduced green in a Linux container; a new
+  GitHub-hosted run of this corrected slice remains the next actual gate.
 
 Exit gate for 0.1: a clean machine with documented recovery material restores a
 backup to a clean destination, verifies the expected filesystem and SQLite

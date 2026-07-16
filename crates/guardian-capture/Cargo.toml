@@ -19,7 +19,9 @@ thiserror.workspace = true
 [dev-dependencies]
 base64.workspace = true
 ed25519-dalek.workspace = true
+guardian-configuration = { path = "../guardian-configuration" }
 guardian-deploy = { path = "../guardian-deploy" }
+guardian-signing = { path = "../guardian-signing" }
 guardian-vault = { path = "../guardian-vault" }
 rusqlite.workspace = true
 serde.workspace = true

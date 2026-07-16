@@ -91,7 +91,11 @@ machine-readable JSON report per run. Both `restore_drill` and
 `deploy_drill` passed end to end for the first time on 2026-07-16, after
 fixing two previously undiscovered defects in archive path validation and
 one drill-fixture permission gap (see ADR 0011) that had silently blocked
-every earlier attempt. It does not prove rollback for any stack type —
+every earlier attempt. The restore drill also builds the production CLI,
+exports recovery material,
+removes the original vault/signing/registry state, imports into clean local
+state, and performs the restore through that compiled CLI. It does not prove
+rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
 supported stack type or failure mode, so it does not by itself satisfy the
 requirement above for a release claim. Run the drill manually for anything
