@@ -15,7 +15,7 @@ interface NavItem {
 
 const primaryNav: NavItem[] = [
   { key: "navOverview", icon: LayoutDashboard, view: "overview" },
-  { key: "navServers", icon: Server },
+  { key: "navServers", icon: Server, view: "setup" },
   { key: "navBackups", icon: Archive },
   { key: "navRestore", icon: RotateCcw, view: "restore" },
   { key: "navDeploy", icon: Rocket, view: "deploy" },

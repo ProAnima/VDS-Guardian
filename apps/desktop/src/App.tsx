@@ -4,10 +4,11 @@ import { AppSidebar } from "./components/AppSidebar";
 import { Dashboard } from "./components/Dashboard";
 import { DeployPanel } from "./components/DeployPanel";
 import { RestorePanel } from "./components/RestorePanel";
+import { SetupPanel } from "./components/SetupPanel";
 import { getFoundationStatus, previewStatus, type FoundationStatus } from "./shared/commands";
 import { usePreferences } from "./shared/usePreferences";
 
-export type ViewId = "overview" | "restore" | "deploy";
+export type ViewId = "overview" | "setup" | "restore" | "deploy";
 
 export function App() {
   const preferences = usePreferences();
@@ -24,7 +25,9 @@ export function App() {
       <div className="app-workspace">
         <AppHeader preferences={preferences} version={status.version} />
         {view === "overview" ? (
-          <Dashboard status={status} t={preferences.t} />
+          <Dashboard status={status} t={preferences.t} onStartSetup={() => setView("setup")} />
+        ) : view === "setup" ? (
+          <SetupPanel t={preferences.t} />
         ) : view === "restore" ? (
           <RestorePanel t={preferences.t} />
         ) : (

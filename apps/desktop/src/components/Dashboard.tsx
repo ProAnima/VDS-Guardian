@@ -5,25 +5,17 @@ import {
 import type { Translate } from "../i18n";
 import type { FoundationStatus } from "../shared/commands";
 import { StatusCard } from "./StatusCard";
-import { SigningIdentityPanel } from "./SigningIdentityPanel";
-import { SshProfilePanel } from "./SshProfilePanel";
-import { RepositoryPanel } from "./RepositoryPanel";
-import { CapturePlanPanel } from "./CapturePlanPanel";
-
 interface DashboardProps {
   status: FoundationStatus;
   t: Translate;
+  onStartSetup: () => void;
 }
 
-export function Dashboard({ status, t }: DashboardProps) {
+export function Dashboard({ status, t, onStartSetup }: DashboardProps) {
   return (
     <main className="dashboard">
-      <Hero status={status} t={t} />
+      <Hero status={status} t={t} onStartSetup={onStartSetup} />
       <StatusGrid t={t} />
-      <SshProfilePanel />
-      <RepositoryPanel />
-      <CapturePlanPanel />
-      <SigningIdentityPanel t={t} />
       <div className="dashboard__columns">
         <ServersPanel t={t} />
         <RoadmapPanel t={t} />
@@ -34,7 +26,7 @@ export function Dashboard({ status, t }: DashboardProps) {
   );
 }
 
-function Hero({ status, t }: DashboardProps) {
+function Hero({ status, t, onStartSetup }: DashboardProps) {
   return (
     <section className="hero-panel">
       <div className="hero-panel__content">
@@ -42,8 +34,8 @@ function Hero({ status, t }: DashboardProps) {
         <h1>{t("pageTitle")}</h1>
         <p>{t("pageDescription")}</p>
         <div className="hero-panel__actions">
-          <button className="button button--primary" type="button" disabled><Plus size={17} />{t("addServer")}</button>
-          <button className="button button--secondary" type="button" disabled><Archive size={17} />{t("runBackup")}</button>
+          <button className="button button--primary" type="button" onClick={onStartSetup}><Plus size={17} />Настроить первый бэкап</button>
+          <button className="button button--secondary" type="button" onClick={onStartSetup}><Archive size={17} />{t("runBackup")}</button>
         </div>
       </div>
       <div className="safety-lock">
