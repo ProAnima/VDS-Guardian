@@ -12,6 +12,7 @@ mod embedded_database;
 mod enroll_profile;
 mod host_trust;
 mod identifiers;
+mod job_registry;
 mod manifest;
 mod plan;
 mod preflight;
@@ -60,6 +61,7 @@ pub use identifiers::{
     ArchivePath, BackupId, CredentialId, DatabaseId, IdentifierError, PayloadPath, PlanId,
     ProfileId, RemoteTargetPath, RepositoryId, RunId, Timestamp,
 };
+pub use job_registry::{JobRegistration, JobRegistry};
 pub use manifest::{
     ConsistencyLevel, Manifest, ManifestError, PayloadEncryption, PayloadEntry, PlanReference,
     Producer, SignatureMetadata, SourceIdentity, VerificationState,

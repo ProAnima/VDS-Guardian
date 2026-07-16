@@ -1,14 +1,13 @@
 mod deploy_commands;
 mod docker_commands;
 mod job_commands;
-mod job_registry;
 mod plan_commands;
 mod profile_commands;
 mod repository_commands;
 mod restore_commands;
 mod signing_commands;
 
-use guardian_core::FoundationStatus;
+use guardian_core::{FoundationStatus, JobRegistry};
 use guardian_signing::{SigningIdentityEnrollment, SigningIdentityFailure, SigningIdentityStatus};
 use tauri::Manager;
 
@@ -162,13 +161,13 @@ fn cancel_job(app: tauri::AppHandle, run_id: String) -> bool {
     let Ok(run_id) = guardian_core::RunId::parse(run_id) else {
         return false;
     };
-    app.state::<job_registry::JobRegistry>().cancel(&run_id)
+    app.state::<JobRegistry>().cancel(&run_id)
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(job_registry::JobRegistry::default())
+        .manage(JobRegistry::default())
         .invoke_handler(tauri::generate_handler![
             get_foundation_status,
             get_signing_identity_status,

@@ -13,6 +13,7 @@ members = [
   "crates/guardian-docker",
   "crates/guardian-profile-store",
   "crates/guardian-local-repository",
+  "crates/guardian-mcp",
   "crates/guardian-os-keyring",
   "crates/guardian-signing",
   "crates/guardian-ssh",
@@ -48,6 +49,8 @@ zeroize = "1.8"
 zstd = "0.13"
 ctrlc = "3"
 rusqlite = { version = "0.32", features = ["bundled"] }
+rmcp = { version = "0.16", features = ["server", "macros", "schemars", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

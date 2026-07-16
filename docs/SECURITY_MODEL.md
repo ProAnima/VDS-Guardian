@@ -28,6 +28,11 @@
 5. Sealed repository to restore target.
 6. Installed binary to update/release infrastructure.
 7. Sealed repository to remote deploy target (a new/different VDS).
+8. MCP client (an external tool or AI agent) to `guardian-mcp`, over stdio
+   only (ADR 0012) — the client is whatever local process launched
+   `guardian-mcp` as its own child, the same OS-process trust `guardian-cli`
+   and the desktop app already assume; this boundary is not network-reachable
+   and does not widen who can trigger capture/restore/deploy.
 
 ## Mandatory controls
 
@@ -357,6 +362,26 @@ clears that acknowledgement.
   is exposed to the WebView.
 - Command DTOs are validated, job IDs are unguessable, and errors are redacted.
 - Rich backup content is never rendered as raw HTML in the WebView.
+
+### MCP server
+
+- `guardian-mcp` (ADR 0012) uses stdio transport only — never streamable
+  HTTP or any other network-reachable transport. A stdio pipe is only
+  reachable by the direct parent/child process relationship, so this is a
+  structural property, not a configuration choice that could be gotten
+  wrong (unlike a loopback HTTP listener, which remains vulnerable to
+  DNS-rebinding from any browser tab on the same machine).
+  `execute_restore`/`execute_deploy` require the exact confirmation phrase a
+  prior `preview_restore`/`preview_deploy` call returned, passed through to
+  the same `RestorePlan`/`DeploymentPlan::approve` check every other surface
+  already uses — the server never auto-fills or bypasses this field.
+- Enrollment, credential import, agent-key registration, repository
+  registration, vault initialization, signing enrollment, and capture-plan
+  creation are not exposed as tools: each either mints new local trust or
+  configuration state (a human judgment call, and a prompt-injection risk if
+  an agent could be steered into enrolling a host key from untrusted
+  content it read elsewhere) or, for capture-plan creation specifically, has
+  no confirmation gate of its own to begin with.
 
 ## Key rotation
 

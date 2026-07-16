@@ -1,12 +1,11 @@
-//! The first piece of shared, in-process Tauri app state in this codebase:
-//! tracks which SSH-backed jobs (capture, deploy) are currently running so a
-//! separate `cancel_job` command invocation can reach them. The RAII guard
-//! mirrors `guardian-local-repository`'s `ProcessLock` deliberately —
-//! registration must be released regardless of how the job ends, and a
-//! manual trailing `unregister()` call could be bypassed by a future early
-//! return in a way `Drop` cannot.
+//! Tracks which SSH-backed jobs (capture, deploy) are currently running so a
+//! separate cancel-job call can reach them. The RAII guard mirrors
+//! `guardian-local-repository`'s `ProcessLock` deliberately — registration
+//! must be released regardless of how the job ends, and a manual trailing
+//! `unregister()` call could be bypassed by a future early return in a way
+//! `Drop` cannot.
 
-use guardian_core::{CancellationHandle, RunId};
+use crate::{CancellationHandle, RunId};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -57,7 +56,7 @@ impl Drop for JobRegistration<'_> {
 #[cfg(test)]
 mod tests {
     use super::JobRegistry;
-    use guardian_core::{CancellationHandle, RunId};
+    use crate::{CancellationHandle, RunId};
 
     #[test]
     fn cancelling_a_registered_job_signals_its_handle() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,0 +1,38 @@
+[package]
+name = "guardian-mcp"
+description = "MCP (Model Context Protocol) server exposing VDS Guardian's capture/restore/deploy operations to external tools and AI agents over stdio."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "guardian-mcp"
+path = "src/main.rs"
+
+[dependencies]
+guardian-archive.workspace = true
+guardian-capture = { path = "../guardian-capture" }
+guardian-configuration = { path = "../guardian-configuration" }
+guardian-core.workspace = true
+guardian-deploy = { path = "../guardian-deploy" }
+guardian-docker = { path = "../guardian-docker" }
+guardian-local-repository.workspace = true
+guardian-os-keyring = { path = "../guardian-os-keyring" }
+guardian-profile-store = { path = "../guardian-profile-store" }
+guardian-signing = { path = "../guardian-signing" }
+guardian-ssh.workspace = true
+guardian-vault = { path = "../guardian-vault" }
+rand_core.workspace = true
+rmcp.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+rmcp = { workspace = true, features = ["client"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

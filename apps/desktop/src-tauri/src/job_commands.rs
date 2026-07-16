@@ -1,10 +1,9 @@
-use crate::job_registry::JobRegistry;
 use guardian_capture::FilesystemCaptureComposition;
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
     BackupId, CancellationHandle, EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest,
-    FilesystemCaptureRequest, Manifest, PayloadPath, PlanReference, Producer, ProfileStorePort,
-    RunId, SourceIdentity, Timestamp,
+    FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath, PlanReference, Producer,
+    ProfileStorePort, RunId, SourceIdentity, Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;

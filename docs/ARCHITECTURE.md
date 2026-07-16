@@ -2,10 +2,10 @@
 
 ## System context
 
-VDS Guardian runs on one or more operator-controlled backup nodes. Each node is
-independent: it owns its schedules, credential references, audit log, and backup
-repositories. Nodes do not trust or synchronize with one another in the initial
-product.
+VDS Guardian runs on an operator-controlled backup node. It owns credential
+references, an audit log, and one or more backup repositories. Multiple nodes,
+schedules, and synchronization are later operating capabilities and are not
+part of the first-release correctness path.
 
 ```text
 Windows or Linux operator
@@ -14,9 +14,9 @@ Desktop UI or headless CLI/service
         |
 guardian-core use cases
         |
-  +-----+----------+-----------+------------+
-  |                |           |            |
-SSH adapter   storage adapter  keyring   scheduler
+  +-----+----------+-----------+
+  |                |           |
+SSH adapter   storage adapter  keyring
   |                |
 Remote VDS      local/removable repository
 ```
@@ -63,7 +63,8 @@ Adapters will be added by capability, not bundled into the domain crate:
 - An explicit application-consistent embedded-database snapshot adapter and
   Docker-aware discovery/export. PostgreSQL/MySQL server adapters are deferred
   from the initial product.
-- Native schedulers: systemd timer/service on Linux, Task Scheduler on Windows.
+- Native schedulers are deferred until the manual Release 0.1 path is proven;
+  later adapters may use systemd on Linux and Task Scheduler on Windows.
 
 Implemented adapters are split by capability across `guardian-local-repository`
 (staging/seal/retention), `guardian-signing` (Ed25519 node identity),
@@ -78,8 +79,9 @@ non-secret configuration documents (repositories, capture plans, profiles).
 Composition-root crates wire these adapters into full use cases:
 `guardian-capture` (capture-to-seal, including the embedded-database
 snapshot adapter, ADR 0005) and `guardian-deploy` (remote deploy to a new
-host, ADR 0007). `guardian-cli` and the desktop's `src-tauri` crate are the
-two surfaces that call these composition roots. The signing crate depends
+host, ADR 0007). `guardian-cli`, the desktop's `src-tauri` crate, and
+`guardian-mcp` (ADR 0012) are the three surfaces that call these composition
+roots. The signing crate depends
 only on the core secret-store port; platform credential APIs remain
 isolated from domain and repository code. Its application service
 serializes enrollment with a cross-process lock and uses a durable intent
@@ -109,11 +111,31 @@ The CLI (`guardian-cli`) exposes some of the same use cases for automation
 today: `profile`, `credential`, `restore`, `vault`, `deploy`, and `signing`
 subcommands, each requiring JSON mode and an explicit absolute configuration
 path, returning meaningful exit codes. There is no `capture`/`plan`/`job`
-subcommand yet — triggering a backup (filesystem or embedded-database) is
-desktop-only. Native scheduler (systemd timer/Task Scheduler) integration and
-a service-install command are both still design intent, not implemented; when
-added, service installation should remain an explicit command, never an
-implicit side effect of launching the desktop app.
+subcommand and none is planned — the desktop app is the sole first-class
+human interface, and `guardian-cli` deliberately keeps its
+enrollment/restore/deploy scope rather than growing one. Native scheduler
+(systemd timer/Task Scheduler) integration and a service-install command are
+both still design intent, not implemented; when added, service installation
+should remain an explicit command, never an implicit side effect of
+launching the desktop app.
+
+### MCP server
+
+`guardian-mcp` (ADR 0012) exposes discovery (profiles, repositories, capture
+plans, Docker inventory, sealed backups), capture, restore, and deploy —
+including the one operation `guardian-cli` deliberately excludes,
+capture — as MCP tools for external tools and AI agents. Stdio transport
+only: it runs as a local subprocess an MCP client launches directly, so it
+inherits the same OS-process trust boundary every other surface already has
+rather than creating a new, network-reachable one. `preview_restore`/
+`preview_deploy` return the same confirmation phrase `RestorePlan`/
+`DeploymentPlan::approve` already require; `execute_restore`/`execute_deploy`
+require it back unchanged — the calling agent supplies it explicitly, the
+same as a human copying it from a CLI or desktop preview. Enrollment,
+credential import, repository registration, vault init, signing enrollment,
+and capture-plan creation are deliberately not exposed: each either mints new
+local trust/config state or (for capture-plan creation specifically) has no
+confirmation gate of its own to begin with.
 
 ## Backup lifecycle
 

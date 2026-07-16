@@ -1,8 +1,7 @@
-use crate::job_registry::JobRegistry;
 use guardian_configuration::RepositoryStore;
 use guardian_core::{
-    BackupId, CancellationHandle, ProfileId, ProfileStorePort, RemoteTargetPath, RepositoryId,
-    RunId,
+    BackupId, CancellationHandle, JobRegistry, ProfileId, ProfileStorePort, RemoteTargetPath,
+    RepositoryId, RunId,
 };
 use guardian_deploy::DeploymentComposition;
 use guardian_local_repository::LocalRepository;

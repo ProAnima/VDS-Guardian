@@ -143,20 +143,35 @@ closed.
 ### 3. Finish one shared application workflow
 
 - Expose capture, verify, list, restore, deploy, and cancel through one
-  application-service boundary shared by every surface.
+  application-service boundary shared by every surface. Closed for the
+  layer that determines a sealed backup's actual bytes/manifest (`guardian-
+  capture`/`guardian-deploy`/`guardian-local-repository`, already shared by
+  all three surfaces); each surface's own DTO/directory-resolution glue
+  still differs, deliberately, matching this project's own thin-adapter
+  discipline rather than one literal shared crate.
 - The desktop app is the sole first-class human interface. Headless and
   programmatic access — including AI agents — is served by a typed
-  external API (an MCP server) over that same application-service
-  boundary, not by a CLI capture command; `guardian-cli` keeps its existing
-  enrollment/restore/deploy scope and does not grow one.
+  external API (an MCP server), not by a CLI capture command; `guardian-cli`
+  keeps its existing enrollment/restore/deploy scope and does not grow one.
+  Closed: `guardian-mcp` (ADR 0012, stdio transport only) exposes discovery,
+  capture, restore, deploy, and cancel as MCP tools, mirroring the exact
+  confirmation-phrase gates CLI and desktop already enforce.
 - Keep Tauri commands, CLI parsing, and the API layer thin: each validates
-  DTOs, invokes one operation, and maps one typed result.
-- Return bounded progress states and stable error/remediation codes.
+  DTOs, invokes one operation, and maps one typed result. Closed for all
+  three surfaces.
+- Return bounded progress states and stable error/remediation codes. Tool
+  calls stay synchronous (matching CLI/desktop precedent); no progress-
+  notification streaming yet.
 - Keep filesystem paths explicit; Docker discovery is optional input assistance,
   not part of capture correctness.
 
 Gate: the same fixture plan produces the same sealed backup and restore result
-when triggered through the desktop app and the API layer.
+when triggered through the desktop app and the API layer. Met at the
+composition-root level (see above); no automated test yet drives the
+literal desktop code path and the `guardian-mcp` code path side by side for
+byte-identical comparison — `guardian-mcp`'s own tests cover its tool
+surface and a real (in-memory transport) MCP protocol round trip
+independently.
 
 ### 4. Complete the operator path
 
