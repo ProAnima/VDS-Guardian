@@ -96,6 +96,8 @@ exports recovery material,
 removes the original vault/signing/registry state, imports into clean local
 state, and performs the restore through that compiled CLI. This exact chain
 passed on Linux CI in workflow run `29518019511` for commit `3912a90`.
+The two live drills run serially so constrained CI runners do not race three
+SSH containers and mistake fixture startup contention for a product failure.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every

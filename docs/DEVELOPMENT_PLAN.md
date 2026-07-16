@@ -243,7 +243,10 @@ an ADR.
   green and perform a documented Windows desktop smoke test. Closed for CI:
   workflow run `29518019511` passed both the Ubuntu `verify → SSH integration
   → clean-room drill` chain and the Windows canonical gate for commit
-  `3912a90`. A documented interactive Windows desktop smoke test remains open.
+  `3912a90`. A subsequent docs-only run exposed that Rust's default parallel
+  test execution could race three live SSH containers on a small runner; the
+  drill is now serialized with bounded fixture-readiness deadlines. A
+  documented interactive Windows desktop smoke test remains open.
 
 Exit gate for 0.1: a clean machine with documented recovery material restores a
 backup to a clean destination, verifies the expected filesystem and SQLite

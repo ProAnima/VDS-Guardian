@@ -36,6 +36,7 @@ run(
     "--",
     "--ignored",
     "--nocapture",
+    "--test-threads=1",
   ],
   { ...process.env, GUARDIAN_CLI_BIN: binary },
 );

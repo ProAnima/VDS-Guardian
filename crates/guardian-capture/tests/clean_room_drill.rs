@@ -26,8 +26,8 @@ use guardian_ssh::{PinnedHost, SshUser, SystemOpenSsh};
 use std::time::{Duration, Instant};
 use support::{Check, Phase, TestResult};
 
-const READY_DEADLINE: Duration = Duration::from_secs(15);
-const HOST_KEY_DEADLINE: Duration = Duration::from_secs(10);
+const READY_DEADLINE: Duration = Duration::from_secs(45);
+const HOST_KEY_DEADLINE: Duration = Duration::from_secs(30);
 
 #[test]
 #[ignore = "requires Docker and a real SSH round trip; run via `npm run test:integration:drill`"]
