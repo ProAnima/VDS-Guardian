@@ -171,7 +171,7 @@ backup target; cleanup/discovery is a future recovery workflow.
   ransomware resistance requires a second node, offline/removable media, or an
   object store with retention lock in a later milestone.
 
-Milestone 1 currently enforces validated identifiers during deserialization,
+The implemented repository foundation enforces validated identifiers during deserialization,
 slash-only relative payload paths, symlink rejection at write and verification
 boundaries, a cross-process writer lock held for the staging lifetime, streaming
 SHA-256 verification, Ed25519-only signing metadata, quarantine on seal failure,
@@ -224,8 +224,12 @@ clears that acknowledgement.
   requires listed parent directories, never preserves ownership or permissions,
   and removes its partial destination on failure. Depth and expansion-ratio
   limits remain required before general-purpose restore support.
-- Restores never preserve setuid/setgid bits by default and use an explicit
-  ownership mapping policy.
+- Restores and remote deploy extraction never preserve setuid/setgid bits or
+  archive-recorded ownership by default: local restore's Rust-native
+  extractor never applies filesystem ownership/permission metadata from the
+  archive at all, and remote deploy's `tar --extract` invocation passes
+  `--no-same-owner --no-same-permissions` explicitly rather than relying on
+  the incidental privilege level of the SSH session.
 - Optional antivirus integration (P2, not yet built) should be an adapter with
   timeout and clear `not-scanned` versus `clean` states, so that no scanner
   result upgrades trust by itself once it exists.

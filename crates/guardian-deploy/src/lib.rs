@@ -4,8 +4,8 @@
 //! `docs/adr/0007-remote-deploy-to-a-new-vds.md`.
 
 use guardian_core::{
-    BackupId, DeploymentPlan, DeploymentPlanError, Manifest, ManifestVerifier, PayloadEntry,
-    PayloadPath, ProfileId, RemoteTargetPath, SecretStore, VdsProfile,
+    BackupId, DeploymentPlan, DeploymentPlanError, ManifestVerifier, PayloadPath, ProfileId,
+    RemoteTargetPath, SecretStore, VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshIdentity, SshUser, SystemOpenSsh};
@@ -79,7 +79,6 @@ impl DeploymentComposition<'_> {
         self.push_payload(
             &session,
             backup_id,
-            &manifest,
             &plan.filesystem_payload,
             plan.target_path.as_str(),
             PushKind::Filesystem,
@@ -88,7 +87,6 @@ impl DeploymentComposition<'_> {
             self.push_payload(
                 &session,
                 backup_id,
-                &manifest,
                 database_payload,
                 plan.target_path.as_str(),
                 PushKind::Database,
@@ -101,15 +99,17 @@ impl DeploymentComposition<'_> {
         &self,
         session: &SshSession,
         backup_id: &BackupId,
-        manifest: &Manifest,
         payload_path: &PayloadPath,
         target_path: &str,
         kind: PushKind,
     ) -> Result<(), DeployError> {
-        let entry = payload_entry(manifest, payload_path)?;
         // Re-verifies the manifest fresh, immediately before this specific
-        // payload is read — not once for the whole `execute` call.
-        let reader = self
+        // payload is read — not once for the whole `execute` call. The
+        // returned length is measured from the decrypted content itself,
+        // never `PayloadEntry.byte_length` (which records the on-disk,
+        // possibly-encrypted-and-therefore-larger stored size) — see
+        // `open_deploy_payload_reader`'s own doc comment.
+        let (reader, expected_bytes) = self
             .repository
             .open_deploy_payload_reader(backup_id, payload_path, self.verifier, self.credentials)
             .map_err(|_| DeployError::Storage)?;
@@ -121,7 +121,7 @@ impl DeploymentComposition<'_> {
                 identity_path,
                 target_path,
                 reader,
-                entry.byte_length,
+                expected_bytes,
             ),
             PushKind::Database => self.ssh.push_database_to(
                 &session.host,
@@ -129,7 +129,7 @@ impl DeploymentComposition<'_> {
                 identity_path,
                 target_path,
                 reader,
-                entry.byte_length,
+                expected_bytes,
             ),
         };
         result.map(|_| ()).map_err(|_| DeployError::PushFailed)
@@ -165,17 +165,6 @@ struct SshSession {
 enum PushKind {
     Filesystem,
     Database,
-}
-
-fn payload_entry<'a>(
-    manifest: &'a Manifest,
-    payload_path: &PayloadPath,
-) -> Result<&'a PayloadEntry, DeployError> {
-    manifest
-        .payloads
-        .iter()
-        .find(|entry| entry.path == *payload_path)
-        .ok_or(DeployError::Storage)
 }
 
 #[derive(Debug, Error)]

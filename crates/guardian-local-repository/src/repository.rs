@@ -314,32 +314,43 @@ impl LocalRepository {
     }
 
     /// Opens a decrypted, still-compressed reader for one payload of one
-    /// sealed backup, for a remote deploy push. Re-verifies the manifest's
+    /// sealed backup, for a remote deploy push, alongside the *measured*
+    /// byte length of that decrypted content. Re-verifies the manifest's
     /// signature and checksums fresh on *every* call rather than trusting a
     /// previously-built plan — deploy's two payload pushes are network-bound
     /// and can each run for minutes, a materially larger time-of-check to
     /// time-of-use window than local restore's back-to-back extractions, so
     /// each payload gets its own fresh verification immediately before it is
     /// read.
+    ///
+    /// The returned length is measured from the decrypted content itself,
+    /// never taken from `PayloadEntry.byte_length` — that field records the
+    /// on-disk (encrypted, when the payload is encrypted) stored size, a
+    /// distinct and strictly larger number checked separately by
+    /// `verify_payload_tree`. A caller that needs an exact expected byte
+    /// count for what this reader will actually produce (a strict push,
+    /// for instance) must use this measured value, not the manifest field.
     pub fn open_deploy_payload_reader(
         &self,
         backup_id: &BackupId,
         payload_path: &PayloadPath,
         verifier: &dyn ManifestVerifier,
         secrets: &dyn SecretStore,
-    ) -> Result<impl std::io::Read + Send + use<>, RepositoryError> {
+    ) -> Result<(impl std::io::Read + Send + use<>, u64), RepositoryError> {
         let _lock = self.acquire_lock()?;
         let backup_root = self.backups_root().join(backup_id.as_str());
         let manifest = load_verified_manifest(&backup_root, verifier)?;
         let (payload, encryption) = resolve_payload_file(&backup_root, &manifest, payload_path)?;
-        decrypted_payload_reader(
+        let reader = decrypted_payload_reader(
             &payload,
             payload_path,
             encryption.as_ref(),
             &manifest.backup_id,
             secrets,
             &self.restore_scratch_root(),
-        )
+        )?;
+        let byte_length = reader.measured_len()?;
+        Ok((reader, byte_length))
     }
 
     pub fn write_deploy_audit(
@@ -487,6 +498,21 @@ enum DecryptedPayload {
         file: File,
     },
     Direct(File),
+}
+
+impl DecryptedPayload {
+    /// Measures the already-open file handle's real size — never the path —
+    /// so this can never race a concurrent change to what the path itself
+    /// names.
+    fn measured_len(&self) -> Result<u64, RepositoryError> {
+        let file = match self {
+            DecryptedPayload::Temporary { file, .. } => file,
+            DecryptedPayload::Direct(file) => file,
+        };
+        file.metadata()
+            .map(|metadata| metadata.len())
+            .map_err(|source| RepositoryError::io("measure decrypted payload length", source))
+    }
 }
 
 impl std::io::Read for DecryptedPayload {

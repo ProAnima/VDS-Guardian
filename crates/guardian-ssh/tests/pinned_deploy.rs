@@ -16,13 +16,39 @@ fn push_filesystem_command_uses_the_atomic_rename_template()
     assert!(rendered.contains("StrictHostKeyChecking=yes"));
     assert!(rendered.contains("target='/srv/app'"));
     assert!(rendered.contains("[ ! -e \"$target\" ] || exit 1"));
-    assert!(rendered.contains("mkdir -- \"$tmp\" || exit 1"));
+    assert!(rendered.contains("mktemp -d -- \"$parent/.guardian-deploy-tmp.XXXXXX\") || exit 1"));
     assert!(rendered.contains(
-        "tar --extract --file=- --zstd --numeric-owner --one-file-system -C \"$tmp\" --"
+        "tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$tmp\" --"
     ));
     assert!(rendered.contains("mv -n -- \"$tmp\" \"$target\""));
     assert!(rendered.contains("[ ! -e \"$tmp\" ] || status=1"));
     assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
+fn push_filesystem_command_never_deletes_before_creating_its_own_temp_directory()
+-> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().push_filesystem_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app",
+    );
+    let rendered = render(&arguments);
+    // The old scheme built a fixed, guessable sibling name and unconditionally
+    // `rm -rf`'d it before ever creating anything -- a real risk to any
+    // legitimate, unrelated thing that happened to already exist there.
+    // `mktemp -d` both names and creates a fresh, unique directory in one
+    // step, so the only correct place for an `rm -rf` of that exact path is
+    // in the failure-cleanup branch, strictly after `mktemp` has already run.
+    let mktemp_position = rendered
+        .find("mktemp -d --")
+        .ok_or("push_filesystem_command must create its temp directory via mktemp -d")?;
+    if let Some(rm_rf_position) = rendered.find("rm -rf -- \"$tmp\"") {
+        assert!(rm_rf_position > mktemp_position);
+    }
     Ok(())
 }
 

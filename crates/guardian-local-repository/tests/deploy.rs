@@ -30,7 +30,7 @@ fn open_deploy_payload_reader_re_verifies_the_manifest_fresh_on_every_call() -> 
     staging.seal(manifest, timestamp("2026-07-15T09:00:00Z")?, &signer)?;
 
     // First call succeeds against the still-valid sealed backup.
-    let mut first =
+    let (mut first, _) =
         local_repository.open_deploy_payload_reader(&backup_id, &path, &signer, &secrets)?;
     let mut plaintext = Vec::new();
     first.read_to_end(&mut plaintext)?;
@@ -117,11 +117,14 @@ fn open_deploy_payload_reader_returns_the_exact_verified_bytes() -> TestResult {
     manifest.add_payload(payload)?;
     staging.seal(manifest, timestamp("2026-07-15T09:00:00Z")?, &signer)?;
 
-    let mut reader =
+    let (mut reader, byte_length) =
         local_repository.open_deploy_payload_reader(&backup_id, &path, &signer, &secrets)?;
+    // Asserted on its own, before any read, so this cannot pass merely
+    // because the reader happens to yield the right number of bytes.
+    assert_eq!(byte_length, source_bytes.len() as u64);
     let mut plaintext = Vec::new();
     reader.read_to_end(&mut plaintext)?;
-    assert_eq!(plaintext.len() as u64, source_bytes.len() as u64);
+    assert_eq!(plaintext.len() as u64, byte_length);
     assert_eq!(plaintext, source_bytes);
     Ok(())
 }

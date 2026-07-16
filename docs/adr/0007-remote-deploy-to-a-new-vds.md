@@ -224,6 +224,90 @@ trusted input, mirroring `execute_restore`'s own discipline.
   over the same `SystemOpenSsh` invocation keeps one reviewed code path for
   every remote command this project runs, pull or push.
 
+## Amendment (2026-07-16): three P0 correctness/security bugs fixed
+
+A code review found three real bugs in the mechanism above, all confirmed
+against the running code before this amendment was written.
+
+**The `expected_bytes`/`byte_length` premise above was wrong for every
+encrypted payload.** The original text said "since `PayloadEntry.byte_
+length` is already verified against the signed manifest before the reader
+is ever opened, the push pump takes `expected_bytes: u64`" — implying that
+field was always the right count to hand the pump. It is not: `byte_
+length` records the payload's on-disk stored size, which for an encrypted
+payload is the *ciphertext* size (plaintext plus a fixed envelope header
+and one AEAD tag per chunk, per `guardian-encryption`) — always strictly
+larger than the plaintext byte count `open_deploy_payload_reader` actually
+produces after decrypting. Passing the ciphertext count as `expected_
+bytes` made `copy_stream_to_child`'s exact-match check fail with `ByteCount
+Mismatch` on every encrypted deploy — after the remote side had already
+received the complete, valid stream and successfully renamed it into
+place, since the pump closes `ChildStdin` before evaluating the mismatch.
+Every real capture path encrypts (confirmed via `LocalRepositoryStorage
+Adapter::encrypted` being the only constructor any composition root ever
+calls), so this was not an edge case — every encrypted deploy failed,
+after the remote mutation had already fully succeeded, and any retry was
+then blocked by the target now existing. Fixed by measuring the actual
+decrypted byte count `open_deploy_payload_reader` is about to produce
+(`DecryptedPayload::measured_len`, a cheap `.metadata()` call on the
+already-open, already-decrypted file handle) and returning it alongside
+the reader, rather than trusting a value recorded through an unrelated
+historical code path. `byte_length`'s own meaning and its existing
+`verify_payload_tree` integrity check are both untouched — this is a new,
+independent measurement, not a reinterpretation of that field.
+
+**The push commands unconditionally deleted a predictable sibling path.**
+Both `push_filesystem_command` and `push_database_command` built a fixed,
+guessable name (`"$target.guardian-deploy-tmp"`) and ran `rm -rf`/`rm -f`
+on it before ever creating anything — deleting whatever already happened
+to be there, with no check, no confirmation tie-in (the operator's typed
+phrase never names this synthesized path), and no dry-run. Fixed by
+replacing the fixed name with `mktemp -d`/`mktemp` (already an assumed-
+present dependency elsewhere in this file), which names and creates a
+fresh, unique entry in one atomic step — removing the need for any
+unconditional pre-emptive delete entirely. The mktemp call is placed as a
+sibling inside the same parent directory as the target (required so the
+later `mv` stays a same-filesystem rename, never a silent cross-filesystem
+copy), after the existing absence check and after `mkdir -p` on that
+parent.
+
+This closes the security bug at the cost of an incidental property the
+original "Residual risk" note above didn't call out because the old
+scheme's determinism was never the point: under the old, fixed name, a
+crash before the remote's own cleanup trap ran left an orphan with a
+*predictable* name a later retry's next `rm -rf` would have opportunistically
+swept up. Under `mktemp`'s randomized suffix, a crash-orphaned temp entry
+has an unpredictable name and is no longer self-cleaned by a later retry.
+This is a deliberate, accepted trade-off — closing an unconditional-delete
+vulnerability is worth losing an incidental self-healing side effect that
+was never a designed guarantee — stated plainly here rather than left for
+a future reader to notice as an unexplained regression.
+
+**Remote extraction had no explicit ownership/permission policy.**
+`push_filesystem_command`'s `tar --extract` invocation passed neither
+`--no-same-owner` nor `--no-same-permissions`. GNU tar's undocumented-by-
+this-code default is to restore archived ownership when run as root (and
+never when not, regardless of any flag) and to always restore full
+archived permission bits — including setuid/setgid — regardless of
+privilege, unless told not to. Whether ownership restoration actually
+happened therefore depended entirely on the incidental privilege of
+whichever account ran the SSH session, never on an explicit policy this
+code enforced. Fixed by adding `--no-same-owner --no-same-permissions`,
+matching the policy `docs/SECURITY_MODEL.md` already states for local
+restore's separate Rust-native extractor, extended explicitly to cover
+this remote path too. The now-inert `--numeric-owner` flag (it only
+affects ownership-restoration *display*, and does nothing once ownership
+restoration itself is disabled) was dropped in the same change.
+
+Not addressed by this amendment, named explicitly rather than silently
+left: assembling the filesystem and optional database payload under one
+remote staging root with a single final rename (today they are still two
+independently atomic pushes — a failed second payload leaves a live,
+partially deployed target with no database file), and making attempted/
+completed/failed audit persistence part of this composition itself rather
+than a responsibility duplicated by every caller. Both are tracked in
+`docs/DEVELOPMENT_PLAN.md`.
+
 ## Consequences
 
 A backup can now be pushed onto a new/clean VDS end to end (plan → typed
