@@ -6,20 +6,16 @@ this repository. Read this file, `CODEX.md`, and the relevant document under
 
 ## Current status
 
-Milestone 1: domain and local repository. Simulated-source repository and
-signing slices implement isolated staging, SHA-256 verification, golden manifest
-fixtures, Ed25519 node identities, OS credential-store integration, quarantine,
-atomic seal, journaled signing enrollment, verified whole-directory retention,
-and a desktop signing-identity setup screen. A pinned system-OpenSSH capture
-workflow now seals encrypted format-v2 filesystem backups, and verified
-filesystem restores can extract them into a new destination. Neither is
-production-ready: cancellation, clean-room drills, safety backup/rollback, and
-other P0 gates remain open. Retention
-power-loss reconciliation, a deterministic tar.zst writer, and a streaming
-tar.zst archive inspector are implemented, but extraction, full archive
-hostility coverage, and restore drills remain open. The signing screen shows status and requires an
-explicit action plus acknowledgement before it invokes enrollment; it never
-creates an identity automatically or implicitly.
+Release 0.1 hardening: pinned system-OpenSSH capture can seal encrypted
+format-v2 filesystem backups with an optional SQLite snapshot; verified local
+restore and new-host deploy foundations exist, and capture/deploy cancellation
+is wired through CLI and desktop adapters. The release is not production-ready:
+restore/deploy must become one safe multi-payload transaction, portable recovery
+keys are not implemented, the shared CLI/desktop workflow is incomplete, and a
+clean-machine drill must prove the compiled production path. Docker discovery,
+additional databases, scheduling, retention automation, and updater work are
+outside Release 0.1. The ordered scope and gates live in
+`docs/DEVELOPMENT_PLAN.md`.
 
 ## Source of truth
 
@@ -48,9 +44,14 @@ diagnose a failed gate. Never claim the whole repository is green after running
 only a focused test.
 
 Changes to backup/restore, archive parsing, storage lifecycle, remote command
-construction, secret handling, or retention also require security tests and the
-restore-drill profile once those gates land. Until they exist, explicitly state
-that production verification is incomplete.
+construction, secret handling, or retention also require security tests and,
+where relevant, a run of the clean-room drill (`npm run
+test:integration:drill`, Docker-gated). The drill exists and passed
+end-to-end for the first time on 2026-07-16 (`docs/adr/0011-archive-path-validation-hardening.md`),
+but it is not part of canonical `npm run verify`, has not yet been observed
+passing on Linux CI, and does not cover every failure mode named in
+`docs/DEVELOPMENT_PLAN.md` section 5. State explicitly which of these gaps
+still apply rather than claiming full production verification.
 
 ## Required engineering behavior
 
@@ -75,14 +76,21 @@ that production verification is incomplete.
 - Tauri commands do not contain business logic or infrastructure orchestration.
 - `guardian-core` does not depend on Tauri, React, OS-specific UI, or a concrete
   SSH/keyring/archive implementation.
-- CLI and GUI share use cases and serialized DTO contracts where appropriate.
+- CLI, GUI, and the MCP server share use cases and serialized DTO contracts
+  where appropriate. Capture is deliberately desktop- and MCP-only; the CLI
+  does not grow a capture command.
 - Infrastructure errors are mapped to typed domain/application errors before
   reaching UI or CLI output.
 
 ## Code budgets
 
-- Rust/TypeScript module: target <= 300 lines.
-- Function: target <= 40 lines.
+- Rust module: target <= 300 lines; function: target <= 40 lines. These are
+  split signals, not machine-enforced — no clippy line-count lint exists.
+- TypeScript module: <= 300 lines; function: <= 40 lines. These ARE
+  machine-enforced today, at ESLint error severity (`max-lines`/
+  `max-lines-per-function`, part of canonical `npm run verify`) — not a
+  soft target. No `eslint-disable` exception exists anywhere in the
+  codebase today.
 - Tauri command: target <= 20 lines.
 - New dependencies require a short justification in the PR/change summary,
   including security and cross-platform impact.
@@ -99,7 +107,9 @@ Update `docs/SECURITY_MODEL.md` and add adversarial tests when changing:
 - archive extraction, symlinks, hardlinks, ownership, or paths;
 - backup sealing, verification, signing, quarantine, or deletion;
 - restore planning or remote mutation;
-- auto-update, installer, or release signing.
+- auto-update, installer, or release signing;
+- a new external-facing interface or protocol surface (e.g. a new inbound
+  transport, API, or listener) — the trigger that produced ADR 0012.
 
 Stop on a critical doctor or security finding. Do not deploy, restore, publish,
 or work around the finding silently.

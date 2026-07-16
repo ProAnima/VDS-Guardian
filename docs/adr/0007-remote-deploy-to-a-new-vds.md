@@ -41,20 +41,24 @@ guard with no path back. Unlike capture's "delete the partial local file on
 failure" (trivial: same process, same machine), a failed deploy's partial
 state is on a third-party remote host, and any cleanup attempt needs a
 second SSH round-trip that can fail for the identical underlying reason.
-Both push commands (`guardian-ssh`'s `push_filesystem_command`/
-`push_database_command`) instead extract/write into a freshly created,
-uniquely named sibling temp path (via `mktemp -d`/`mktemp`, never a fixed
-guessable name — see the 2026-07-16 amendment below) and atomically rename
-into place only on success, using `mv -n` (no-clobber) plus a post-move
-absence check on the temp path — not a bare `mv` — so a value that raced
-into the target during the transfer is never silently clobbered. The remote
-shell's own control flow does the cleanup; no second connection is needed,
-because `tar`/`zstd` detect a truncated stream and exit non-zero on their
-own.
+`guardian-ssh`'s `push_filesystem_command` instead extracts into a freshly
+created, uniquely named sibling temp path (via `mktemp -d`, never a fixed
+guessable name — see the "three P0 correctness/security bugs fixed"
+amendment below) and atomically renames into place only on success, using
+`mv -n` (no-clobber) plus a post-move absence check on the temp path — not
+a bare `mv` — so a value that raced into the target during the transfer is
+never silently clobbered. The remote shell's own control flow does the
+cleanup; no second connection is needed, because `tar`/`zstd` detect a
+truncated stream and exit non-zero on their own. This description is
+unchanged and current for both a filesystem-only deploy and the filesystem
+stage of a combined deploy.
 
-The database push guards `<path>/database.sqlite` specifically, not `<path>`
-itself — the filesystem push (when present) already legitimately created
-`<path>` first, so the two pushes cannot share one guard.
+A combined deploy's database payload no longer follows this same
+guard-then-rename shape. The original `push_database_command` did (guarding
+`<path>/database.sqlite` specifically, not `<path>` itself, since the
+filesystem push already legitimately created `<path>` first), but it was
+deleted outright and replaced by a stage-then-finalize protocol — see the
+"staged deploy protocol closes cross-payload atomicity" amendment below.
 
 **Residual risk**: "target verified absent" is a check against a remote
 filesystem outside Guardian's exclusive control, not a guarantee about the
@@ -162,9 +166,12 @@ successful write and setting the same shared `AtomicBool` on any error. The
 source is boxed (`Box<dyn Read + Send>`, not a concrete `File`) because the
 real source — a decrypted-payload reader from `guardian-local-repository` —
 may need to keep a scratch-file guard alive alongside the readable handle,
-something a bare `File` cannot represent; the public `push_filesystem_to`/
-`push_database_to` methods accept `impl Read + Send + 'static` and box it
-internally, so callers never see the boxing.
+something a bare `File` cannot represent; the public push methods accept
+`impl Read + Send + 'static` and box it internally, so callers never see the
+boxing. (Originally `push_filesystem_to`/`push_database_to`; `push_database_to`
+was later deleted and replaced by `push_filesystem_into_staging_to`/
+`push_database_into_staging_to`/`finalize_deploy_to` — see the staged deploy
+protocol amendment below.)
 
 The push pump takes `expected_bytes: u64` — measured directly from the
 decrypted content `open_deploy_payload_reader` actually produces, never

@@ -11,6 +11,20 @@ live commands will be enabled by milestones in `DEVELOPMENT_PLAN.md`.
 4. Confirm the result is `sealed`, not merely `captured`.
 5. Review warnings and the verification report.
 
+## Programmatic and agent access
+
+`guardian-mcp` (ADR 0012) exposes the same capture/restore/deploy/discovery
+operations as MCP tools, for external tools and AI agents rather than a human
+at the desktop app or a terminal. It runs as a local subprocess over stdio
+only — never a network-reachable transport — so it carries the same
+OS-process trust as the desktop app and CLI, not a wider one. Restore and
+deploy tool calls require the exact confirmation phrase a prior preview call
+returned, identical to the desktop and CLI flows; the calling agent supplies
+it explicitly, standing in for the human who would otherwise type or paste
+it. Capture, deploy, and cancellation use the same run-id-keyed job registry
+the desktop app uses, so a capture or deploy started via MCP can be
+cancelled the same cooperative way.
+
 ## Scheduled backup
 
 Scheduled jobs must be non-interactive and therefore cannot enroll a new host

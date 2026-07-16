@@ -175,10 +175,14 @@ Restore is a separate use case, not "backup in reverse":
 
 The initial restore slice accepts only a sealed manifest and an absolute new
 target path. It produces an exact confirmation phrase, re-verifies signature
-and payload digest at execution, and then extracts only a supported filesystem
-archive. Encrypted format-v2 payloads resolve their key through the secret-store
-port and are authenticated before extraction. Safety backup, switch-over,
-rollback, health probes, and signed restore reports remain separate gates.
+and payload digest at execution, and then stages every present payload (the
+required filesystem archive and, when the manifest carries one, the database
+snapshot) into a fresh sibling directory, publishing all of it to the
+destination with a single atomic rename only after every payload has
+extracted successfully. Encrypted format-v2 payloads resolve their key
+through the secret-store port and are authenticated before extraction. Safety
+backup, switch-over, rollback, health probes, and signed restore reports
+remain separate gates.
 
 The local-repository adapter reloads and verifies the manifest signature and
 every payload checksum immediately before it produces this plan. It rejects an
@@ -218,12 +222,15 @@ recovery journal, never private key material.
   directory. Opening a repository reconciles interrupted moves by rollback or
   resumes a durably marked cleanup; contradictory state fails closed.
 - Operator-triggered cancellation (ADR 0010) covers SSH-backed capture and
-  deploy: the CLI installs a Ctrl+C handler and the desktop app tracks
-  in-flight jobs in a per-run registry with a Cancel affordance, both setting
-  a cross-thread handle the transport polls between reads. The spawned child
-  is isolated into its own process group so only that cooperative signal,
-  never a raw OS interrupt racing it, ends the process. Local restore
-  extraction has no cancellation path yet.
+  deploy: the CLI installs a Ctrl+C handler, the desktop app tracks in-flight
+  jobs in a per-run registry with a Cancel affordance, and `guardian-mcp`
+  (ADR 0012) exposes the same per-run registry through a `cancel_job` tool —
+  all three setting a cross-thread handle the transport polls between reads.
+  The `JobRegistry` desktop and `guardian-mcp` share lives in `guardian-core`,
+  not duplicated per surface. The spawned child is isolated into its own
+  process group so only that cooperative signal, never a raw OS interrupt
+  racing it, ends the process. Local restore extraction has no cancellation
+  path yet.
 - Every external call has connect, idle, and total timeouts.
 - Capture and push streams enforce a maximum byte ceiling so a runaway or
   hostile remote command cannot exhaust local disk or memory.

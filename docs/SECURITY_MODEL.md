@@ -335,20 +335,26 @@ clears that acknowledgement.
 - Create a safety point before destructive in-place restore.
 - Database restore targets a new database/container first where practical.
 - Hooks captured from the server are data, never automatically executable.
+- A restore with both filesystem and database payloads stages both under one
+  fresh sibling directory next to the destination, publishing them with a
+  single atomic rename guarded by a fresh existence check immediately before
+  it — a failed second payload can never leave a partial destination in place.
 
 ### Deploy safety
 
 - Deploy targets a *different*, separately-enrolled, host-key-pinned profile
   than the one the backup was captured from — blocked on both a matching
   profile ID and a matching pinned host-key fingerprint (ADR 0007).
-- The remote path must be currently absent; both push commands extract or
-  write into a sibling temp path and atomically rename into place only on
-  full success, so an interrupted push never leaves a partially-written
-  target and a retry is never blocked by the push's own prior failure.
+- The remote path must be currently absent. A filesystem-only deploy pushes
+  and renames atomically in one step. A combined (filesystem-plus-database)
+  deploy stages both payloads under one shared remote staging directory
+  first — neither push renames individually — then a single finalize step
+  atomically renames the staged directory into place, so an interrupted push
+  never leaves a partially-written target and a failed second payload can
+  never leave a live target with a missing database file.
 - Each payload's manifest signature and checksums are re-verified
   immediately before that payload is pushed, not once for the whole
-  operation, since the two pushes are network-bound and can each run for
-  minutes.
+  operation, since each push is network-bound and can run for minutes.
 - Requires an exact confirmation phrase, computed from the backup ID, the
   target profile ID, and the target path together, before any push begins.
 - Every deploy attempt is recorded to the repository's audit log at

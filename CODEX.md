@@ -7,14 +7,27 @@ the change is incomplete until either the code or a reviewed ADR is updated.
 
 ## Target product
 
-VDS Guardian is one product with two delivery surfaces:
+VDS Guardian is a small backup-and-restore product with three delivery
+surfaces:
 
-- a Tauri desktop application for Windows and Linux operators;
-- a headless CLI/service for unattended Linux or Windows backup nodes.
+- a Tauri desktop application, the sole first-class human interface, for
+  Windows and Linux operators;
+- a headless CLI (`guardian-cli`) scoped to enrollment, restore, and deploy —
+  it deliberately does not grow a capture command;
+- an MCP server (`guardian-mcp`, ADR 0012, stdio transport only) exposing
+  capture, restore, deploy, discovery, and cancellation for external tools
+  and AI agents.
 
-Both surfaces call the same Rust use cases. The UI, Tauri commands, and CLI may
-orchestrate work but must not implement backup, verification, retention, or
-restore rules independently.
+All three surfaces call the same Rust use cases. The UI, Tauri commands, CLI,
+and MCP tool handlers may orchestrate work but must not implement backup,
+verification, retention, or restore rules independently.
+
+The first release proves one manual path: pinned SSH capture of explicit paths
+to a local/removable repository, verification, and restore to a new local or
+remote destination. Scheduling, broad Docker discovery, additional database
+engines, in-place recovery, and cloud storage are later capabilities. Existing
+foundation for them must not create parallel orchestration or expand the first
+release gate.
 
 ## Non-negotiable invariants
 
@@ -77,12 +90,20 @@ SSH, filesystem, keyring, scheduler, archive, database adapters
 - Destructive buttons cannot be the default focused action and must explain
   target, scope, and rollback posture.
 - All controls require accessible names and keyboard operation.
-- UI modules should remain under 300 lines and functions under 40 lines unless
-  a documented exception is clearer than a split.
+- UI modules should remain under 300 lines and functions under 40 lines; this
+  is machine-enforced today via ESLint's `max-lines`/`max-lines-per-function`
+  rules at error severity (part of canonical `npm run verify`), not just a
+  soft target — no `eslint-disable` exception exists anywhere in the codebase
+  today. The equivalent Rust budget (`AGENTS.md`'s "Code budgets") remains a
+  target/split-signal only; no clippy line-count lint enforces it.
 
 ## Observability and audit
 
-- Every job has a UUIDv7 correlation ID.
+- Every job should have a stable correlation ID. **Not yet met**: `RunId` is
+  a validated opaque string, not a UUIDv7 — the desktop frontend mints
+  `crypto.randomUUID()` (UUIDv4), and no `uuid` crate exists anywhere in the
+  workspace. Named as a still-open, pre-existing gap in
+  `docs/adr/0010-operator-triggered-cancellation.md` rather than closed here.
 - Audit events are append-only and redact secrets, key paths, raw environment
   values, and sensitive command output.
 - Metrics use bounded labels only. Hostnames and backup IDs do not become metric
@@ -98,4 +119,3 @@ SSH, filesystem, keyring, scheduler, archive, database adapters
   installed application.
 - A release that changes backup format, SSH behavior, or restore logic requires
   a clean-room restore drill before publication.
-

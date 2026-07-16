@@ -51,7 +51,7 @@ must not expand the release gate or create a second orchestration path.
 
 The repository already contains more foundation than the first release needs:
 
-- Rust core shared by Tauri and CLI surfaces;
+- Rust core shared by Tauri, CLI, and MCP surfaces;
 - validated profiles, plans, identifiers, and manifest versions;
 - pinned system-OpenSSH transport with timeouts, limits, and cancellation;
 - isolated staging, SHA-256 verification, quarantine, and atomic seal;

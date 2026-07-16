@@ -6,7 +6,7 @@
   <a href="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml"><img src="https://github.com/ProAnima/VDS-Guardian/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-70ddb7.svg" alt="Apache-2.0 license" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-102a25.svg" alt="Windows and Linux" />
-  <img src="https://img.shields.io/badge/status-Milestone%201-e2b35d.svg" alt="Milestone 1" />
+  <img src="https://img.shields.io/badge/status-0.1%20hardening-e2b35d.svg" alt="Release 0.1 hardening" />
 </p>
 
 VDS Guardian is an open-source desktop and headless disaster-recovery manager
@@ -14,31 +14,32 @@ for remote Linux servers. It is built for operators who need isolated,
 independently stored recovery points and a predictable path from a failed or
 compromised VDS to a clean, working deployment.
 
-The project focuses on Docker-based workloads, database-consistent capture,
-cryptographically verified manifests, and dry-run-first restoration without a
-mandatory cloud service.
+The first release focuses on one manual path: connect to a Linux server, capture
+explicitly selected data, store a verified backup on a local or removable disk,
+and restore it to a new destination without a mandatory cloud service.
 
-> **Project status:** Milestone 1 / local repository foundation. The first
-> fail-closed staging, verification, Ed25519 identity, quarantine, atomic seal,
-> and whole-directory retention slices are implemented and tested with
-> simulated sources. Signing enrollment now has a locked, crash-recoverable
-> application service plus explicit JSON CLI, Tauri bridge commands, and a
-> deliberate desktop enrollment screen. Live backup and
-> restore operations remain disabled. Do not use it as a disaster-recovery
-> system until the restore-drill gate in the roadmap is complete.
+> **Project status:** Release 0.1 hardening. Pinned SSH capture, encrypted sealed
+> backups, local restore, new-host deploy, optional SQLite snapshots, an
+> initial desktop flow, and an automated clean-room drill (now passing
+> end-to-end) are implemented foundations. Portable recovery keys and full
+> desktop/MCP workflow parity remain release blockers. Do not use the
+> application as a disaster-recovery system until the Release 0.1 exit gate
+> passes.
 
 ## Design goals
 
-- One Rust backup engine shared by the desktop GUI and a headless CLI.
+- One Rust backup engine shared by the desktop GUI, a headless CLI
+  (enrollment/restore/deploy), and an MCP server for programmatic and
+  AI-agent access.
 - First-class Windows and Linux support; no WSL requirement on Windows.
 - A separate sealed directory for every completed backup.
 - A staging-to-sealed lifecycle so failed or suspicious runs never become
   restorable backups.
-- SHA-256 manifests, signed metadata, verification, quarantine, retention, and
-  restore drills.
-- Docker Compose metadata, bind mounts, named volumes, databases, system
-  configuration, and operator-selected paths captured through explicit plans.
-- Multiple installations can keep independent repositories and schedules.
+- SHA-256 manifests, signed metadata, verification, quarantine, and restore
+  drills.
+- Explicit operator-selected filesystem paths and an optional SQLite snapshot.
+- Portable recovery material so an independent backup disk remains restorable
+  after loss of the original operator machine.
 - SSH private keys live in the OS credential store or an operator-selected
   file outside the repository. Secrets are never embedded in source code or
   committed configuration.
@@ -69,7 +70,8 @@ crates/guardian-local-repository/  Cross-platform staging and seal adapter
 crates/guardian-signing/  Ed25519 backup-node identity lifecycle
 crates/guardian-os-keyring/  Windows/Linux secure credential-store adapter
 crates/guardian-vault/  Encrypted local file vault fallback for headless nodes
-crates/guardian-cli/   Headless Linux/Windows entrypoint
+crates/guardian-cli/   Headless enrollment/restore/deploy entrypoint
+crates/guardian-mcp/   MCP server for headless/AI-agent capture/restore/deploy
 docs/                  Architecture, security, backup format, and roadmap
 scripts/               Canonical doctor and verification entrypoints
 ```
@@ -145,12 +147,11 @@ yet.
 guardian-cli credential register-agent-key --credential-id credential-002 --public-key-file D:\VDSGuardian\backup.pub --json
 ```
 
-The pinned SSH profile is the only VDS transport boundary. The current
-database preflight can use an `sshPeer` connection to ask PostgreSQL or MySQL
-for its version on `localhost` over that profile; it never puts a database
-password in an SSH command. The VDS backup account must already be authorized
-for non-interactive local access. Capture, database dumps, and restore remain
-unimplemented and are not production-ready.
+The pinned SSH profile is the only VDS transport boundary. Live filesystem
+capture, optional SQLite snapshot, local restore, and deploy to a new remote
+destination are implemented foundations, but they are not production-ready.
+PostgreSQL/MySQL probes and Docker discovery exist as later-work foundations;
+their dump/restore and consistency workflows are outside Release 0.1.
 
 ## Security boundary
 
@@ -175,8 +176,8 @@ The milestone plan, acceptance gates, and definition of done are in
 ## Contributing
 
 Read `AGENTS.md`, `CODEX.md`, and `CONTRIBUTING.md` before changing code. Security
-issues should follow `SECURITY.md` and should not be filed publicly until a safe
-disclosure path is available.
+issues should follow `SECURITY.md` and must not be filed as a public issue —
+report them through a GitHub security advisory instead.
 
 ## License
 

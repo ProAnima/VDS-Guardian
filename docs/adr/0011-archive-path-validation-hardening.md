@@ -105,7 +105,8 @@ sibling of the target under `/srv`) could never be created.
 
 This is **not a new precondition** — it has been true since the very first
 deploy P0 fix ("the mktemp call is placed as a sibling inside the same
-parent directory as the target", see the 2026-07-16 amendment above): both
+parent directory as the target", see `docs/adr/0007-remote-deploy-to-a-new-vds.md`'s
+"three P0 correctness/security bugs fixed" amendment): both
 the old single-push mechanism and the new staged protocol require the SSH
 account to have write access to a deploy target's *parent* directory. The
 fixture had simply never modeled this, because `deploy_drill` never reached
