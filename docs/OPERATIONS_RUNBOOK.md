@@ -116,6 +116,10 @@ filesystem-payload byte, then cancel through `JobRegistry`. They verify the
 cancelled audit record with no completed/failed record; capture leaves neither
 local staging nor a sealed backup, and deploy leaves no remote target or shared
 remote staging tree.
+A fifth live fixture verifies host-trust failure against a working source: it
+pins a different freshly generated but valid SSH host key, so strict checking
+must reject the capture before staging or sealing. The resulting audit records
+`started` then `failed`, with no sealed backup.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every

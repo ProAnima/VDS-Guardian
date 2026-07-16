@@ -19,6 +19,8 @@
 mod cancellation;
 #[path = "clean_room_drill/capture_cancellation.rs"]
 mod capture_cancellation;
+#[path = "clean_room_drill/host_key_rejection.rs"]
+mod host_key_rejection;
 mod support;
 
 use guardian_core::{
