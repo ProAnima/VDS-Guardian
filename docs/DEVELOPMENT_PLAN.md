@@ -208,7 +208,9 @@ independently.
 ### 4. Complete the operator path
 
 - The desktop setup flow covers repository, server profile, selected paths, and
-  recovery-key readiness without exposing internal architecture.
+  recovery-key readiness without exposing internal architecture. Partially
+  closed: it now exports an offline recovery bundle through the shared service;
+  clean-machine bundle import remains to be exposed in desktop.
 - Backup list shows sealed/failed/cancelled state and last verification result.
 - Restore preview states the source backup, destination, expected writes, and
   rollback posture before confirmation.

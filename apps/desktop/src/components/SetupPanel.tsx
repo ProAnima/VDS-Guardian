@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
 import { RepositoryPanel } from "./RepositoryPanel";
+import { RecoveryBundlePanel } from "./RecoveryBundlePanel";
 import { SigningIdentityPanel } from "./SigningIdentityPanel";
 import { SshProfilePanel } from "./SshProfilePanel";
 
@@ -25,6 +26,7 @@ export function SetupPanel({ t }: SetupPanelProps) {
       </SetupStep>
       <SetupStep number="2" title="Хранилище и recovery" icon={FolderArchive}>
         <RepositoryPanel />
+        <RecoveryBundlePanel />
       </SetupStep>
       <SetupStep number="3" title="Сервер для бэкапа" icon={Server}>
         <SshProfilePanel />

@@ -1,6 +1,9 @@
 use guardian_configuration::{RepositoryRegistration, RepositoryStore};
 use guardian_core::RepositoryId;
-use guardian_local_repository::{LocalRepository, RepositoryError, RepositoryVerificationKey};
+use guardian_local_repository::{
+    LocalRepository, RecoveryBundleError, RepositoryError, RepositoryVerificationKey,
+    export_recovery_bundle,
+};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::SigningIdentityManager;
 use rand_core::{OsRng, RngCore};
@@ -13,6 +16,15 @@ use tauri::Manager;
 pub struct RegisterRepositoryRequest {
     label: String,
     path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRecoveryBundleRequest {
+    repository_id: String,
+    passphrase: String,
+    output_path: String,
+    confirmation: String,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
@@ -66,6 +78,45 @@ pub async fn initialize_recovery(
     tauri::async_runtime::spawn_blocking(move || initialize_recovery_blocking(root, repository_id))
         .await
         .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+pub async fn export_recovery_bundle_file(
+    app: tauri::AppHandle,
+    request: ExportRecoveryBundleRequest,
+) -> Result<(), RepositoryCommandFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| RepositoryCommandFailure::storage())?;
+    tauri::async_runtime::spawn_blocking(move || export_bundle_blocking(root, request))
+        .await
+        .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+fn export_bundle_blocking(
+    root: PathBuf,
+    request: ExportRecoveryBundleRequest,
+) -> Result<(), RepositoryCommandFailure> {
+    if request.passphrase.is_empty() {
+        return Err(RepositoryCommandFailure::passphrase());
+    }
+    let repository_id = RepositoryId::parse(request.repository_id)
+        .map_err(|_| RepositoryCommandFailure::invalid())?;
+    let registration = RepositoryStore::at(root.join("repositories"))
+        .get(&repository_id)
+        .map_err(|_| RepositoryCommandFailure::storage())?
+        .ok_or_else(RepositoryCommandFailure::invalid)?;
+    let repository = LocalRepository::open(&registration.path, repository_id.clone())
+        .map_err(|_| RepositoryCommandFailure::repository())?;
+    export_recovery_bundle(
+        &repository,
+        &OsCredentialStore,
+        &repository_id,
+        request.passphrase.as_bytes(),
+        &PathBuf::from(request.output_path),
+        &request.confirmation,
+    )
+    .map_err(map_bundle_error)
 }
 
 fn initialize_recovery_blocking(
@@ -183,6 +234,30 @@ impl RepositoryCommandFailure {
             code: "recovery_setup_failed",
             message: "Recovery protection could not be prepared.",
             remediation: "Check credential-store access and retry before starting a backup.",
+        }
+    }
+    fn passphrase() -> Self {
+        Self {
+            code: "recovery_passphrase_required",
+            message: "A recovery-bundle passphrase is required.",
+            remediation: "Enter a non-empty passphrase and store the exported bundle offline.",
+        }
+    }
+}
+
+fn map_bundle_error(error: RecoveryBundleError) -> RepositoryCommandFailure {
+    match error {
+        RecoveryBundleError::ConfirmationMismatch => RepositoryCommandFailure {
+            code: "recovery_confirmation_mismatch",
+            message: "The recovery export confirmation does not match.",
+            remediation: "Type the exact confirmation phrase shown for this repository.",
+        },
+        RecoveryBundleError::NotConfigured => RepositoryCommandFailure::recovery(),
+        RecoveryBundleError::InvalidBundle | RecoveryBundleError::Crypto => {
+            RepositoryCommandFailure::recovery()
+        }
+        RecoveryBundleError::Repository(_) | RecoveryBundleError::Io => {
+            RepositoryCommandFailure::storage()
         }
     }
 }

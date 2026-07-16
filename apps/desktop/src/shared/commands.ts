@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 export interface FoundationStatus {
   product: string;
@@ -80,6 +80,12 @@ export interface RepositoryFailure {
   code: string;
   message: string;
   remediation: string;
+}
+export interface ExportRecoveryBundleRequest {
+  repositoryId: string;
+  passphrase: string;
+  outputPath: string;
+  confirmation: string;
 }
 export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
@@ -162,6 +168,10 @@ export async function initializeRepositoryRecovery(repositoryId: string): Promis
   requireTauriRuntime();
   return invoke<void>("initialize_repository_recovery", { repositoryId });
 }
+export async function exportRecoveryBundle(request: ExportRecoveryBundleRequest): Promise<void> {
+  requireTauriRuntime();
+  return invoke<void>("export_recovery_bundle", { request });
+}
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }
@@ -177,6 +187,11 @@ export async function listDockerContainers(profileId: string): Promise<DockerCon
 // validated by the desktop command after selection, never by this UI filter.
 export async function pickSshKeyPath(): Promise<string | undefined> { return pickPath({ directory: false }); }
 export async function pickRepositoryPath(): Promise<string | undefined> { return pickPath({ directory: true }); }
+export async function pickRecoveryBundlePath(): Promise<string | undefined> {
+  if (!hasTauriRuntime()) return undefined;
+  const selected = await save({ defaultPath: "guardian-recovery-bundle.json" });
+  return typeof selected === "string" ? selected : undefined;
+}
 
 export function hasTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
