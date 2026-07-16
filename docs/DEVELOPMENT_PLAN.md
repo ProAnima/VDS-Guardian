@@ -18,8 +18,11 @@ from this exact flow.
 
 Included:
 
-- Windows and Linux desktop application backed by one shared Rust engine;
-- a scriptable CLI for the same essential operations;
+- Windows and Linux desktop application backed by one shared Rust engine, the
+  sole first-class human interface;
+- a scriptable CLI for enrollment, restore, and deploy (not capture);
+- a typed external API (an MCP server) over the same application-service
+  boundary, for external tools and AI agents;
 - pinned OpenSSH connection to a remote Linux server;
 - operator-selected absolute filesystem paths;
 - streaming tar.zst capture into a local or removable repository;
@@ -140,17 +143,20 @@ closed.
 ### 3. Finish one shared application workflow
 
 - Expose capture, verify, list, restore, deploy, and cancel through one
-  application-service boundary shared by CLI and Tauri.
-- Add the missing CLI capture entrypoint so desktop and headless operation do
-  not have different backup capabilities.
-- Keep Tauri commands and CLI parsing thin: they validate DTOs, invoke one
-  operation, and map one typed result.
+  application-service boundary shared by every surface.
+- The desktop app is the sole first-class human interface. Headless and
+  programmatic access — including AI agents — is served by a typed
+  external API (an MCP server) over that same application-service
+  boundary, not by a CLI capture command; `guardian-cli` keeps its existing
+  enrollment/restore/deploy scope and does not grow one.
+- Keep Tauri commands, CLI parsing, and the API layer thin: each validates
+  DTOs, invokes one operation, and maps one typed result.
 - Return bounded progress states and stable error/remediation codes.
 - Keep filesystem paths explicit; Docker discovery is optional input assistance,
   not part of capture correctness.
 
 Gate: the same fixture plan produces the same sealed backup and restore result
-when triggered through CLI and desktop adapters.
+when triggered through the desktop app and the API layer.
 
 ### 4. Complete the operator path
 
