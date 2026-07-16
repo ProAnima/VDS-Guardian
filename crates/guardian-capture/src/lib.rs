@@ -1,8 +1,8 @@
 //! Composition root for the core filesystem-capture use case.
 
+mod disk_space;
 mod embedded_database;
 
-use fs2::available_space;
 use guardian_archive::{ArchiveLimits, TarZstdInspector, ZstdFileInspector};
 use guardian_core::{
     AuditPort, BackupId, BackupStoragePort, CaptureAuditCode, CaptureRequestError,
@@ -18,6 +18,7 @@ use guardian_ssh::{
 };
 use std::path::Path;
 
+pub use disk_space::{DiskSpacePort, SYSTEM_DISK_SPACE};
 pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
 use embedded_database::{probe_remote_disk_budget, remote_disk_budget_is_sufficient};
 
@@ -30,6 +31,7 @@ pub struct FilesystemCaptureComposition<'a> {
     pub profile: &'a VdsProfile,
     pub credentials: &'a dyn SecretStore,
     pub audit: &'a dyn AuditPort,
+    pub disk_space: &'a dyn DiskSpacePort,
     pub archive_limits: ArchiveLimits,
 }
 
@@ -347,8 +349,10 @@ impl FilesystemCaptureComposition<'_> {
     }
 
     fn require_disk_budget(&self, include_database: bool) -> Result<(), CaptureUseCaseError> {
-        let available = available_space(self.repository.root())
-            .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
+        let available = self
+            .disk_space
+            .available_space(self.repository.root())
+            .map_err(CaptureUseCaseError::Storage)?;
         let mut required = MINIMUM_FREE_BYTES.saturating_add(MAX_CAPTURE_BYTES);
         if include_database {
             required = required.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES);
@@ -361,7 +365,7 @@ impl FilesystemCaptureComposition<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FilesystemCaptureComposition;
+    use super::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use guardian_archive::ArchiveLimits;
     use guardian_core::{
@@ -385,6 +389,7 @@ mod tests {
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
+            disk_space: &SYSTEM_DISK_SPACE,
             archive_limits: ArchiveLimits::conservative(),
         };
         let request = FilesystemCaptureRequest {
@@ -415,6 +420,7 @@ mod tests {
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
+            disk_space: &SYSTEM_DISK_SPACE,
             archive_limits: ArchiveLimits::conservative(),
         };
         let request = FilesystemCaptureRequest {
@@ -445,6 +451,7 @@ mod tests {
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
+            disk_space: &SYSTEM_DISK_SPACE,
             archive_limits: ArchiveLimits::conservative(),
         };
         let request = FilesystemCaptureRequest {
@@ -494,6 +501,7 @@ mod tests {
             profile: &profile,
             credentials: &NoopCredentialStore,
             audit: &audit,
+            disk_space: &SYSTEM_DISK_SPACE,
             archive_limits: ArchiveLimits::conservative(),
         };
         assert!(matches!(

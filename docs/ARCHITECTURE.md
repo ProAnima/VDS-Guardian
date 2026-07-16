@@ -81,7 +81,10 @@ Composition-root crates wire these adapters into full use cases:
 snapshot adapter, ADR 0005) and `guardian-deploy` (remote deploy to a new
 host, ADR 0007). `guardian-cli`, the desktop's `src-tauri` crate, and
 `guardian-mcp` (ADR 0012) are the three surfaces that call these composition
-roots. The signing crate depends
+roots. `guardian-capture` reads repository free space through a small local
+infrastructure port; production supplies the filesystem implementation and
+the composition can deterministically prove its fail-closed disk budget.
+The signing crate depends
 only on the core secret-store port; platform credential APIs remain
 isolated from domain and repository code. Its application service
 serializes enrollment with a cross-process lock and uses a durable intent

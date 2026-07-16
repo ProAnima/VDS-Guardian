@@ -14,7 +14,7 @@ pub use recovery::{
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_archive::ArchiveLimits;
-use guardian_capture::FilesystemCaptureComposition;
+use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
 use guardian_core::{
     AuditPort, BackupId, CaptureAuditCode, CredentialId, EmbeddedDatabaseCaptureRequest,
     FilesystemBackupRequest, FilesystemCaptureRequest, HostPin, Manifest, ManifestSigner,
@@ -381,6 +381,7 @@ pub fn capture_drill_backup(
         profile,
         credentials,
         audit: &audit,
+        disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: ArchiveLimits::conservative(),
     };
     let run_id = RunId::parse(run_id)?;

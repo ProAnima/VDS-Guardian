@@ -250,9 +250,11 @@ an ADR.
   neither target nor remote staging published. A live capture drill also
   connects to a working source with another freshly generated, valid host key
   pinned in its profile; strict host-key checking rejects it before staging and
-  sealing. Disk exhaustion remains open; the equivalent late-failure deploy
-  case remains open, and hostile archive metadata is covered at the archive
-  boundary but not yet in this live drill.
+  sealing. A real SSH preflight plus a deterministic zero-free-space repository
+  boundary also proves disk exhaustion fails before staging and sealing, without
+  filling an operator disk. The equivalent late-failure deploy case remains
+  open, and hostile archive metadata is covered at the archive boundary but not
+  yet in this live drill.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).

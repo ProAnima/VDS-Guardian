@@ -1,4 +1,4 @@
-use guardian_capture::FilesystemCaptureComposition;
+use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
     BackupId, CancellationHandle, CaptureUseCaseError, EmbeddedDatabaseCaptureRequest,
@@ -140,6 +140,7 @@ fn run_blocking(
         profile: &profile,
         credentials: &OsCredentialStore,
         audit: &audit,
+        disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: guardian_archive::ArchiveLimits::conservative(),
     };
     let sealed = match composition.execute(request, database, &identity) {

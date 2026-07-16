@@ -1,6 +1,6 @@
 use super::{HOST_KEY_DEADLINE, READY_DEADLINE, support};
 use guardian_archive::ArchiveLimits;
-use guardian_capture::FilesystemCaptureComposition;
+use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
 use guardian_core::{
     CredentialId, FilesystemBackupRequest, FilesystemCaptureRequest, PayloadPath, ProfileId,
     RepositoryId, RunId, SecretStore, SecretValue, Timestamp,
@@ -49,6 +49,7 @@ fn changed_host_key_rejects_capture_before_staging() -> Result<(), Box<dyn Error
         profile: &profile,
         credentials: &vault,
         audit: &audit,
+        disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: ArchiveLimits::conservative(),
     };
     let run_id = RunId::parse("drill-changed-host-key")?;

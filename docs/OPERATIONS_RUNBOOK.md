@@ -120,6 +120,10 @@ A fifth live fixture verifies host-trust failure against a working source: it
 pins a different freshly generated but valid SSH host key, so strict checking
 must reject the capture before staging or sealing. The resulting audit records
 `started` then `failed`, with no sealed backup.
+A sixth case completes SSH preflight against a real source, then supplies the
+capture composition a deterministic zero-free-space repository boundary. It
+must fail before staging or sealing and records `started` then `failed`; this
+tests the production disk-budget decision without consuming operator storage.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
