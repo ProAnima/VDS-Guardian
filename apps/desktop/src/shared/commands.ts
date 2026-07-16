@@ -101,8 +101,8 @@ export interface DockerCommandFailure { code: string; message: string; remediati
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
   version: "0.1.0",
-  iteration: "Milestone 1 — local repository foundation",
-  liveOperationsEnabled: false,
+  iteration: "Release 0.1 validation — operator path in progress",
+  liveOperationsEnabled: true,
 };
 
 export async function getFoundationStatus(): Promise<FoundationStatus> {

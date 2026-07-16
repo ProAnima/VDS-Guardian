@@ -13,10 +13,10 @@ import {
 } from "./commands";
 
 describe("foundation bridge", () => {
-  it("keeps live operations disabled in browser preview", async () => {
+  it("matches the validation release status in browser preview", async () => {
     const status = await getFoundationStatus();
-    expect(status.liveOperationsEnabled).toBe(false);
-    expect(status.iteration).toContain("Milestone 1");
+    expect(status.liveOperationsEnabled).toBe(true);
+    expect(status.iteration).toContain("operator path in progress");
   });
 
   it("reports a non-enrolled preview without creating an identity", async () => {
