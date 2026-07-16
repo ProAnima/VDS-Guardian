@@ -346,8 +346,9 @@ round trip
 
 Recovery-key rotation and recovery-bundle replacement (named explicitly in
 `docs/DEVELOPMENT_PLAN.md` as Release 0.2 scope, not silently dropped here).
-Desktop bundle export/import UI (Release 0.1 section 4); repository recovery
-initialization is available from the repository panel. Backfilling recovery wrapping onto backups sealed before this
+Desktop bundle export/import UI (Release 0.1 section 4) must use a shared
+recovery service; repository recovery initialization is available from the
+repository panel. Backfilling recovery wrapping onto backups sealed before this
 feature shipped (impossible without violating "immutable after seal").
 Passphrase strength enforcement or a passphrase-manager integration —
 `--passphrase-file` accepts whatever the operator supplies; a weak

@@ -163,6 +163,10 @@ disk unreadable.
   restore/deploy confirmation-gate convention; neither is exposed through
   `guardian-mcp`.
 
+  The CLI is the clean-machine/headless adapter, not the owner of this use
+  case. Section 4 must move bundle export/import through one shared Rust
+  service and expose it from desktop; MCP remains deliberately excluded.
+
 Gate: a clean machine can verify and decrypt an existing backup using only the
 documented recovery material, while a missing or incorrect recovery key fails
 closed. Met both by the continuous CLI/core test and by the compiled-CLI
