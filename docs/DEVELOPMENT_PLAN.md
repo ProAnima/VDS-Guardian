@@ -228,7 +228,8 @@ an ADR.
   restore. Closed locally: `restore_drill` removes the original vault,
   signing configuration, and repository registry, initializes clean state,
   imports through the compiled `guardian-cli`, and executes restore through
-  that same binary. The corresponding Linux CI observation remains open.
+  that same binary. Closed on Linux CI too: workflow run `29518019511` passed
+  this path for commit `3912a90`.
 - Test filesystem-only and filesystem-plus-SQLite backups. Filesystem-
   plus-SQLite is now covered as above; filesystem-only is not yet exercised
   by the drill.
@@ -239,13 +240,10 @@ an ADR.
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).
 - Run the drill from the same commit on Linux CI; keep Windows canonical gates
-  green and perform a documented Windows desktop smoke test. The drill has
-  now passed locally on this Windows dev machine (previously blocked by
-  fixture and product bugs, all fixed). The latest published Linux run for
-  commit `73f41ba` stopped in `npm run verify` on a Unix-only Clippy finding
-  in SSH identity permission hardening before reaching the drill. That lint is
-  fixed in the current slice and reproduced green in a Linux container; a new
-  GitHub-hosted run of this corrected slice remains the next actual gate.
+  green and perform a documented Windows desktop smoke test. Closed for CI:
+  workflow run `29518019511` passed both the Ubuntu `verify → SSH integration
+  → clean-room drill` chain and the Windows canonical gate for commit
+  `3912a90`. A documented interactive Windows desktop smoke test remains open.
 
 Exit gate for 0.1: a clean machine with documented recovery material restores a
 backup to a clean destination, verifies the expected filesystem and SQLite

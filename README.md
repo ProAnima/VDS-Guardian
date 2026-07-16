@@ -22,9 +22,10 @@ and restore it to a new destination without a mandatory cloud service.
 > backups with a portable per-repository recovery key, local restore,
 > new-host deploy, optional SQLite snapshots, an initial desktop flow, and
 > an automated clean-room drill (including compiled-CLI recovery import on a
-> clean vault and registry, now passing end-to-end locally) are implemented
+> clean vault and registry, now passing end-to-end locally and on Linux CI)
+> are implemented
 > foundations. A complete operator-facing setup/status flow and a
-> clean-machine drill proven on Linux CI remain release blockers. Do not use
+> clean-room hostile-failure matrix remain release blockers. Do not use
 > the application as a disaster-recovery system until the Release 0.1 exit
 > gate passes.
 

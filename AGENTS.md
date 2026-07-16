@@ -15,9 +15,9 @@ machine (ADR 0013); capture/deploy cancellation is wired through CLI,
 desktop, and `guardian-mcp` adapters; and the desktop app, CLI, and
 `guardian-mcp` share one application-service boundary (ADR 0012). The
 release is not production-ready: the operator-facing setup/status/restore
-flow is incomplete (section 4), and a clean-machine drill must still prove
-the compiled production path end to end on Linux CI. The recovery-key import
-path is now included in that drill locally (section 5). Docker discovery,
+flow and the hostile failure matrix are incomplete (sections 4 and 5).
+The compiled clean-machine path, including recovery-key import, passed on
+Windows locally and on Linux CI for commit `3912a90`. Docker discovery,
 additional databases, scheduling, retention automation, and updater work
 are outside Release 0.1. The ordered scope and gates live in
 `docs/DEVELOPMENT_PLAN.md`.
@@ -53,9 +53,8 @@ construction, secret handling, or retention also require security tests and,
 where relevant, a run of the clean-room drill (`npm run
 test:integration:drill`, Docker-gated). The drill exists and passed
 end-to-end for the first time on 2026-07-16 (`docs/adr/0011-archive-path-validation-hardening.md`),
-but it is not part of canonical `npm run verify`, has not yet been observed
-passing end to end on Linux CI (the latest run stopped on a now-fixed
-Unix-only Clippy finding before the drill), and does not cover every failure mode named in
+but it is not part of canonical `npm run verify`. It passed end to end on
+Linux CI for commit `3912a90`, but does not cover every failure mode named in
 `docs/DEVELOPMENT_PLAN.md` section 5. State explicitly which of these gaps
 still apply rather than claiming full production verification.
 

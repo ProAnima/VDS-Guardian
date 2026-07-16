@@ -94,7 +94,9 @@ one drill-fixture permission gap (see ADR 0011) that had silently blocked
 every earlier attempt. The restore drill also builds the production CLI,
 exports recovery material,
 removes the original vault/signing/registry state, imports into clean local
-state, and performs the restore through that compiled CLI. It does not prove
+state, and performs the restore through that compiled CLI. This exact chain
+passed on Linux CI in workflow run `29518019511` for commit `3912a90`.
+It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
 supported stack type or failure mode, so it does not by itself satisfy the
