@@ -96,6 +96,14 @@ async fn export_recovery_bundle(
 }
 
 #[tauri::command]
+async fn import_recovery_bundle(
+    app: tauri::AppHandle,
+    request: repository_commands::ImportRecoveryBundleRequest,
+) -> Result<repository_commands::RepositorySummary, repository_commands::RepositoryCommandFailure> {
+    repository_commands::import_recovery_bundle_file(app, request).await
+}
+
+#[tauri::command]
 async fn save_capture_plan(
     app: tauri::AppHandle,
     request: plan_commands::SavePlanRequest,
@@ -196,6 +204,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_repositories,
             initialize_repository_recovery,
             export_recovery_bundle,
+            import_recovery_bundle,
             save_capture_plan,
             list_capture_plans,
             run_capture_plan,

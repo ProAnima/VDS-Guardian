@@ -4,6 +4,7 @@ import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
 import { RepositoryPanel } from "./RepositoryPanel";
 import { RecoveryBundlePanel } from "./RecoveryBundlePanel";
+import { RecoveryImportPanel } from "./RecoveryImportPanel";
 import { SigningIdentityPanel } from "./SigningIdentityPanel";
 import { SshProfilePanel } from "./SshProfilePanel";
 
@@ -27,6 +28,7 @@ export function SetupPanel({ t }: SetupPanelProps) {
       <SetupStep number="2" title="Хранилище и recovery" icon={FolderArchive}>
         <RepositoryPanel />
         <RecoveryBundlePanel />
+        <RecoveryImportPanel />
       </SetupStep>
       <SetupStep number="3" title="Сервер для бэкапа" icon={Server}>
         <SshProfilePanel />

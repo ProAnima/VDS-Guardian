@@ -87,6 +87,13 @@ export interface ExportRecoveryBundleRequest {
   outputPath: string;
   confirmation: string;
 }
+export interface ImportRecoveryBundleRequest {
+  repositoryId: string;
+  repositoryPath: string;
+  inputPath: string;
+  passphrase: string;
+  confirmation: string;
+}
 export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CaptureJobSummary { backupId: string; }
@@ -172,6 +179,10 @@ export async function exportRecoveryBundle(request: ExportRecoveryBundleRequest)
   requireTauriRuntime();
   return invoke<void>("export_recovery_bundle", { request });
 }
+export async function importRecoveryBundle(request: ImportRecoveryBundleRequest): Promise<RepositorySummary> {
+  requireTauriRuntime();
+  return invoke<RepositorySummary>("import_recovery_bundle", { request });
+}
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }
@@ -192,6 +203,7 @@ export async function pickRecoveryBundlePath(): Promise<string | undefined> {
   const selected = await save({ defaultPath: "guardian-recovery-bundle.json" });
   return typeof selected === "string" ? selected : undefined;
 }
+export async function pickRecoveryBundleInput(): Promise<string | undefined> { return pickPath({ directory: false }); }
 
 export function hasTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

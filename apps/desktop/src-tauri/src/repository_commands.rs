@@ -2,7 +2,7 @@ use guardian_configuration::{RepositoryRegistration, RepositoryStore};
 use guardian_core::RepositoryId;
 use guardian_local_repository::{
     LocalRepository, RecoveryBundleError, RepositoryError, RepositoryVerificationKey,
-    export_recovery_bundle,
+    export_recovery_bundle, import_recovery_bundle,
 };
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::SigningIdentityManager;
@@ -24,6 +24,16 @@ pub struct ExportRecoveryBundleRequest {
     repository_id: String,
     passphrase: String,
     output_path: String,
+    confirmation: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRecoveryBundleRequest {
+    repository_id: String,
+    repository_path: String,
+    input_path: String,
+    passphrase: String,
     confirmation: String,
 }
 
@@ -91,6 +101,72 @@ pub async fn export_recovery_bundle_file(
     tauri::async_runtime::spawn_blocking(move || export_bundle_blocking(root, request))
         .await
         .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+pub async fn import_recovery_bundle_file(
+    app: tauri::AppHandle,
+    request: ImportRecoveryBundleRequest,
+) -> Result<RepositorySummary, RepositoryCommandFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| RepositoryCommandFailure::storage())?;
+    tauri::async_runtime::spawn_blocking(move || import_bundle_blocking(root, request))
+        .await
+        .map_err(|_| RepositoryCommandFailure::internal())?
+}
+
+fn import_bundle_blocking(
+    root: PathBuf,
+    request: ImportRecoveryBundleRequest,
+) -> Result<RepositorySummary, RepositoryCommandFailure> {
+    if request.passphrase.is_empty() {
+        return Err(RepositoryCommandFailure::passphrase());
+    }
+    let repository_id = RepositoryId::parse(request.repository_id)
+        .map_err(|_| RepositoryCommandFailure::invalid())?;
+    let store = RepositoryStore::at(root.join("repositories"));
+    let (repository, registration) = match store
+        .get(&repository_id)
+        .map_err(|_| RepositoryCommandFailure::storage())?
+    {
+        Some(existing) => (
+            LocalRepository::open(&existing.path, repository_id.clone())
+                .map_err(|_| RepositoryCommandFailure::repository())?,
+            None,
+        ),
+        None => {
+            let repository = LocalRepository::open(&request.repository_path, repository_id.clone())
+                .map_err(|_| RepositoryCommandFailure::repository())?;
+            let registration = RepositoryRegistration::new(
+                repository_id.clone(),
+                format!("Recovered {}", repository_id.as_str()),
+                repository.root().to_owned(),
+            )
+            .map_err(|_| RepositoryCommandFailure::invalid())?;
+            (repository, Some(registration))
+        }
+    };
+    import_recovery_bundle(
+        &repository,
+        &OsCredentialStore,
+        &repository_id,
+        request.passphrase.as_bytes(),
+        &PathBuf::from(request.input_path),
+        &request.confirmation,
+    )
+    .map_err(map_bundle_error)?;
+    if let Some(registration) = registration {
+        store
+            .upsert(registration.clone())
+            .map_err(|_| RepositoryCommandFailure::storage())?;
+        return Ok(RepositorySummary::from(&registration));
+    }
+    store
+        .get(&repository_id)
+        .map_err(|_| RepositoryCommandFailure::storage())?
+        .map(|item| RepositorySummary::from(&item))
+        .ok_or_else(RepositoryCommandFailure::storage)
 }
 
 fn export_bundle_blocking(
