@@ -48,6 +48,9 @@ Every subsequent `restore`/`deploy` call verifies with the authenticated
 public key and decrypts with the imported recovery key; the original private
 signing seed is not required. A wrong passphrase, a bundle from a different
 repository, or a corrupted bundle all fail closed with no partial state.
+In particular, bundle authentication happens before that clean-machine
+registration is persisted; a failed import must not leave the repository in
+the local registry.
 
 ## Programmatic and agent access
 
@@ -98,6 +101,12 @@ state, and performs the restore through that compiled CLI. This exact chain
 passed on Linux CI in workflow run `29518019511` for commit `3912a90`.
 The two live drills run serially so constrained CI runners do not race three
 SSH containers and mistake fixture startup contention for a product failure.
+The restore drill also exercises three hostile cases through the compiled CLI:
+a wrong bundle passphrase leaves no registry entry, a missing recovery key
+leaves no destination, and a byte-corrupted encrypted filesystem payload is
+rejected without publishing a partial destination. The corruption is applied
+only to a disposable repository copy; the sealed source backup is never
+modified.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every

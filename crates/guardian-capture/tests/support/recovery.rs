@@ -1,3 +1,5 @@
+#[path = "recovery/adversarial.rs"]
+mod adversarial;
 #[path = "recovery/cli.rs"]
 mod cli;
 
@@ -19,6 +21,8 @@ pub struct RecoveryFixture {
     bundle_path: PathBuf,
     passphrase_path: PathBuf,
 }
+
+pub use adversarial::prove_hostile_restore_failures;
 
 pub fn initialize_and_export(
     root: &Path,
@@ -189,6 +193,15 @@ fn recovery_import(
     vault: &Path,
     fixture: &RecoveryFixture,
 ) -> Result<(), Box<dyn Error>> {
+    recovery_import_from(repositories, vault, fixture, &fixture.repository_path)
+}
+
+fn recovery_import_from(
+    repositories: &Path,
+    vault: &Path,
+    fixture: &RecoveryFixture,
+    repository_path: &Path,
+) -> Result<(), Box<dyn Error>> {
     let confirmation = format!(
         "IMPORT RECOVERY BUNDLE FOR {}",
         fixture.repository_id.as_str()
@@ -201,7 +214,7 @@ fn recovery_import(
         "--repository-id",
         fixture.repository_id.as_str(),
         "--repository-path",
-        &path(&fixture.repository_path),
+        &path(repository_path),
         "--vault-dir",
         &path(vault),
         "--passphrase-file",

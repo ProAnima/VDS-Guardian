@@ -369,5 +369,8 @@ replacement, desktop bundle export/import, and retroactive wrapping of
 pre-existing v2 backups. Follow-up on 2026-07-16: the clean-room restore drill
 was extended to build the production CLI, remove the original operator state,
 import the recovery bundle into a clean vault and registry, and restore through
-that compiled CLI. Linux CI observation and the broader hostile-failure matrix
-remain release work rather than consequences of this ADR.
+that compiled CLI; the path subsequently passed on Linux CI. A later hardening
+slice made clean-machine registration commit only after bundle authentication
+and added compiled-CLI proof that wrong passphrases leave no registration,
+while missing recovery keys and corrupted encrypted payloads leave no partial
+restore target. The rest of the hostile-failure matrix remains release work.

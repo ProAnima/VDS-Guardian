@@ -218,6 +218,70 @@ fn init_export_import_recovers_byte_identical_key_material_on_a_fresh_secret_sto
     Ok(())
 }
 
+#[test]
+fn import_with_wrong_passphrase_leaves_no_repository_registration()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let (repositories_dir, repository_id) =
+        registered_repository(&root, "repository-wrong-passphrase")?;
+    let parsed_repository_id = RepositoryId::parse(repository_id.clone())?;
+    let original_secrets = MemoryStore::default();
+    let config_dir = root.path().join("node");
+    SigningIdentityManager::open(&config_dir)?.enroll_or_load(&original_secrets)?;
+
+    let mut init_command =
+        recovery_command(RecoveryAction::Init, &repositories_dir, &repository_id);
+    init_command.signing_config_dir = Some(config_dir);
+    execute(init_command, &original_secrets)
+        .map_err(|_| std::io::Error::other("recovery init failed"))?;
+
+    let correct_passphrase = root.path().join("correct-passphrase.txt");
+    fs::write(&correct_passphrase, "correct horse battery staple")?;
+    let bundle_path = root.path().join("bundle.json");
+    let mut export_command =
+        recovery_command(RecoveryAction::Export, &repositories_dir, &repository_id);
+    export_command.passphrase_file = Some(correct_passphrase);
+    export_command.output = Some(bundle_path.clone());
+    export_command.confirmation = Some(export_confirmation_phrase(&parsed_repository_id));
+    execute(export_command, &original_secrets)
+        .map_err(|_| std::io::Error::other("recovery export failed"))?;
+
+    let registration = guardian_configuration::RepositoryStore::at(&repositories_dir)
+        .get(&parsed_repository_id)?
+        .ok_or("repository should be registered")?;
+    let wrong_passphrase = root.path().join("wrong-passphrase.txt");
+    fs::write(&wrong_passphrase, "this is not the passphrase")?;
+    let clean_repositories_dir = root.path().join("clean-repositories");
+    let clean_machine_secrets = MemoryStore::default();
+    let mut import_command = recovery_command(
+        RecoveryAction::Import,
+        &clean_repositories_dir,
+        &repository_id,
+    );
+    import_command.repository_path = Some(registration.path);
+    import_command.passphrase_file = Some(wrong_passphrase);
+    import_command.input = Some(bundle_path);
+    import_command.confirmation = Some(import_confirmation_phrase(&parsed_repository_id));
+
+    assert_eq!(
+        execute(import_command, &clean_machine_secrets).err(),
+        Some(RecoveryFailure::bundle_operation())
+    );
+    assert!(
+        guardian_configuration::RepositoryStore::at(&clean_repositories_dir)
+            .get(&parsed_repository_id)?
+            .is_none()
+    );
+    assert!(
+        clean_machine_secrets
+            .values
+            .lock()
+            .map_err(|_| "secret-store lock was poisoned")?
+            .is_empty()
+    );
+    Ok(())
+}
+
 fn recovery_command(
     action: RecoveryAction,
     repositories_dir: &std::path::Path,

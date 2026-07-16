@@ -30,7 +30,7 @@ fn execute(
 ) -> Result<RecoveryOutput, RecoveryFailure> {
     let repository_id =
         RepositoryId::parse(&command.repository_id).map_err(|_| RecoveryFailure::input())?;
-    let repository = resolve_repository(&command, &repository_id)?;
+    let (repository, pending_registration) = resolve_repository(&command, &repository_id)?;
     match command.action {
         RecoveryAction::Init => execute_init(&repository, secrets, &command),
         RecoveryAction::Status => match repository.export_recovery_key(secrets) {
@@ -46,20 +46,29 @@ fn execute(
             Err(_) => Err(RecoveryFailure::storage()),
         },
         RecoveryAction::Export => execute_export(&repository, secrets, &command, &repository_id),
-        RecoveryAction::Import => execute_import(&repository, secrets, &command, &repository_id),
+        RecoveryAction::Import => {
+            let output = execute_import(&repository, secrets, &command, &repository_id)?;
+            if let Some(registration) = pending_registration {
+                RepositoryStore::at(&command.repositories_dir)
+                    .upsert(registration)
+                    .map_err(|_| RecoveryFailure::storage())?;
+            }
+            Ok(output)
+        }
     }
 }
 
 fn resolve_repository(
     command: &RecoveryCommand,
     repository_id: &RepositoryId,
-) -> Result<LocalRepository, RecoveryFailure> {
+) -> Result<(LocalRepository, Option<RepositoryRegistration>), RecoveryFailure> {
     let store = RepositoryStore::at(&command.repositories_dir);
     if let Some(registration) = store
         .get(repository_id)
         .map_err(|_| RecoveryFailure::storage())?
     {
         return LocalRepository::open(&registration.path, repository_id.clone())
+            .map(|repository| (repository, None))
             .map_err(|_| RecoveryFailure::storage());
     }
     if !matches!(command.action, RecoveryAction::Import) {
@@ -77,10 +86,7 @@ fn resolve_repository(
         repository.root().to_owned(),
     )
     .map_err(|_| RecoveryFailure::input())?;
-    store
-        .upsert(registration)
-        .map_err(|_| RecoveryFailure::storage())?;
-    Ok(repository)
+    Ok((repository, Some(registration)))
 }
 
 fn execute_init(

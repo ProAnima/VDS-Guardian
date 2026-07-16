@@ -89,7 +89,10 @@
   repository metadata and verifies manifests without copying the private
   signing seed; a wrong passphrase, wrong repository, substituted key, or
   corrupted bundle all fail closed via the same AEAD authentication check,
-  never a separate one. Import accepts only the pinned format-v1 Argon2id
+  never a separate one. Authentication completes before an unregistered
+  transferred repository is added to the local registry, so a wrong
+  passphrase leaves neither imported key material nor a repository
+  registration. Import accepts only the pinned format-v1 Argon2id
   cost profile, is idempotent for the same key, and refuses to overwrite a
   different working recovery key.
 - Both `recovery export` and `recovery import` require a typed confirmation
@@ -240,6 +243,10 @@ next repository open, a move-phase interruption is rolled back; a durable
 cleanup-ready phase is resumed idempotently. Orphaned or malformed retention
 state fails closed. Read-only hardening, key rotation, integration tests, and
 clean-room restore drills remain mandatory before production use.
+The compiled-CLI drill now mutates only a disposable copy of a sealed
+repository and proves that an encrypted-payload authentication failure leaves
+no published restore destination. It separately proves the same cleanup
+property when the repository recovery key is absent.
 
 Signing configuration tampering cannot silently select a replacement identity:
 the configured public key ID must match the key loaded through its credential

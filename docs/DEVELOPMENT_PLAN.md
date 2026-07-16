@@ -235,7 +235,13 @@ an ADR.
   by the drill.
 - Cover cancellation, corrupted payload, missing recovery key, disk exhaustion,
   changed host key, hostile archive metadata, and failure of the second payload.
-  Still open — none of these failure modes are exercised by the drill yet.
+  Partially closed: the compiled-CLI restore drill now proves that a corrupted
+  encrypted filesystem payload and a missing recovery key both fail without
+  publishing the destination. It also proves that a wrong recovery-bundle
+  passphrase leaves no repository registration. Cancellation, disk exhaustion,
+  changed host key, and failure of the second payload remain open; hostile
+  archive metadata is covered at the archive boundary but not yet in this live
+  drill.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).

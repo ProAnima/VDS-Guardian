@@ -3,7 +3,9 @@
 #[path = "support/recovery.rs"]
 mod recovery;
 
-pub use recovery::{initialize_and_export, restore_on_clean_machine};
+pub use recovery::{
+    initialize_and_export, prove_hostile_restore_failures, restore_on_clean_machine,
+};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use guardian_archive::ArchiveLimits;

@@ -82,6 +82,10 @@ fn restore_drill() -> TestResult {
     std::fs::remove_dir_all(workdir.path().join("original-signing"))?;
     std::fs::remove_dir_all(workdir.path().join("original-repositories"))?;
 
+    let hostile_start = Instant::now();
+    support::prove_hostile_restore_failures(workdir.path(), &recovery, &capture.sealed.backup_id)?;
+    let hostile_phase = Phase::new("hostile_fail_closed", hostile_start.elapsed());
+
     let destination = workdir.path().join("restored");
     let restore_start = Instant::now();
     support::restore_on_clean_machine(
@@ -125,6 +129,7 @@ fn restore_drill() -> TestResult {
         capture.sealed.backup_id.as_str(),
         &[
             Phase::new("capture", capture.duration),
+            hostile_phase,
             restore_phase,
             verify_phase,
         ],
@@ -132,6 +137,9 @@ fn restore_drill() -> TestResult {
             Check::new("filesystem_byte_exact", filesystem_matches),
             Check::new("database_integrity_and_content", database_matches),
             Check::new("compiled_cli_clean_machine_recovery", true),
+            Check::new("wrong_passphrase_no_registration", true),
+            Check::new("missing_recovery_key_no_partial_target", true),
+            Check::new("corrupted_payload_no_partial_target", true),
         ],
         rto_seconds,
     )?;

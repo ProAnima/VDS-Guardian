@@ -16,6 +16,22 @@ pub(super) fn run_guardian_cli(arguments: Vec<OsString>) -> Result<Value, Box<dy
     serde_json::from_slice(&output.stdout).map_err(Into::into)
 }
 
+pub(super) fn run_guardian_cli_failure(arguments: Vec<OsString>) -> Result<(), Box<dyn Error>> {
+    let binary = std::env::var_os("GUARDIAN_CLI_BIN")
+        .ok_or("GUARDIAN_CLI_BIN must point to the compiled guardian-cli binary")?;
+    let output = Command::new(binary).args(arguments).output()?;
+    if output.status.success() {
+        return Err("guardian-cli unexpectedly succeeded".into());
+    }
+    serde_json::from_slice::<Value>(&output.stderr).map_err(|error| {
+        std::io::Error::other(format!(
+            "guardian-cli failure was not JSON ({error}): {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    })?;
+    Ok(())
+}
+
 pub(super) fn args<T: AsRef<str>>(values: &[T]) -> Vec<OsString> {
     values
         .iter()
