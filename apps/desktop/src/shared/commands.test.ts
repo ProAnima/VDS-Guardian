@@ -12,6 +12,7 @@ import {
   listSshProfiles,
   previewDeploy,
   previewCaptureSelection,
+  runCaptureSelection,
   previewRestore,
 } from "./commands";
 
@@ -67,6 +68,14 @@ describe("foundation bridge", () => {
       profileId: "profile-001",
       repositoryId: "repository-001",
       items: [{ kind: "remote_path", absolutePath: "/srv" }],
+    })).rejects.toThrow("desktop runtime");
+  });
+
+  it("never creates a capture selection from the browser preview", async () => {
+    await expect(runCaptureSelection({
+      selection: { profileId: "profile-001", repositoryId: "repository-001", items: [{ kind: "remote_path", absolutePath: "/srv" }] },
+      confirmation: "CREATE BACKUP FOR profile-001 IN repository-001 abcdef",
+      runId: "019f0000-0000-7000-8000-000000000001",
     })).rejects.toThrow("desktop runtime");
   });
 });

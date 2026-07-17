@@ -240,11 +240,12 @@ independently.
   breadcrumb filesystem navigation, metadata columns, safe unavailable-item
   explanations, retained-page retry/loading states, Compose groups, individual
   persistent mounts, and a logical-item selection summary. It renders the
-  shared preview before saving its normalized plan. Open: validate this shell
-  in the release-candidate desktop usability drill, collapse preview/save/run
-  into one Create backup flow
-  and add the confirmation-gated MCP preview/execute-selection tools defined by
-  ADR 0015; execute must re-resolve the preview rather than trust saved paths.
+  shared preview before creating the normalized internal plan. The desktop now
+  collapses preview/save/run into one Create backup action; MCP exposes the
+  corresponding preview/execute-selection pair. Both execution paths re-resolve
+  the current Docker inventory and reject a changed or unconfirmed selection
+  before any capture is started. Open: validate this shell in the
+  release-candidate desktop usability drill.
 - Restore picker exposes only sealed, freshly signature-verified backups and
   labels that verification state; failed and cancelled runs are never offered
   as restore candidates.

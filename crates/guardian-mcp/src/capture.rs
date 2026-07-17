@@ -10,10 +10,13 @@ use crate::secret_store::resolve_store;
 use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, CancellationHandle, CaptureUseCaseError, EmbeddedDatabaseCaptureRequest,
-    FilesystemBackupRequest, FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath,
-    PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity, Timestamp,
+    BackupId, BackupSelection, BackupSelectionItem, CancellationHandle, CaptureSelectionPreview,
+    CaptureUseCaseError, DiscoverDockerInventoryUseCase, EmbeddedDatabaseCaptureRequest,
+    FilesystemBackupRequest, FilesystemCapturePlan, FilesystemCaptureRequest, JobRegistry,
+    Manifest, PayloadPath, PlanId, PlanReference, Producer, ProfileStorePort, RunId,
+    SourceIdentity, Timestamp, preview_capture_selection,
 };
+use guardian_docker::SshDockerInventoryAdapter;
 use guardian_local_repository::LocalRepository;
 use guardian_profile_store::ProfileStore;
 use guardian_signing::SigningIdentityManager;
@@ -71,6 +74,12 @@ impl CaptureFailure {
         Self {
             code: "internal_error",
             message: "The capture request could not be processed.",
+        }
+    }
+    fn selection() -> Self {
+        Self {
+            code: "capture_selection_changed",
+            message: "The selected server data changed or was not confirmed.",
         }
     }
 }
@@ -220,6 +229,93 @@ pub(crate) fn run_capture(
         Err(_) if handle.is_cancelled() => Err(CaptureFailure::cancelled()),
         Err(_) => Err(CaptureFailure::capture()),
     }
+}
+
+pub(crate) fn preview_selection(
+    config: &ServerConfig,
+    selection: &BackupSelection,
+) -> Result<CaptureSelectionPreview, CaptureFailure> {
+    let profiles = ProfileStore::at(&config.profiles_dir);
+    profiles
+        .get(&selection.profile_id)
+        .map_err(|_| CaptureFailure::plan())?
+        .ok_or_else(CaptureFailure::plan)?;
+    RepositoryStore::at(&config.repositories_dir)
+        .get(&selection.repository_id)
+        .map_err(|_| CaptureFailure::plan())?
+        .ok_or_else(CaptureFailure::plan)?;
+    let inventory = selection_inventory(config, &profiles, selection)?;
+    preview_capture_selection(selection, inventory.as_ref())
+        .map_err(|_| CaptureFailure::selection())
+}
+
+pub(crate) fn execute_selection(
+    config: &ServerConfig,
+    jobs: &Arc<JobRegistry>,
+    selection: &BackupSelection,
+    confirmation: &str,
+    run_id: &str,
+) -> Result<CaptureJobSummary, CaptureFailure> {
+    let preview = preview_selection(config, selection)?;
+    if preview.confirmation != confirmation {
+        return Err(CaptureFailure::selection());
+    }
+    let plan_id = save_selection_plan(config, &preview)?;
+    run_capture(config, jobs, &plan_id, run_id)
+}
+
+fn selection_inventory(
+    config: &ServerConfig,
+    profiles: &ProfileStore,
+    selection: &BackupSelection,
+) -> Result<Option<guardian_core::DockerInventory>, CaptureFailure> {
+    if !selection
+        .items
+        .iter()
+        .any(|item| !matches!(item, BackupSelectionItem::RemotePath { .. }))
+    {
+        return Ok(None);
+    }
+    let secrets = resolve_store(config.vault_dir.as_deref()).map_err(|_| CaptureFailure::plan())?;
+    let ssh = SystemOpenSsh::default();
+    DiscoverDockerInventoryUseCase {
+        profiles,
+        inventory: &SshDockerInventoryAdapter {
+            ssh: &ssh,
+            credentials: &secrets,
+        },
+    }
+    .execute(&selection.profile_id)
+    .map(Some)
+    .map_err(|_| CaptureFailure::selection())
+}
+
+fn save_selection_plan(
+    config: &ServerConfig,
+    preview: &CaptureSelectionPreview,
+) -> Result<String, CaptureFailure> {
+    let plan_id = PlanId::parse(random_id("plan")).map_err(|_| CaptureFailure::internal())?;
+    let plan = FilesystemCapturePlan {
+        plan_id: plan_id.clone(),
+        version: 1,
+        profile_id: preview.profile_id.clone(),
+        repository_id: preview.repository_id.clone(),
+        roots: preview
+            .normalized_roots
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect(),
+        database_path: preview
+            .sqlite_path
+            .as_ref()
+            .map(|path| path.as_str().to_owned()),
+    };
+    let stored = guardian_configuration::StoredCapturePlan::new(plan)
+        .map_err(|_| CaptureFailure::selection())?;
+    CapturePlanStore::at(&config.plans_dir)
+        .upsert(stored)
+        .map_err(|_| CaptureFailure::plan())?;
+    Ok(plan_id.as_str().to_owned())
 }
 
 fn random_id(prefix: &str) -> String {

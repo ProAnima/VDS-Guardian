@@ -77,6 +77,30 @@ pub async fn preview(
         .map_err(|_| PlanFailure::internal())?
 }
 
+pub(crate) fn save_confirmed_selection_blocking(
+    root: PathBuf,
+    request: BackupSelection,
+    confirmation: &str,
+) -> Result<PlanSummary, PlanFailure> {
+    let preview = preview_blocking(root.clone(), request)?;
+    if preview.confirmation != confirmation {
+        return Err(PlanFailure::confirmation());
+    }
+    save_blocking(
+        root,
+        SavePlanRequest {
+            profile_id: preview.profile_id.as_str().to_owned(),
+            repository_id: preview.repository_id.as_str().to_owned(),
+            roots: preview
+                .normalized_roots
+                .iter()
+                .map(|path| path.as_str().to_owned())
+                .collect(),
+            database_path: preview.sqlite_path.map(|path| path.as_str().to_owned()),
+        },
+    )
+}
+
 fn preview_blocking(
     root: PathBuf,
     request: BackupSelection,
@@ -202,6 +226,13 @@ impl PlanFailure {
             code: "missing_capture_plan_reference",
             message: "The selected server or repository does not exist.",
             remediation: "Refresh setup data and select an existing server and backup location.",
+        }
+    }
+    fn confirmation() -> Self {
+        Self {
+            code: "capture_selection_confirmation_required",
+            message: "The capture selection must be previewed and confirmed again.",
+            remediation: "Review the current server selection and use its exact preview identity.",
         }
     }
     fn storage() -> Self {

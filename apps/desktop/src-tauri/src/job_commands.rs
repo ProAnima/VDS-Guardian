@@ -1,9 +1,10 @@
 use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, CancellationHandle, CaptureUseCaseError, EmbeddedDatabaseCaptureRequest,
-    FilesystemBackupRequest, FilesystemCaptureRequest, JobRegistry, Manifest, PayloadPath,
-    PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity, Timestamp,
+    BackupId, BackupSelection, CancellationHandle, CaptureUseCaseError,
+    EmbeddedDatabaseCaptureRequest, FilesystemBackupRequest, FilesystemCaptureRequest, JobRegistry,
+    Manifest, PayloadPath, PlanReference, Producer, ProfileStorePort, RunId, SourceIdentity,
+    Timestamp,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
@@ -22,6 +23,14 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub struct RunCapturePlanRequest {
     plan_id: String,
+    run_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunCaptureSelectionRequest {
+    selection: BackupSelection,
+    confirmation: String,
     run_id: String,
 }
 
@@ -58,6 +67,45 @@ pub async fn run(
     tauri::async_runtime::spawn_blocking(move || run_blocking(root, request, run_id, handle))
         .await
         .map_err(|_| CaptureJobFailure::internal())?
+}
+
+pub async fn run_selection(
+    app: tauri::AppHandle,
+    request: RunCaptureSelectionRequest,
+) -> Result<CaptureJobSummary, CaptureJobFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| CaptureJobFailure::storage())?;
+    let run_id = RunId::parse(&request.run_id).map_err(|_| CaptureJobFailure::internal())?;
+    let handle = CancellationHandle::new();
+    let registry = app.state::<JobRegistry>();
+    let _registration = registry.register(run_id.clone(), handle.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let plan = crate::plan_commands::save_confirmed_selection_blocking(
+            root.clone(),
+            request.selection,
+            &request.confirmation,
+        )
+        .map_err(|failure| match failure.code {
+            "capture_selection_confirmation_required" | "invalid_capture_plan" => {
+                CaptureJobFailure::selection()
+            }
+            "plan_storage_unavailable" => CaptureJobFailure::storage(),
+            _ => CaptureJobFailure::plan(),
+        })?;
+        run_blocking(
+            root,
+            RunCapturePlanRequest {
+                plan_id: plan.plan_id,
+                run_id: request.run_id,
+            },
+            run_id,
+            handle,
+        )
+    })
+    .await
+    .map_err(|_| CaptureJobFailure::internal())?
 }
 
 fn run_blocking(
@@ -210,6 +258,13 @@ impl CaptureJobFailure {
             code: "capture_plan_not_ready",
             message: "The capture plan, server, or repository is unavailable.",
             remediation: "Refresh setup data and complete all setup steps.",
+        }
+    }
+    fn selection() -> Self {
+        Self {
+            code: "capture_selection_changed",
+            message: "The selected server data changed or was not confirmed.",
+            remediation: "Review the selection again before creating the backup.",
         }
     }
     fn signing() -> Self {

@@ -13,7 +13,7 @@ const commands = vi.hoisted(() => ({
   listRepositories: vi.fn(),
   listSshProfiles: vi.fn(),
   previewCaptureSelection: vi.fn(),
-  saveCapturePlan: vi.fn(),
+  runCaptureSelection: vi.fn(),
 }));
 
 vi.mock("../shared/commands", async (importOriginal) => ({
@@ -41,9 +41,7 @@ describe("setup resource refresh", () => {
     commands.listRepositories.mockResolvedValue([
       { repositoryId: "repo-1", label: "Archive", path: "D:/archive", recoveryReady: true },
     ]);
-    commands.saveCapturePlan.mockResolvedValue({
-      planId: "plan-1", profileId: "server-1", repositoryId: "repo-1", roots: ["/srv/app"],
-    });
+    commands.runCaptureSelection.mockResolvedValue({ backupId: "backup-1" });
     commands.previewCaptureSelection.mockResolvedValue({
       profileId: "server-1", repositoryId: "repo-1", normalizedRoots: ["/srv"],
       logicalItems: [{ kind: "remote_path", absolutePath: "/srv" }], warnings: [],
@@ -76,7 +74,7 @@ describe("setup resource refresh", () => {
     await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
   });
 
-  it("refreshes setup readiness after a capture plan is saved", async () => {
+  it("creates a backup directly from a reviewed selection", async () => {
     const changed = vi.fn();
     await act(async () => root.render(
       <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
@@ -92,10 +90,13 @@ describe("setup resource refresh", () => {
     expect(button("captureReview").disabled).toBe(false);
 
     await act(async () => container.querySelector("form")?.requestSubmit());
-    await vi.waitFor(() => expect(button("captureReviewSave")).toBeDefined());
-    await act(async () => button("captureReviewSave").click());
+    await vi.waitFor(() => expect(button("captureRun")).toBeDefined());
+    await act(async () => button("captureRun").click());
 
     await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+    expect(commands.runCaptureSelection).toHaveBeenCalledWith(expect.objectContaining({
+      confirmation: "CREATE BACKUP FOR server-1 IN repo-1 abcdef123456",
+    }));
   });
 
   function button(label: string): HTMLButtonElement {

@@ -145,6 +145,14 @@ async fn run_capture_plan(
 }
 
 #[tauri::command]
+async fn run_capture_selection(
+    app: tauri::AppHandle,
+    request: job_commands::RunCaptureSelectionRequest,
+) -> Result<job_commands::CaptureJobSummary, job_commands::CaptureJobFailure> {
+    job_commands::run_selection(app, request).await
+}
+
+#[tauri::command]
 async fn list_backups(
     app: tauri::AppHandle,
     repository_id: String,
@@ -236,6 +244,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preview_capture_selection,
             list_capture_plans,
             run_capture_plan,
+            run_capture_selection,
             list_backups,
             preview_restore,
             execute_restore,

@@ -4,7 +4,7 @@ import type { Translate } from "../i18n";
 import { captureErrorText } from "../shared/capture-error";
 import {
   cancelJob, hasTauriRuntime, listRepositories, listSshProfiles, previewCaptureSelection,
-  runCapturePlan, saveCapturePlan, type BackupSelectionItem, type CaptureSelectionPreview,
+  runCaptureSelection, type BackupSelectionItem, type CaptureSelectionPreview,
   type RepositorySummary, type SshProfileSummary,
 } from "../shared/commands";
 import { newRunId } from "../shared/run-id";
@@ -21,8 +21,8 @@ export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: Captu
   return <section className="repository-panel" aria-labelledby="plan-title">
     <header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("setupPlanEyebrow")}</p><h2 id="plan-title">{t("setupPlanTitle")}</h2><p>{t("browserBody")}</p></div></header>
     <SelectionForm model={model} t={t} />
-    {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.save()} t={t} />}
-    {model.planId && <RunPlanControls model={model} t={t} />}
+    {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.run()} t={t} />}
+    {model.running && <RunPlanControls model={model} t={t} />}
     {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
     {model.failure && <OperationFailureNotice message={model.failure} safe="captureFailureSafe" changed="captureFailureChanged" t={t} />}
   </section>;
@@ -42,14 +42,14 @@ function SelectionForm({ model, t }: { model: CaptureSelectionModel; t: Translat
 }
 
 function RunPlanControls({ model, t }: { model: CaptureSelectionModel; t: Translate }) {
-  return <div className="repository-form__actions"><button className="button button--secondary" disabled={model.working || model.running} type="button" onClick={() => void model.run()}>{model.running ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.running ? t("captureRunning") : t("captureRun")}</button>{model.running && <button className="button button--secondary" type="button" onClick={() => void model.cancel()}>{t("captureCancel")}</button>}</div>;
+  return <div className="repository-form__actions"><span>{t("captureRunning")}</span><button className="button button--secondary" type="button" onClick={() => void model.cancel()}>{t("captureCancel")}</button></div>;
 }
 
 function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: number, t: Translate) {
   const [profiles, setProfiles] = useState<SshProfileSummary[]>([]); const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
   const [profileId, setProfileId] = useState(""); const [repositoryId, setRepositoryId] = useState(""); const [items, setItems] = useState<BackupSelectionItem[]>([]); const [databasePath, setDatabasePath] = useState("");
-  const [preview, setPreview] = useState<CaptureSelectionPreview>(); const [planId, setPlanId] = useState<string>(); const [reviewing, setReviewing] = useState(false); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [runId, setRunId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
-  const invalidate = () => { setPreview(undefined); setPlanId(undefined); setResult(undefined); };
+  const [preview, setPreview] = useState<CaptureSelectionPreview>(); const [reviewing, setReviewing] = useState(false); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [runId, setRunId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
+  const invalidate = () => { setPreview(undefined); setResult(undefined); };
   const changeProfile = (value: string) => { setProfileId(value); setItems([]); invalidate(); };
   const changeRepository = (value: string) => { setRepositoryId(value); invalidate(); };
   const changeDatabase = (value: string) => { setDatabasePath(value); invalidate(); };
@@ -59,10 +59,9 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
   const clearItems = () => { setItems([]); invalidate(); };
   useEffect(() => { void loadResources(setProfiles, setRepositories, setProfileId, setRepositoryId); }, [resourcesRevision]);
   const review = async (event: FormEvent) => { event.preventDefault(); if (!hasTauriRuntime()) return; setReviewing(true); setFailure(undefined); try { setPreview(await previewCaptureSelection({ profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined })); } catch { setFailure(t("captureReviewFailed")); } finally { setReviewing(false); } };
-  const save = async () => { if (!preview) return; setWorking(true); setFailure(undefined); try { const plan = await saveCapturePlan({ profileId, repositoryId, roots: preview.normalizedRoots, databasePath: preview.sqlitePath }); setPlanId(plan.planId); onPlansChanged(); setResult(`${t("setupPlanSaved")} ${plan.roots.join(", ")}`); } catch { setFailure(t("setupPlanFailed")); } finally { setWorking(false); } };
-  const run = async () => { if (!planId) return; const nextRunId = newRunId(); setRunId(nextRunId); setRunning(true); setFailure(undefined); try { const job = await runCapturePlan(planId, nextRunId); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setRunning(false); setRunId(undefined); } };
+  const run = async () => { if (!preview) return; const nextRunId = newRunId(); setRunId(nextRunId); setWorking(true); setRunning(true); setFailure(undefined); try { const job = await runCaptureSelection({ selection: { profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined }, confirmation: preview.confirmation, runId: nextRunId }); onPlansChanged(); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setWorking(false); setRunning(false); setRunId(undefined); } };
   const cancel = async () => { if (runId) await cancelJob(runId); };
-  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, planId, reviewing, working, running, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, save, run, cancel };
+  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, reviewing, working, running, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, run, cancel };
 }
 
 type CaptureSelectionModel = ReturnType<typeof useCaptureSelection>;

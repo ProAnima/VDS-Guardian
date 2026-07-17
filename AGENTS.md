@@ -14,9 +14,10 @@ export into a passphrase-protected offline bundle and import on a clean
 machine (ADR 0013); capture/deploy cancellation is wired through CLI,
 desktop, and `guardian-mcp` adapters; and the desktop app, CLI, and
 `guardian-mcp` share one application-service boundary (ADR 0012). The
-release is not production-ready: the simple server explorer/selection path
-(ADR 0015), signed installers, and release-candidate desktop evidence remain
-incomplete (sections 4 and 5).
+release is not production-ready: signed installers and release-candidate
+desktop evidence remain incomplete (sections 4 and 5). The simple server
+explorer/selection path (ADR 0015) is implemented but still needs its
+release-candidate usability evidence.
 The compiled clean-machine path, including recovery-key import, passed on
 Windows locally and on Linux CI for commit `3912a90`. Bounded Docker
 inventory/mount selection is now part of the operator path; automatic Docker

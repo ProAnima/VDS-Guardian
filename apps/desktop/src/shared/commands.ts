@@ -109,6 +109,7 @@ export type CaptureSelectionWarning =
   | { kind: "sqlite_also_in_filesystem"; sqlitePath: string; coveredBy: string };
 export interface CaptureSelectionPreview { profileId: string; repositoryId: string; normalizedRoots: string[]; logicalItems: BackupSelectionItem[]; warnings: CaptureSelectionWarning[]; sqlitePath?: string; confirmation: string; }
 export interface CaptureJobSummary { backupId: string; }
+export interface CaptureSelectionExecutionRequest { selection: BackupSelection; confirmation: string; runId: string; }
 export interface CaptureFailure { code: string; message: string; remediation: string; }
 
 export interface BackupSummary { backupId: string; sealedAt: string; verification: "verified"; }
@@ -208,6 +209,7 @@ export async function saveCapturePlan(request: CapturePlanRequest): Promise<Capt
 export async function previewCaptureSelection(request: BackupSelection): Promise<CaptureSelectionPreview> { requireTauriRuntime(); return invoke<CaptureSelectionPreview>("preview_capture_selection", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }
+export async function runCaptureSelection(request: CaptureSelectionExecutionRequest): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_selection", { request }); }
 export async function cancelJob(runId: string): Promise<boolean> { if (!hasTauriRuntime()) return false; return invoke<boolean>("cancel_job", { runId }); }
 export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
 export async function previewRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("preview_restore", { request }); }

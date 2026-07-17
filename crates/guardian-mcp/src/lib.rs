@@ -103,6 +103,103 @@ pub struct RunCaptureParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureSelectionParams {
+    /// The enrolled SSH profile that owns the selected data.
+    pub profile_id: String,
+    /// The ready local repository that will receive the encrypted backup.
+    pub repository_id: String,
+    /// Filesystem paths and Docker persistent mounts selected from the read-only browser.
+    pub items: Vec<CaptureSelectionItemParams>,
+    /// Optional SQLite database path for a consistent snapshot payload.
+    pub sqlite_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum CaptureSelectionItemParams {
+    RemotePath {
+        absolute_path: String,
+    },
+    DockerMount {
+        container_id: String,
+        mount_destination: String,
+        capturable_path: String,
+    },
+    DockerGroup {
+        group_id: String,
+        capturable_paths: Vec<String>,
+    },
+}
+
+impl CaptureSelectionParams {
+    fn parse(self) -> Result<guardian_core::BackupSelection, ()> {
+        use guardian_core::{BackupSelectionItem, ProfileId, RemotePath, RepositoryId};
+        let items = self
+            .items
+            .into_iter()
+            .map(|item| match item {
+                CaptureSelectionItemParams::RemotePath { absolute_path } => {
+                    Ok(BackupSelectionItem::RemotePath {
+                        absolute_path: RemotePath::parse(absolute_path).map_err(|_| ())?,
+                    })
+                }
+                CaptureSelectionItemParams::DockerMount {
+                    container_id,
+                    mount_destination,
+                    capturable_path,
+                } => Ok(BackupSelectionItem::DockerMount {
+                    container_id,
+                    mount_destination: RemotePath::parse(mount_destination).map_err(|_| ())?,
+                    capturable_path: RemotePath::parse(capturable_path).map_err(|_| ())?,
+                }),
+                CaptureSelectionItemParams::DockerGroup {
+                    group_id,
+                    capturable_paths,
+                } => Ok(BackupSelectionItem::DockerGroup {
+                    group_id,
+                    capturable_paths: capturable_paths
+                        .into_iter()
+                        .map(RemotePath::parse)
+                        .collect::<Result<_, _>>()
+                        .map_err(|_| ())?,
+                }),
+            })
+            .collect::<Result<_, ()>>()?;
+        Ok(guardian_core::BackupSelection {
+            profile_id: ProfileId::parse(self.profile_id).map_err(|_| ())?,
+            repository_id: RepositoryId::parse(self.repository_id).map_err(|_| ())?,
+            items,
+            sqlite_path: self
+                .sqlite_path
+                .map(RemotePath::parse)
+                .transpose()
+                .map_err(|_| ())?,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PreviewCaptureSelectionParams {
+    #[serde(flatten)]
+    pub selection: CaptureSelectionParams,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExecuteCaptureSelectionParams {
+    #[serde(flatten)]
+    pub selection: CaptureSelectionParams,
+    /// The exact confirmation returned by preview_capture_selection for these inputs.
+    pub confirmation: String,
+    /// A fresh caller-minted run id; use it with cancel_job.
+    pub run_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PreviewRestoreParams {
     pub repository_id: String,
     pub backup_id: String,
@@ -265,6 +362,50 @@ impl GuardianMcpServer {
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
         Ok(
             match capture::run_capture(&self.config, &self.jobs, &params.plan_id, &params.run_id) {
+                Ok(summary) => ok(&summary),
+                Err(failure) => err(&failure),
+            },
+        )
+    }
+
+    #[tool(
+        description = "Preview a browser-derived filesystem/Docker backup selection. Read-only; returns the exact confirmation required by execute_capture_selection."
+    )]
+    async fn preview_capture_selection(
+        &self,
+        Parameters(params): Parameters<PreviewCaptureSelectionParams>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let Ok(selection) = params.selection.parse() else {
+            return Ok(err(
+                &serde_json::json!({ "code": "invalid_capture_selection", "message": "The capture selection is invalid." }),
+            ));
+        };
+        Ok(match capture::preview_selection(&self.config, &selection) {
+            Ok(preview) => ok(&preview),
+            Err(failure) => err(&failure),
+        })
+    }
+
+    #[tool(
+        description = "Create a verified encrypted backup from a filesystem/Docker selection. Re-resolves Docker data and requires the exact confirmation from preview_capture_selection; cancellable via cancel_job."
+    )]
+    async fn execute_capture_selection(
+        &self,
+        Parameters(params): Parameters<ExecuteCaptureSelectionParams>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let Ok(selection) = params.selection.parse() else {
+            return Ok(err(
+                &serde_json::json!({ "code": "invalid_capture_selection", "message": "The capture selection is invalid." }),
+            ));
+        };
+        Ok(
+            match capture::execute_selection(
+                &self.config,
+                &self.jobs,
+                &selection,
+                &params.confirmation,
+                &params.run_id,
+            ) {
                 Ok(summary) => ok(&summary),
                 Err(failure) => err(&failure),
             },
@@ -479,6 +620,8 @@ mod tests {
         for expected in [
             "list_ssh_profiles",
             "browse_remote_directory",
+            "preview_capture_selection",
+            "execute_capture_selection",
             "run_capture",
             "preview_restore",
             "execute_deploy",
