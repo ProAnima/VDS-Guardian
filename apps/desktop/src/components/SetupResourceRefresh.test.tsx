@@ -69,7 +69,7 @@ describe("setup resource refresh", () => {
     await act(async () => root.render(
       <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
     ));
-    await vi.waitFor(() => expect(button("Сохранить план").disabled).toBe(false));
+    await vi.waitFor(() => expect(button("setupSavePlan").disabled).toBe(false));
 
     await act(async () => container.querySelector("form")?.requestSubmit());
 

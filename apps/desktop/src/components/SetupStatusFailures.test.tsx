@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SetupStatusPanel } from "./SetupStatusPanel";
+import { createTranslator } from "../shared/preferences";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -43,7 +44,7 @@ describe("SetupStatusPanel failures", () => {
       remediation: "Unlock the credential store and retry.",
     });
 
-    await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} />));
+    await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} t={createTranslator("ru")} />));
 
     await vi.waitFor(() => expect(container.textContent).toContain(
       "Signing status could not be read. Unlock the credential store and retry.",
@@ -53,7 +54,7 @@ describe("SetupStatusPanel failures", () => {
   it("does not expose details from an unknown rejection payload", async () => {
     commands.getSigningIdentityStatus.mockRejectedValue(new Error("internal C:/secret/path"));
 
-    await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} />));
+    await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} t={createTranslator("ru")} />));
 
     await vi.waitFor(() => expect(container.textContent).toContain(
       "Повторите проверку; если ошибка сохранится, откройте диагностику.",

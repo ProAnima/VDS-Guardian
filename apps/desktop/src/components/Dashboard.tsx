@@ -1,10 +1,6 @@
-import {
-  Archive, ArrowUpRight, Check, CircleDashed, HardDrive, LockKeyhole,
-  Plus, RotateCcw, Server, ShieldCheck,
-} from "lucide-react";
+import { Archive, ArrowUpRight, LockKeyhole, Plus, Server, ShieldCheck } from "lucide-react";
 import type { Translate } from "../i18n";
 import type { FoundationStatus } from "../shared/commands";
-import { StatusCard } from "./StatusCard";
 interface DashboardProps {
   status: FoundationStatus;
   t: Translate;
@@ -15,11 +11,7 @@ export function Dashboard({ status, t, onStartSetup }: DashboardProps) {
   return (
     <main className="dashboard">
       <Hero status={status} t={t} onStartSetup={onStartSetup} />
-      <StatusGrid t={t} />
-      <div className="dashboard__columns">
-        <ServersPanel t={t} onStartSetup={onStartSetup} />
-        <RoadmapPanel t={t} />
-      </div>
+      <SetupPanel t={t} onStartSetup={onStartSetup} />
       <SecurityBanner t={t} />
       <footer className="app-footer"><span>{t("footerPlatform")}</span><span>{t("footerLicense")}</span></footer>
     </main>
@@ -54,50 +46,16 @@ function Hero({ status, t, onStartSetup }: DashboardProps) {
   );
 }
 
-function StatusGrid({ t }: { t: Translate }) {
-  return (
-    <section className="status-grid" aria-label={t("pageEyebrow")}>
-      <StatusCard icon={ShieldCheck} label={t("statusProtection")} value={t("statusFoundation")} tone="amber" />
-      <StatusCard icon={HardDrive} label={t("statusNodes")} value={t("statusOneNode")} tone="green" />
-      <StatusCard icon={Check} label={t("statusVerified")} value={t("statusUnavailable")} tone="neutral" />
-      <StatusCard icon={RotateCcw} label={t("statusRecovery")} value={t("statusConfiguration")} tone="neutral" />
-    </section>
-  );
-}
-
-function ServersPanel({ t, onStartSetup }: Pick<DashboardProps, "t" | "onStartSetup">) {
+function SetupPanel({ t, onStartSetup }: Pick<DashboardProps, "t" | "onStartSetup">) {
   return (
     <section className="content-panel servers-panel">
-      <PanelHeader title={t("serversTitle")} action={t("serversAction")} onAction={onStartSetup} />
+      <PanelHeader title={t("setupHeroTitle")} action={t("serversAction")} onAction={onStartSetup} />
       <div className="empty-state">
         <div className="empty-state__visual"><Server size={31} strokeWidth={1.6} /><span /><span /></div>
-        <h2>{t("emptyTitle")}</h2>
-        <p>{t("setupServerBody")}</p>
+        <h2>{t("setupStepServer")}</h2>
+        <p>{t("setupHeroBody")}</p>
         <button type="button" className="text-button" onClick={onStartSetup}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
       </div>
-    </section>
-  );
-}
-
-function RoadmapPanel({ t }: { t: Translate }) {
-  const items = [
-    [t("roadmapFoundation"), t("statusInProgress"), "current"],
-    [t("roadmapDomain"), t("statusReady"), "ready"],
-    [t("roadmapRemote"), t("statusReady"), "ready"],
-    [t("roadmapRestore"), t("statusReady"), "ready"],
-  ] as const;
-  return (
-    <section className="content-panel roadmap-panel">
-      <PanelHeader title={t("roadmapTitle")} />
-      <ol className="roadmap-list">
-        {items.map(([label, state, tone], index) => (
-          <li key={label} data-tone={tone}>
-            <span className="roadmap-list__number">0{index + 1}</span>
-            <div><strong>{label}</strong><span>{state}</span></div>
-            {tone === "ready" ? <Check size={16} /> : <CircleDashed size={16} />}
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }

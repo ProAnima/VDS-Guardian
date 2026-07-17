@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { CircleAlert, Container, LoaderCircle } from "lucide-react";
 import { hasTauriRuntime, listDockerContainers, type DockerContainerSummary } from "../shared/commands";
+import type { Translate } from "../i18n";
 
 interface DockerMountPickerProps {
   profileId: string;
   onAddPath: (path: string) => void;
+  t: Translate;
 }
 
 interface CapturableMount {
@@ -15,8 +17,8 @@ interface CapturableMount {
   path: string;
 }
 
-export function DockerMountPicker({ profileId, onAddPath }: DockerMountPickerProps) {
-  const model = useCapturableMounts(profileId);
+export function DockerMountPicker({ profileId, onAddPath, t }: DockerMountPickerProps) {
+  const model = useCapturableMounts(profileId, t);
   return (
     <div className="repository-form__actions">
       <button
@@ -26,7 +28,7 @@ export function DockerMountPicker({ profileId, onAddPath }: DockerMountPickerPro
         onClick={() => void model.load()}
       >
         {model.loading ? <LoaderCircle className="spin" size={16} /> : <Container size={16} />}
-        {model.loading ? "Ищем контейнеры…" : "Показать Docker-контейнеры"}
+        {model.loading ? t("dockerLoading") : t("dockerShow")}
       </button>
       {model.failure && (
         <p className="signing-panel__error" role="alert">
@@ -35,7 +37,7 @@ export function DockerMountPicker({ profileId, onAddPath }: DockerMountPickerPro
         </p>
       )}
       {model.loaded && model.mounts.length === 0 && (
-        <p className="restore-panel__empty">Нет контейнеров с доступными для захвата путями.</p>
+        <p className="restore-panel__empty">{t("dockerEmpty")}</p>
       )}
       <CapturableMountList mounts={model.mounts} onAddPath={onAddPath} />
     </div>
@@ -74,7 +76,7 @@ function toCapturableMounts(containers: DockerContainerSummary[]): CapturableMou
   );
 }
 
-function useCapturableMounts(profileId: string) {
+function useCapturableMounts(profileId: string, t: Translate) {
   const [mounts, setMounts] = useState<CapturableMount[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -88,7 +90,7 @@ function useCapturableMounts(profileId: string) {
       setMounts(toCapturableMounts(await listDockerContainers(profileId)));
       setLoaded(true);
     } catch {
-      setFailure("Не удалось получить список Docker-контейнеров с этого сервера.");
+      setFailure(t("dockerError"));
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,4 @@
-import {
-  Activity, Archive, LayoutDashboard, Rocket, RotateCcw, Server, Settings,
-  type LucideIcon,
-} from "lucide-react";
+import { LayoutDashboard, Rocket, RotateCcw, Server, type LucideIcon } from "lucide-react";
 import type { MessageKey } from "../i18n/messages-primary";
 import type { Translate } from "../i18n";
 import type { ViewId } from "../App";
@@ -10,16 +7,14 @@ import { BrandMark } from "./BrandMark";
 interface NavItem {
   key: MessageKey;
   icon: LucideIcon;
-  view?: ViewId;
+  view: ViewId;
 }
 
 const primaryNav: NavItem[] = [
   { key: "navOverview", icon: LayoutDashboard, view: "overview" },
   { key: "navServers", icon: Server, view: "setup" },
-  { key: "navBackups", icon: Archive },
   { key: "navRestore", icon: RotateCcw, view: "restore" },
   { key: "navDeploy", icon: Rocket, view: "deploy" },
-  { key: "navActivity", icon: Activity },
 ];
 
 interface AppSidebarProps {
@@ -38,7 +33,6 @@ export function AppSidebar({ t, activeView, onNavigate }: AppSidebarProps) {
         ))}
       </nav>
       <div className="sidebar__footer">
-        <NavButton item={{ key: "navSettings", icon: Settings }} t={t} activeView={activeView} onNavigate={onNavigate} />
         <div className="node-pill">
           <span className="node-pill__signal" aria-hidden="true" />
           <div><span>{t("nodeLabel")}</span><strong>{t("localNode")}</strong></div>
@@ -57,11 +51,9 @@ interface NavButtonProps {
 
 function NavButton({ item, t, activeView, onNavigate }: NavButtonProps) {
   const Icon = item.icon;
-  const view = item.view;
-  const active = view !== undefined && view === activeView;
-  const handleClick = view === undefined ? undefined : () => onNavigate(view);
+  const active = item.view === activeView;
   return (
-    <button className="nav-button" data-active={active || undefined} type="button" title={t(item.key)} disabled={view === undefined} onClick={handleClick}>
+    <button className="nav-button" data-active={active || undefined} type="button" title={t(item.key)} onClick={() => onNavigate(item.view)}>
       <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
       <span>{t(item.key)}</span>
       {active && <span className="nav-button__active" aria-hidden="true" />}

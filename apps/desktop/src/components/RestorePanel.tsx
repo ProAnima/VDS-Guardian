@@ -240,10 +240,10 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
     <div className="signing-confirm" aria-live="polite">
       <div>
         <strong>{t("restorePlanTitle")}</strong>
-        <p>Источник: {plan.backupId}</p>
-        <p>Назначение: {plan.destination}</p>
+        <p>{t("restorePlanSource")}: {plan.backupId}</p>
+        <p>{t("restorePlanDestination")}: {plan.destination}</p>
         <p>{t("restorePlanPayload")}: {plan.payload}</p>
-        <p>Восстановление создаёт только новую папку назначения и не перезаписывает существующую.</p>
+        <p>{t("restorePlanRollback")}</p>
         <p className="restore-panel__phrase">{plan.confirmation}</p>
       </div>
       <label>
