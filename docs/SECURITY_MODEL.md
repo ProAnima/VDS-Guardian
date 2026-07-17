@@ -499,5 +499,7 @@ receive Authenticode signatures and Linux bundles receive detached OpenPGP
 signatures; `SHA256SUMS` is generated after those platform signatures and is
 itself OpenPGP-signed. The workflow fails closed when required signing secrets
 are unavailable. Tauri auto-update endpoints and updater keys remain disabled;
-the release workflow is a distribution control, not an update channel. See ADR
-0014 and `docs/RELEASE_SIGNING.md`.
+the release workflow is a distribution control, not an update channel. GitHub
+also records an OIDC/Sigstore provenance attestation for the final release
+files, independent of installer and OpenPGP keys. See ADR 0014 and
+`docs/RELEASE_SIGNING.md`.

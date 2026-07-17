@@ -21,9 +21,9 @@ with the same-commit CI and clean-room drill evidence.
 
 ## Procedure
 
-1. Verify the installer SHA-256 with `Get-FileHash -Algorithm SHA256`, verify
-   the Authenticode publisher in Windows Explorer, then install it. Launch the
-   installed application normally; do not run it elevated.
+1. Run `scripts/verify-release-artifact.ps1` against the downloaded installer,
+   `SHA256SUMS`, and expected publisher, then install it. Launch the installed
+   application normally; do not run it elevated.
 2. In **Setup status**, confirm every prerequisite is reported explicitly. Create
    the local signing identity, add the repository, and ensure its recovery key
    is ready. Export the recovery bundle with two matching passphrase entries,

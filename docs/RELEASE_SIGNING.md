@@ -20,6 +20,16 @@ GitHub Release.
 
 The workflow publishes platform signatures, an SPDX JSON SBOM, and
 `SHA256SUMS` plus its detached OpenPGP signature. Do not enable Tauri
-auto-updates or add updater keys as part of this procedure. Provenance
-attestation and the release-candidate Windows smoke execution remain open, so
-passing the workflow alone is not a production-readiness claim.
+auto-updates or add updater keys as part of this procedure. GitHub also records
+a Sigstore-backed build-provenance attestation for the final release files;
+consumers can inspect it with `gh attestation verify <asset> -R
+ProAnima/VDS-Guardian`. The release-candidate Windows smoke execution remains
+open, so passing the workflow alone is not a production-readiness claim.
+
+Release assets are deliberately flattened before `SHA256SUMS` is generated, so
+their filenames match what a consumer downloads from GitHub Releases. On
+Windows, verify an installer and publisher before execution:
+
+```powershell
+.\scripts\verify-release-artifact.ps1 -InstallerPath .\VDS-Guardian-setup.exe -ChecksumsPath .\SHA256SUMS -ExpectedPublisher "ProAnima"
+```

@@ -230,8 +230,7 @@ independently.
 - Produce signed Windows and Linux installer artifacts with published
   checksums; automatic updates remain deferred. The tag-only, fail-closed
   workflow and signing-material contract are now documented in ADR 0014 and
-  `docs/RELEASE_SIGNING.md`; actual signed release evidence and provenance
-  attestation remain open.
+  `docs/RELEASE_SIGNING.md`; actual signed release evidence remains open.
 - Documentation and UI use the same release status and terminology.
 
 Gate: a non-technical operator can configure one server, create one backup,

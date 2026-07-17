@@ -99,15 +99,28 @@ jobs:
   publish:
     needs: package
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: release-artifacts
+      - name: Flatten release assets
+        shell: bash
+        run: |
+          mkdir release-assets
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            test ! -e "release-assets/$name" || { echo "duplicate release asset: $name" >&2; exit 1; }
+            cp "$file" "release-assets/$name"
+          done < <(find release-artifacts -type f -print0)
       - name: Generate release SBOM
         uses: anchore/sbom-action@v0
         with:
-          path: release-artifacts
-          output-file: release-artifacts/VDS-Guardian-${{ github.ref_name }}.spdx.json
+          path: release-assets
+          output-file: release-assets/VDS-Guardian-${{ github.ref_name }}.spdx.json
           format: spdx-json
           upload-artifact: false
           upload-release-assets: false
@@ -118,16 +131,20 @@ jobs:
         shell: bash
         run: |
           test -n "$GPG_KEY" && test -n "$GPG_PASSPHRASE" || { echo "Linux signing secrets are required." >&2; exit 1; }
-          (cd release-artifacts && find . -type f ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          (cd release-assets && find . -type f ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           export GNUPGHOME="$RUNNER_TEMP/guardian-gpg"
           install -m 700 -d "$GNUPGHOME"
           printf '%s' "$GPG_KEY" | base64 --decode | gpg --batch --import
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign release-artifacts/SHA256SUMS
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign release-assets/SHA256SUMS
           rm -rf "$GNUPGHOME"
+      - name: Attest release provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/**
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          mapfile -d '' files < <(find release-artifacts -type f -print0)
+          mapfile -d '' files < <(find release-assets -type f -print0)
           gh release create "${GITHUB_REF_NAME}" "${files[@]}" --title "VDS Guardian ${GITHUB_REF_NAME}" --generate-notes

@@ -24,6 +24,8 @@ as CI before packaging. It builds native Windows and Linux bundles, then:
   the artifacts, signatures, and checksum file as one GitHub Release;
 - generates an SPDX JSON SBOM with Anchore's Syft-backed `sbom-action` before
   checksums are calculated, so the SBOM is covered by the signed checksum;
+- creates GitHub/Sigstore build-provenance attestations for the final release
+  files after signing and checksum generation;
 - fails before publishing if any required signing secret is unavailable.
 
 The workflow never enables Tauri updater endpoints or embeds updater signing
@@ -41,7 +43,8 @@ first tag release: `WINDOWS_SIGNING_CERTIFICATE_BASE64`,
 creates no release. Actual signed-artifact and Windows-smoke evidence remains
 required before Release 0.1 can be called production-ready.
 
-Provenance attestation remains release-gate work until its retention policy is
-selected. The SBOM action is an additional build-time dependency only: it scans
-the release-artifact directory, receives no product credentials, and produces
-one SPDX JSON file published beside the installers.
+The SBOM action is an additional build-time dependency only: it scans the
+release-artifact directory, receives no product credentials, and produces one
+SPDX JSON file published beside the installers. The provenance action uses a
+short-lived GitHub OIDC/Sigstore credential; it does not reuse an installer or
+OpenPGP signing secret. Consumers can verify it with `gh attestation verify`.
