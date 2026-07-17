@@ -99,6 +99,7 @@ export interface ImportRecoveryBundleRequest {
 export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CaptureJobSummary { backupId: string; }
+export interface CaptureFailure { code: string; message: string; remediation: string; }
 
 export interface BackupSummary { backupId: string; sealedAt: string; verification: "verified"; }
 export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; }
