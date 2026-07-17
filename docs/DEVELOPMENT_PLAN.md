@@ -249,10 +249,13 @@ independently.
 - Restore picker exposes only sealed, freshly signature-verified backups and
   labels that verification state; failed and cancelled runs are never offered
   as restore candidates.
-- Restore preview states the source backup, destination, expected payload, and
-  rollback posture before confirmation. Closed in the current UI. Open: adopt
-  the shared `adds`/`replaces`/`conflicts` impact DTO; `replaces` remains empty
-  while Release 0.1 permits only a new destination.
+- Restore preview states the source backup, destination, expected workloads,
+  and rollback posture before confirmation. Closed: core owns the shared
+  `adds`/`replaces`/`conflicts` impact DTO serialized by desktop and MCP.
+  Existing destinations are returned as blocking conflicts instead of an
+  opaque preview failure, while exact-confirmation execution still rejects
+  every conflict. `replaces` remains empty because Release 0.1 permits only a
+  new destination.
 - A running desktop restore can be cancelled by the operator. Closed: the
   desktop supplies a UUIDv7 run id to the shared `JobRegistry`; decryption,
   tar extraction, and SQLite decompression poll its cancellation handle, remove

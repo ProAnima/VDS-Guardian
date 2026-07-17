@@ -81,12 +81,22 @@ export const en = {
   failureSafeLabel: "Safe:", failureChangedLabel: "What may have changed:", captureFailureSafe: "No sealed backup was created.", captureFailureChanged: "The source server was only read; temporary local staging data was discarded.", restoreFailureSafe: "No existing destination was overwritten and no restore destination was published.", restoreFailureChanged: "Only temporary local staging may have been created and was removed before the failure returned.", deployFailureSafe: "No destination was published on the target server.", deployFailureChanged: "Only a temporary remote staging path may have received data; it is removed before the failure returns.",
   captureReview: "Review selection", captureReviewing: "Checking selection…", captureReviewFailed: "The selection could not be verified against the current server state.", captureReviewTitle: "Backup preview", captureReviewSafe: "The server is only read during this check. No backup has been created yet.", captureReviewPaths: "Resolved paths", captureReviewSqlite: "SQLite snapshot", captureReviewWarnings: "Review these warnings", captureReviewConfirmation: "Preview identity", captureReviewSave: "Save reviewed selection", captureWarningCovered: "is already covered by", captureWarningLiveDocker: "the container is active; persistent data may change during capture", captureWarningSqliteCovered: "is also inside the filesystem selection under",
   dockerGroup: "Docker group",
+  restoreImpactAdds: "Will be added",
+  restoreImpactReplaces: "Will be replaced",
+  restoreImpactConflicts: "Conflicts",
+  restoreImpactWorkloads: "Backup contents",
+  restoreImpactNone: "None",
 } as const;
 
 export type MessageKey = keyof typeof en;
 export type Messages = Partial<Record<MessageKey, string>>;
 
 export const ru: Messages = {
+  restoreImpactAdds: "Будет добавлено",
+  restoreImpactReplaces: "Будет заменено",
+  restoreImpactConflicts: "Конфликты",
+  restoreImpactWorkloads: "Состав бэкапа",
+  restoreImpactNone: "Нет",
   dockerGroup: "Группа Docker",
   captureReview: "Проверить выбор", captureReviewing: "Проверяем выбор…", captureReviewFailed: "Не удалось сверить выбор с текущим состоянием сервера.", captureReviewTitle: "Предпросмотр бэкапа", captureReviewSafe: "Сервер только читается. Бэкап ещё не создан.", captureReviewPaths: "Итоговые пути", captureReviewSqlite: "Снимок SQLite", captureReviewWarnings: "Проверьте предупреждения", captureReviewConfirmation: "Идентификатор preview", captureReviewSave: "Сохранить проверенный выбор", captureWarningCovered: "уже входит в", captureWarningLiveDocker: "контейнер активен; данные могут меняться во время бэкапа", captureWarningSqliteCovered: "также входит в файловый выбор в",
   appTagline: "Центр управления восстановлением",

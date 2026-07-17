@@ -29,9 +29,6 @@ impl LocalRepository {
         verifier: &dyn ManifestVerifier,
     ) -> Result<RestorePlan, RepositoryError> {
         let destination = destination.as_ref();
-        if destination.exists() {
-            return Err(RepositoryError::RestoreDestinationExists);
-        }
         let _lock = self.acquire_lock()?;
         let manifest =
             load_verified_manifest(&self.backups_root().join(backup_id.as_str()), verifier)?;

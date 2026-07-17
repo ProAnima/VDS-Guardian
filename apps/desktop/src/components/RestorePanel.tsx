@@ -5,7 +5,7 @@ import { OperationFailureNotice } from "./OperationFailureNotice";
 import { safeErrorText } from "../shared/safe-error";
 import {
   cancelJob, executeRestore, hasTauriRuntime, listBackups, listRepositories, previewRestore,
-  type BackupSummary, type RepositorySummary, type RestorePreview,
+  type BackupSummary, type RepositorySummary, type RestoreImpactPreview,
 } from "../shared/commands";
 import { newRunId } from "../shared/run-id";
 
@@ -67,12 +67,12 @@ interface RestoreActionState {
   repositoryId: string;
   backupId: string;
   destination: string;
-  plan?: RestorePreview;
+  plan?: RestoreImpactPreview;
   confirmationInput: string;
 }
 
 interface RestoreActionSetters {
-  setPlan: (value: RestorePreview | undefined) => void;
+  setPlan: (value: RestoreImpactPreview | undefined) => void;
   setConfirmationInput: (value: string) => void;
   setResult: (value: string | undefined) => void;
   setFailure: (value: string | undefined) => void;
@@ -131,7 +131,7 @@ async function submitRestore(
 }
 
 function useRestoreActions(t: Translate, repositoryId: string, backupId: string, destination: string) {
-  const [plan, setPlan] = useState<RestorePreview>();
+  const [plan, setPlan] = useState<RestoreImpactPreview>();
   const [confirmationInput, setConfirmationInput] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -236,16 +236,10 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
   const plan = model.plan;
   if (!plan) return null;
   const confirmed = model.confirmationInput === plan.confirmation;
+  const executable = confirmed && plan.conflicts.length === 0;
   return (
     <div className="signing-confirm" aria-live="polite">
-      <div>
-        <strong>{t("restorePlanTitle")}</strong>
-        <p>{t("restorePlanSource")}: {plan.backupId}</p>
-        <p>{t("restorePlanDestination")}: {plan.destination}</p>
-        <p>{t("restorePlanPayload")}: {plan.payload}</p>
-        <p>{t("restorePlanRollback")}</p>
-        <p className="restore-panel__phrase">{plan.confirmation}</p>
-      </div>
+      <ImpactSummary plan={plan} t={t} />
       <label>
         <span>{t("restorePlanConfirmLabel")}</span>
         <input
@@ -259,7 +253,7 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
         <button className="button button--secondary" disabled={model.restoring} onClick={model.cancelPlan} type="button">
           {t("restoreCancel")}
         </button>
-        <button className="button button--primary" disabled={!confirmed || model.restoring} onClick={model.restore} type="button">
+        <button className="button button--primary" disabled={!executable || model.restoring} onClick={model.restore} type="button">
           {model.restoring ? <LoaderCircle className="spin" size={16} /> : <RotateCcw size={16} />}
           {model.restoring ? t("restoreExecuting") : t("restoreExecute")}
         </button>
@@ -271,6 +265,24 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
       </div>
     </div>
   );
+}
+
+function ImpactSummary({ plan, t }: { plan: RestoreImpactPreview; t: Translate }) {
+  return <div>
+    <strong>{t("restorePlanTitle")}</strong>
+    <p>{t("restorePlanSource")}: {plan.backupId}</p>
+    <p>{t("restorePlanDestination")}: {plan.destination}</p>
+    <ImpactList label={t("restoreImpactAdds")} items={plan.adds} empty={t("restoreImpactNone")} />
+    <ImpactList label={t("restoreImpactReplaces")} items={plan.replaces} empty={t("restoreImpactNone")} />
+    <ImpactList label={t("restoreImpactConflicts")} items={plan.conflicts} empty={t("restoreImpactNone")} />
+    <p>{t("restoreImpactWorkloads")}: {plan.workloadLabels.join(", ")}</p>
+    <p>{t("restorePlanRollback")}</p>
+    <p className="restore-panel__phrase">{plan.confirmation}</p>
+  </div>;
+}
+
+function ImpactList({ label, items, empty }: { label: string; items: string[]; empty: string }) {
+  return <div><strong>{label}</strong>{items.length === 0 ? <p>{empty}</p> : <ul>{items.map((item) => <li key={item}><code>{item}</code></li>)}</ul>}</div>;
 }
 
 function errorText(error: unknown, t: Translate): string {

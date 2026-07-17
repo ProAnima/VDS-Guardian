@@ -107,7 +107,7 @@ commands: the Overview setup panel reads status, and only calls enrollment
 after an explicit acknowledgement and final confirmation. Their Tauri functions
 only resolve the app config path and dispatch the shared signing service to a
 blocking worker. SSH profile enrollment, repository registration, recovery-bundle
-export/import, capture-plan save/run, Docker inventory browsing, and
+export/import, confirmed capture-selection execution, Docker inventory browsing, and
 restore/deploy preview-and-execute now follow the same shape. Recovery-bundle
 commands call the shared `guardian-local-repository` service; desktop keeps an
 entered passphrase in memory, requires it twice for export, and bundle import
@@ -169,11 +169,11 @@ rather than creating a new, network-reachable one. `preview_restore`/
 require it back unchanged — the calling agent supplies it explicitly, the
 same as a human copying it from a CLI or desktop preview. Enrollment,
 credential import, repository registration, vault init, signing enrollment,
-recovery-key init/export/import (ADR 0013), and capture-plan creation are
-deliberately not exposed: each either mints new local trust/config state,
-carries the single highest-blast-radius secret in the system, or (for
-capture-plan creation specifically) has no confirmation gate of its own to
-begin with.
+recovery-key init/export/import (ADR 0013) are deliberately not exposed: each
+either mints new local trust/config state or carries the single highest-blast-
+radius secret in the system. ADR 0015 permits only confirmed explicit capture
+selection: MCP preview returns a selection-bound confirmation, execute
+re-resolves Docker inventory, and only then persists the internal capture plan.
 
 ## Backup lifecycle
 
@@ -214,7 +214,10 @@ Restore is a separate use case, not "backup in reverse":
 7. Preserve the previous deployment until rollback expiry.
 
 The initial restore slice accepts only a sealed manifest and an absolute new
-target path. It produces an exact confirmation phrase, re-verifies signature
+target path. Its shared impact DTO reports additions, replacements, blocking
+conflicts, and workload labels; replacements are empty in Release 0.1, while
+an existing target is a non-overridable conflict. It produces an exact
+confirmation phrase, re-verifies signature
 and payload digest at execution, and then stages every present payload (the
 required filesystem archive and, when the manifest carries one, the database
 snapshot) into a fresh sibling directory, publishing all of it to the

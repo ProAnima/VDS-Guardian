@@ -84,9 +84,9 @@ inspection after decryption and before a restore destination is published.
   execute resolves and validates them again instead of trusting UI metadata.
 - The implemented preview rejects client-supplied Docker paths that do not
   exactly match the current validated inventory, and binds its confirmation
-  identity to the logical items and normalized roots. This preview is not yet
-  an execution authorization gate; that revalidation remains required before
-  direct selection execution is exposed.
+  identity to the logical items and normalized roots. Desktop and MCP direct
+  selection execution re-read that inventory, rebuild the preview, and reject
+  a changed selection or mismatched confirmation before capture starts.
 
 ### Encrypted local vault fallback
 
@@ -438,6 +438,10 @@ clears that acknowledgement.
 - Default to dry-run and a new destination.
 - The restore planner rejects unsealed manifests and relative targets, and
   requires an exact confirmation phrase before extraction.
+- The shared restore impact preview reports new writes, replacements, and
+  blocking conflicts. Release 0.1 always reports an empty replacement set;
+  an existing destination is a visible conflict that exact confirmation cannot
+  override.
 - Verify backup signature/checksums immediately before mutation.
 - Re-confirm server identity and show all deletions/service impacts.
 - Create a safety point before destructive in-place restore.
@@ -497,12 +501,14 @@ clears that acknowledgement.
   the same `RestorePlan`/`DeploymentPlan::approve` check every other surface
   already uses — the server never auto-fills or bypasses this field.
 - Enrollment, credential import, agent-key registration, repository
-  registration, vault initialization, signing enrollment, and capture-plan
-  creation are not exposed as tools: each either mints new local trust or
+  registration, vault initialization, and signing enrollment are not exposed
+  as tools: each either mints new local trust or
   configuration state (a human judgment call, and a prompt-injection risk if
   an agent could be steered into enrolling a host key from untrusted
-  content it read elsewhere) or, for capture-plan creation specifically, has
-  no confirmation gate of its own to begin with.
+  content it read elsewhere). Saved capture-plan creation remains absent as a
+  standalone tool; ADR 0015 narrowly permits it only as an internal result of
+  an explicit selection whose execute call revalidates the selection and
+  requires the preview confirmation.
 
 ## Key rotation
 

@@ -1,5 +1,7 @@
 use guardian_configuration::RepositoryStore;
-use guardian_core::{BackupId, CancellationHandle, JobRegistry, RepositoryId, RunId};
+use guardian_core::{
+    BackupId, CancellationHandle, JobRegistry, RepositoryId, RestoreImpactPreview, RunId,
+};
 use guardian_local_repository::{LocalRepository, TrustedBackup};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
@@ -15,15 +17,6 @@ pub struct RestoreRequest {
     destination: String,
     confirmation: Option<String>,
     run_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestorePreview {
-    pub backup_id: String,
-    pub destination: String,
-    pub confirmation: String,
-    pub payload: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -79,7 +72,7 @@ fn list_blocking(
 pub async fn preview(
     app: tauri::AppHandle,
     request: RestoreRequest,
-) -> Result<RestorePreview, RestoreFailure> {
+) -> Result<RestoreImpactPreview, RestoreFailure> {
     let root = app
         .path()
         .app_config_dir()
@@ -92,7 +85,7 @@ pub async fn preview(
 pub async fn execute(
     app: tauri::AppHandle,
     request: RestoreRequest,
-) -> Result<RestorePreview, RestoreFailure> {
+) -> Result<RestoreImpactPreview, RestoreFailure> {
     let root = app
         .path()
         .app_config_dir()
@@ -110,19 +103,19 @@ pub async fn execute(
         .map_err(|_| RestoreFailure::storage())?
 }
 
-fn plan(root: PathBuf, request: RestoreRequest) -> Result<RestorePreview, RestoreFailure> {
+fn plan(root: PathBuf, request: RestoreRequest) -> Result<RestoreImpactPreview, RestoreFailure> {
     let (repository, backup_id, identity) = resolve(root, &request)?;
     let plan = repository
         .plan_restore(&backup_id, &request.destination, &identity)
         .map_err(|_| RestoreFailure::rejected())?;
-    Ok(summary(plan))
+    Ok(plan.impact)
 }
 
 fn execute_blocking(
     root: PathBuf,
     request: RestoreRequest,
     handle: CancellationHandle,
-) -> Result<RestorePreview, RestoreFailure> {
+) -> Result<RestoreImpactPreview, RestoreFailure> {
     let confirmation = request
         .confirmation
         .as_deref()
@@ -137,7 +130,7 @@ fn execute_blocking(
         &handle,
     );
     match result {
-        Ok(plan) => Ok(summary(plan)),
+        Ok(plan) => Ok(plan.impact),
         Err(_) if handle.is_cancelled() => Err(RestoreFailure::cancelled()),
         Err(_) => Err(RestoreFailure::rejected()),
     }
@@ -177,15 +170,6 @@ fn resolve_repository(
         .load_verifier(&OsCredentialStore, portable.as_ref())
         .map_err(|_| RestoreFailure::rejected())?;
     Ok((repository, identity))
-}
-
-fn summary(plan: guardian_core::RestorePlan) -> RestorePreview {
-    RestorePreview {
-        backup_id: plan.backup_id.as_str().to_owned(),
-        destination: plan.destination.display().to_string(),
-        confirmation: plan.confirmation,
-        payload: plan.filesystem_payload.as_str().to_owned(),
-    }
 }
 
 impl RestoreFailure {

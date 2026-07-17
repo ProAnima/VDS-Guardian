@@ -1,7 +1,30 @@
 use crate::manifest::{PayloadSelectionError, select_payloads};
 use crate::{BackupId, Manifest, ManifestError, PayloadPath};
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestoreMode {
+    NewDestination,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreImpactPreview {
+    pub backup_id: BackupId,
+    pub destination: PathBuf,
+    pub mode: RestoreMode,
+    pub adds: Vec<PathBuf>,
+    pub replaces: Vec<PathBuf>,
+    pub conflicts: Vec<PathBuf>,
+    pub workload_labels: Vec<String>,
+    pub confirmation: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestorePlan {
@@ -10,6 +33,7 @@ pub struct RestorePlan {
     pub filesystem_payload: PayloadPath,
     pub database_payload: Option<PayloadPath>,
     pub confirmation: String,
+    pub impact: RestoreImpactPreview,
 }
 
 impl RestorePlan {
@@ -30,24 +54,57 @@ impl RestorePlan {
             manifest.backup_id.as_str(),
             destination.display()
         );
+        let mut adds = vec![destination.clone()];
+        let mut workload_labels = vec!["filesystem".to_owned()];
+        if database_payload.is_some() {
+            adds.push(destination.join("database.sqlite"));
+            workload_labels.push("sqlite".to_owned());
+        }
+        let conflicts = destination_occupied(&destination)
+            .then(|| destination.clone())
+            .into_iter()
+            .collect();
+        let impact = RestoreImpactPreview {
+            backup_id: manifest.backup_id.clone(),
+            destination: destination.clone(),
+            mode: RestoreMode::NewDestination,
+            adds,
+            replaces: Vec::new(),
+            conflicts,
+            workload_labels,
+            confirmation: confirmation.clone(),
+        };
         Ok(Self {
             backup_id: manifest.backup_id.clone(),
             destination,
             filesystem_payload,
             database_payload,
             confirmation,
+            impact,
         })
     }
 
     pub fn approve(&self, confirmation: &str) -> Result<(), RestorePlanError> {
-        (confirmation == self.confirmation)
-            .then_some(())
-            .ok_or(RestorePlanError::ConfirmationRequired)
+        if confirmation != self.confirmation {
+            return Err(RestorePlanError::ConfirmationRequired);
+        }
+        if !self.impact.conflicts.is_empty() {
+            return Err(RestorePlanError::ConflictsPresent);
+        }
+        Ok(())
     }
 
     #[must_use]
     pub fn destination_is_new(&self) -> bool {
-        !Path::new(&self.destination).exists()
+        !destination_occupied(Path::new(&self.destination))
+    }
+}
+
+fn destination_occupied(path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => true,
+        Err(error) if error.kind() == ErrorKind::NotFound => false,
+        Err(_) => true,
     }
 }
 
@@ -63,6 +120,8 @@ pub enum RestorePlanError {
     AmbiguousDatabasePayload,
     #[error("exact restore confirmation is required")]
     ConfirmationRequired,
+    #[error("restore impact contains conflicts that prevent safe execution")]
+    ConflictsPresent,
 }
 
 impl From<PayloadSelectionError> for RestorePlanError {

@@ -87,7 +87,7 @@ pub use remote_browser::{
     RemoteBrowseEntry, RemoteBrowseError, RemoteBrowsePage, RemoteBrowseRequest, RemoteBrowserPort,
     RemoteBrowserPortError, RemoteEntryKind, RemoteEntryUnavailableReason,
 };
-pub use restore::{RestorePlan, RestorePlanError};
+pub use restore::{RestoreImpactPreview, RestoreMode, RestorePlan, RestorePlanError};
 pub use retention::{
     RetentionOutcome, RetentionPlan, RetentionPlanError, RetentionPolicy, RetentionPolicyError,
     RetentionSnapshotEntry, build_retention_plan,

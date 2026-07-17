@@ -40,6 +40,42 @@ fn restore_plan_rejects_relative_destination() -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+#[test]
+fn restore_impact_lists_adds_and_blocks_an_existing_destination()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut manifest = manifest()?;
+    manifest.add_payload(PayloadEntry {
+        logical_role: "filesystem".to_owned(),
+        path: PayloadPath::parse("payload/filesystem.tar.zst")?,
+        byte_length: 1,
+        sha256: "a".repeat(64),
+        media_type: "application/zstd".to_owned(),
+        encryption: None,
+    })?;
+    manifest.prepare_for_seal(
+        Timestamp::parse("2026-07-14T20:00:00Z")?,
+        "Ed25519",
+        &format!("ed25519:{}", "b".repeat(64)),
+    )?;
+    let destination = std::env::temp_dir().join(guardian_core::RunId::new().as_str());
+    std::fs::create_dir(&destination)?;
+    let plan = RestorePlan::build(&manifest, &destination)?;
+    assert_eq!(plan.impact.adds, vec![destination.clone()]);
+    assert!(plan.impact.replaces.is_empty());
+    assert_eq!(plan.impact.conflicts, vec![destination.clone()]);
+    assert_eq!(plan.impact.workload_labels, vec!["filesystem"]);
+    let serialized = serde_json::to_value(&plan.impact)?;
+    assert_eq!(serialized["mode"], "new_destination");
+    assert_eq!(serialized["replaces"], serde_json::json!([]));
+    assert_eq!(
+        serialized["workloadLabels"],
+        serde_json::json!(["filesystem"])
+    );
+    assert!(plan.approve(&plan.confirmation).is_err());
+    std::fs::remove_dir(destination)?;
+    Ok(())
+}
+
 fn manifest() -> Result<Manifest, Box<dyn std::error::Error>> {
     Ok(Manifest::new(
         BackupId::parse("backup-001")?,

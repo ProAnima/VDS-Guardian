@@ -36,8 +36,12 @@ describe("restore cancellation", () => {
     commands.previewRestore.mockResolvedValue({
       backupId: "backup-1",
       destination: "D:/restore",
+      mode: "new_destination",
+      adds: ["D:/restore"],
+      replaces: [],
+      conflicts: [],
+      workloadLabels: ["filesystem"],
       confirmation: "RESTORE backup-1 TO D:/restore",
-      payload: "payload/filesystem.tar.zst.enc",
     });
     commands.executeRestore.mockReturnValue(new Promise(() => undefined));
     commands.cancelJob.mockResolvedValue(true);
@@ -68,6 +72,28 @@ describe("restore cancellation", () => {
     expect(request.runId).toMatch(/^[0-9a-f-]{36}$/);
     await act(async () => button("restoreCancelRunning").click());
     expect(commands.cancelJob).toHaveBeenCalledWith(request.runId);
+  });
+
+  it("shows an existing destination as a conflict and blocks execution", async () => {
+    commands.previewRestore.mockResolvedValueOnce({
+      backupId: "backup-1", destination: "D:/restore", mode: "new_destination",
+      adds: ["D:/restore"], replaces: [], conflicts: ["D:/restore"],
+      workloadLabels: ["filesystem"], confirmation: "RESTORE backup-1 TO D:/restore",
+    });
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+    await act(async () => change(
+      container.querySelector<HTMLInputElement>('input[placeholder="restoreDestinationHint"]'),
+      "D:/restore",
+    ));
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(container.textContent).toContain("restoreImpactConflicts"));
+    await act(async () => change(
+      container.querySelector<HTMLInputElement>('input[placeholder="restoreConfirmPlaceholder"]'),
+      "RESTORE backup-1 TO D:/restore",
+    ));
+    expect(button("restoreExecute").disabled).toBe(true);
+    expect(commands.executeRestore).not.toHaveBeenCalled();
   });
 
   function button(label: string): HTMLButtonElement {

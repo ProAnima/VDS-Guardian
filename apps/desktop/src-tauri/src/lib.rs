@@ -164,7 +164,7 @@ async fn list_backups(
 async fn preview_restore(
     app: tauri::AppHandle,
     request: restore_commands::RestoreRequest,
-) -> Result<restore_commands::RestorePreview, restore_commands::RestoreFailure> {
+) -> Result<guardian_core::RestoreImpactPreview, restore_commands::RestoreFailure> {
     restore_commands::preview(app, request).await
 }
 
@@ -172,7 +172,7 @@ async fn preview_restore(
 async fn execute_restore(
     app: tauri::AppHandle,
     request: restore_commands::RestoreRequest,
-) -> Result<restore_commands::RestorePreview, restore_commands::RestoreFailure> {
+) -> Result<guardian_core::RestoreImpactPreview, restore_commands::RestoreFailure> {
     restore_commands::execute(app, request).await
 }
 

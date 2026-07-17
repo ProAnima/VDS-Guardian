@@ -31,10 +31,13 @@ fn restore_plan_rechecks_the_sealed_backup_and_requires_a_new_target() -> TestRe
     )?;
     assert_eq!(plan.backup_id.as_str(), "backup-restore");
     std::fs::create_dir(&destination)?;
-    assert!(matches!(
-        local_repository.plan_restore(&BackupId::parse("backup-restore")?, &destination, &signer),
-        Err(RepositoryError::RestoreDestinationExists)
-    ));
+    let conflicting = local_repository.plan_restore(
+        &BackupId::parse("backup-restore")?,
+        &destination,
+        &signer,
+    )?;
+    assert_eq!(conflicting.impact.conflicts, vec![destination]);
+    assert!(conflicting.approve(&conflicting.confirmation).is_err());
     Ok(())
 }
 

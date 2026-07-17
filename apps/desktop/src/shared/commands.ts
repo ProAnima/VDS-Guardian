@@ -114,7 +114,7 @@ export interface CaptureFailure { code: string; message: string; remediation: st
 
 export interface BackupSummary { backupId: string; sealedAt: string; verification: "verified"; }
 export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; runId?: string; }
-export interface RestorePreview { backupId: string; destination: string; confirmation: string; payload: string; }
+export interface RestoreImpactPreview { backupId: string; destination: string; mode: "new_destination"; adds: string[]; replaces: string[]; conflicts: string[]; workloadLabels: string[]; confirmation: string; }
 export interface RestoreFailure { code: string; message: string; remediation: string; }
 
 export interface DeployRequest { repositoryId: string; backupId: string; targetProfileId: string; targetPath: string; confirmation?: string; runId?: string; }
@@ -212,8 +212,8 @@ export async function runCapturePlan(planId: string, runId: string): Promise<Cap
 export async function runCaptureSelection(request: CaptureSelectionExecutionRequest): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_selection", { request }); }
 export async function cancelJob(runId: string): Promise<boolean> { if (!hasTauriRuntime()) return false; return invoke<boolean>("cancel_job", { runId }); }
 export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
-export async function previewRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("preview_restore", { request }); }
-export async function executeRestore(request: RestoreRequest): Promise<RestorePreview> { requireTauriRuntime(); return invoke<RestorePreview>("execute_restore", { request }); }
+export async function previewRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("preview_restore", { request }); }
+export async function executeRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("execute_restore", { request }); }
 export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
 export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
 export async function listDockerContainers(profileId: string): Promise<DockerContainerSummary[]> { requireTauriRuntime(); return invoke<DockerContainerSummary[]>("list_docker_containers", { profileId }); }

@@ -9,7 +9,7 @@
 use crate::config::ServerConfig;
 use crate::secret_store::resolve_store;
 use guardian_configuration::RepositoryStore;
-use guardian_core::{BackupId, RepositoryId};
+use guardian_core::{BackupId, RepositoryId, RestoreImpactPreview};
 use guardian_local_repository::LocalRepository;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
 use serde::Serialize;
@@ -54,36 +54,16 @@ impl RestoreFailure {
     }
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RestorePreview {
-    pub backup_id: String,
-    pub destination: String,
-    pub confirmation: String,
-    pub payload: String,
-}
-
-impl From<guardian_core::RestorePlan> for RestorePreview {
-    fn from(plan: guardian_core::RestorePlan) -> Self {
-        Self {
-            backup_id: plan.backup_id.as_str().to_owned(),
-            destination: plan.destination.display().to_string(),
-            confirmation: plan.confirmation,
-            payload: plan.filesystem_payload.as_str().to_owned(),
-        }
-    }
-}
-
 pub(crate) fn preview_restore(
     config: &ServerConfig,
     repository_id: &str,
     backup_id: &str,
     destination: &str,
-) -> Result<RestorePreview, RestoreFailure> {
+) -> Result<RestoreImpactPreview, RestoreFailure> {
     let (repository, backup_id, identity) = resolve(config, repository_id, backup_id)?;
     repository
         .plan_restore(&backup_id, destination, &identity)
-        .map(RestorePreview::from)
+        .map(|plan| plan.impact)
         .map_err(|_| RestoreFailure::rejected())
 }
 
@@ -93,7 +73,7 @@ pub(crate) fn execute_restore(
     backup_id: &str,
     destination: &str,
     confirmation: &str,
-) -> Result<RestorePreview, RestoreFailure> {
+) -> Result<RestoreImpactPreview, RestoreFailure> {
     if confirmation.is_empty() {
         return Err(RestoreFailure::confirmation());
     }
@@ -102,7 +82,7 @@ pub(crate) fn execute_restore(
     let (repository, backup_id, identity) = resolve(config, repository_id, backup_id)?;
     repository
         .execute_restore(&backup_id, destination, confirmation, &identity, &secrets)
-        .map(RestorePreview::from)
+        .map(|plan| plan.impact)
         .map_err(|_| RestoreFailure::rejected())
 }
 
