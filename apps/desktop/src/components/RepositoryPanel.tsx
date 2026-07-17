@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, FolderArchive, HardDrive, LoaderCircle } from "lucide-react";
 import {
   hasTauriRuntime, initializeRepositoryRecovery, listRepositories, pickRepositoryPath, registerRepository,
-  type RepositoryFailure, type RepositoryRequest, type RepositorySummary,
+  type RepositoryRequest, type RepositorySummary,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 
 const emptyForm: RepositoryRequest = { label: "", path: "" };
 
@@ -55,10 +56,5 @@ function useRepository(onRepositoriesChanged: () => void) {
 }
 
 function errorText(error: unknown): string {
-  if (isRepositoryFailure(error)) return `${error.message} ${error.remediation}`;
-  return "Не удалось безопасно создать локальное хранилище.";
-}
-
-function isRepositoryFailure(error: unknown): error is RepositoryFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error && typeof error.message === "string" && typeof error.remediation === "string";
+  return safeErrorText(error, "Не удалось безопасно создать локальное хранилище.");
 }

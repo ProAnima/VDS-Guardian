@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, KeyRound, LoaderCircle, Server, Wifi } from "lucide-react";
 import {
-  enrollSshProfile, hasTauriRuntime, listSshProfiles, pickSshKeyPath, preflightSshProfile, testSshProfile,
-  type SshProfileFailure, type SshProfileRequest, type SshProfileSummary,
+  enrollSshProfile, hasTauriRuntime, listSshProfiles, pickSshKeyPath,
+  type SshProfileRequest, type SshProfileSummary,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 
 const initialForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", keyPath: "" };
 
@@ -44,8 +45,6 @@ function useSshProfile(onProfilesChanged: () => void) {
     setWorking(true); setFailure(undefined); setResult(undefined);
     try {
       const profile = await enrollSshProfile(form);
-      await testSshProfile(profile.profileId);
-      await preflightSshProfile(profile.profileId);
       setProfiles((current) => [...current, profile]);
       onProfilesChanged();
       setForm(initialForm); setAcknowledged(false);
@@ -56,10 +55,5 @@ function useSshProfile(onProfilesChanged: () => void) {
 }
 
 function errorText(error: unknown): string {
-  if (isProfileFailure(error)) return `${error.message} ${error.remediation}`;
-  return "Не удалось безопасно завершить настройку SSH-профиля.";
-}
-
-function isProfileFailure(error: unknown): error is SshProfileFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error && typeof error.message === "string" && typeof error.remediation === "string";
+  return safeErrorText(error, "Не удалось безопасно завершить настройку SSH-профиля.");
 }

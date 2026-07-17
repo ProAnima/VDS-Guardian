@@ -3,9 +3,10 @@ import { Check, Eye, LoaderCircle, Rocket } from "lucide-react";
 import type { Translate } from "../i18n";
 import { OperationFailureNotice } from "./OperationFailureNotice";
 import { newRunId } from "../shared/run-id";
+import { safeErrorText } from "../shared/safe-error";
 import {
   cancelJob, executeDeploy, hasTauriRuntime, listBackups, listRepositories, listSshProfiles, previewDeploy,
-  type BackupSummary, type DeployFailure, type DeploymentPreview, type RepositorySummary, type SshProfileSummary,
+  type BackupSummary, type DeploymentPreview, type RepositorySummary, type SshProfileSummary,
 } from "../shared/commands";
 
 interface DeployPanelProps { t: Translate; }
@@ -311,10 +312,5 @@ function DeployConfirmation({ model, t }: { model: DeployModel; t: Translate }) 
 }
 
 function errorText(error: unknown, t: Translate): string {
-  return isDeployFailure(error) ? `${error.message} ${error.remediation}` : t("deployErrorFallback");
-}
-
-function isDeployFailure(error: unknown): error is DeployFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error
-    && typeof error.message === "string" && typeof error.remediation === "string";
+  return safeErrorText(error, t("deployErrorFallback"));
 }

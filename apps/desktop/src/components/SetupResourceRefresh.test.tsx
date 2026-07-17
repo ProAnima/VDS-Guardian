@@ -1,0 +1,85 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CapturePlanPanel } from "./CapturePlanPanel";
+import { SigningIdentityPanel } from "./SigningIdentityPanel";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const commands = vi.hoisted(() => ({
+  enrollSigningIdentity: vi.fn(),
+  getSigningIdentityStatus: vi.fn(),
+  listRepositories: vi.fn(),
+  listSshProfiles: vi.fn(),
+  saveCapturePlan: vi.fn(),
+}));
+
+vi.mock("../shared/commands", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../shared/commands")>(),
+  ...commands,
+  hasTauriRuntime: () => true,
+}));
+
+describe("setup resource refresh", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    commands.getSigningIdentityStatus.mockResolvedValue({ state: "not_enrolled", identity: null });
+    commands.enrollSigningIdentity.mockResolvedValue({
+      disposition: "enrolled",
+      identity: { credentialId: "signing-main", algorithm: "ed25519", keyId: "key-1" },
+    });
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "server-1", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+    ]);
+    commands.listRepositories.mockResolvedValue([
+      { repositoryId: "repo-1", label: "Archive", path: "D:/archive", recoveryReady: true },
+    ]);
+    commands.saveCapturePlan.mockResolvedValue({
+      planId: "plan-1", profileId: "server-1", repositoryId: "repo-1", roots: ["/srv/app"],
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  it("refreshes setup readiness after signing enrollment", async () => {
+    const changed = vi.fn();
+    await act(async () => root.render(<SigningIdentityPanel onIdentityChanged={changed} t={(key) => key} />));
+    await vi.waitFor(() => expect(button("signingStart")).toBeDefined());
+
+    await act(async () => button("signingStart").click());
+    const acknowledgement = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(acknowledgement).not.toBeNull();
+    await act(async () => acknowledgement?.click());
+    await act(async () => button("signingCreate").click());
+
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+  });
+
+  it("refreshes setup readiness after a capture plan is saved", async () => {
+    const changed = vi.fn();
+    await act(async () => root.render(
+      <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
+    ));
+    await vi.waitFor(() => expect(button("Сохранить план").disabled).toBe(false));
+
+    await act(async () => container.querySelector("form")?.requestSubmit());
+
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+  });
+
+  function button(label: string): HTMLButtonElement {
+    const match = [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent?.includes(label));
+    if (!(match instanceof HTMLButtonElement)) throw new Error(`Button not found: ${label}`);
+    return match;
+  }
+});

@@ -213,8 +213,13 @@ independently.
   shared service; import authenticates the bundle before registering a new
   repository. Dependent selectors now refresh after each completed setup step,
   recovery readiness is visible, and an unprepared repository cannot be
-  selected for capture or export. Export requires two matching passphrase
-  entries at both the UI and native-command boundary.
+  selected for capture or export. The consolidated readiness view now also
+  refreshes immediately after signing-identity enrollment and capture-plan
+  creation instead of retaining stale prerequisite state. SSH profiles now
+  enter that readiness view only after a successful pinned capability preflight;
+  a failed probe or profile commit removes its staged credential and publishes
+  no selectable profile. Export requires two matching passphrase entries at
+  both the UI and native-command boundary.
 - Restore picker exposes only sealed, freshly signature-verified backups and
   labels that verification state; failed and cancelled runs are never offered
   as restore candidates.
@@ -226,11 +231,19 @@ independently.
   published-target and temporary-staging posture. Closed for setup too: one
   dashboard status view reports the signing identity, recovery-key readiness,
   SSH profile, and capture-plan prerequisites; it surfaces resource-read
-  failures without hiding their safe remediation text.
+  failures without hiding their safe remediation text. Every desktop operation
+  now uses one bounded failure decoder: valid typed errors retain both message
+  and remediation, while malformed or unknown rejection payloads fall back to
+  a redacted operator-safe message.
 - Produce signed Windows and Linux installer artifacts with published
   checksums; automatic updates remain deferred. The tag-only, fail-closed
   workflow and signing-material contract are now documented in ADR 0014 and
-  `docs/RELEASE_SIGNING.md`; actual signed release evidence remains open.
+  `docs/RELEASE_SIGNING.md`. The unsigned Windows packaging preflight now
+  produces both MSI and NSIS bundles locally (2026-07-17); it exposed and
+  closed a missing explicit icon-manifest entry before signing. CI and release
+  packaging now share exact platform allowlists (MSI/NSIS and DEB/AppImage),
+  so an unexpected or missing format fails before any upload; the first CI run
+  of that packaging-smoke job and actual signed release evidence remain open.
 - Documentation and UI use the same release status and terminology.
 
 Gate: a non-technical operator can configure one server, create one backup,

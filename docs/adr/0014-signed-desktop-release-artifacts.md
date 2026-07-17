@@ -17,9 +17,10 @@ Only a pushed `v*` tag may publish desktop release artifacts. The release
 workflow runs the same canonical verification and Linux SSH/clean-room gates
 as CI before packaging. It builds native Windows and Linux bundles, then:
 
-- signs Windows `.msi`/`.exe` bundles with an Authenticode PFX supplied only as
-  GitHub Actions secrets;
-- creates detached OpenPGP signatures for Linux bundles and for `SHA256SUMS`;
+- builds exactly one Windows MSI and one NSIS `.exe`, then signs both with an
+  Authenticode credential supplied only through GitHub Actions secrets;
+- builds exactly one Linux DEB and one AppImage, then creates and verifies
+  detached OpenPGP signatures for both and for `SHA256SUMS`;
 - generates `SHA256SUMS` only after platform signing is complete, and publishes
   the artifacts, signatures, and checksum file as one GitHub Release;
 - generates an SPDX JSON SBOM with Anchore's Syft-backed `sbom-action` before
@@ -27,6 +28,11 @@ as CI before packaging. It builds native Windows and Linux bundles, then:
 - creates GitHub/Sigstore build-provenance attestations for the final release
   files after signing and checksum generation;
 - fails before publishing if any required signing secret is unavailable.
+
+The upload step uses an explicit file allowlist for those four package formats
+and their Linux signatures; it never uploads the bundler's whole output tree.
+Ordinary CI separately builds the same four formats as unsigned packaging
+smoke tests, validates their exact count, and never uploads those candidates.
 
 The workflow never enables Tauri updater endpoints or embeds updater signing
 keys. Signing material is written only into the ephemeral runner workspace and

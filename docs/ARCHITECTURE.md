@@ -111,7 +111,10 @@ commands call the shared `guardian-local-repository` service; desktop keeps an
 entered passphrase in memory, requires it twice for export, and bundle import
 authenticates before registering an unknown repository. Guided setup refreshes
 dependent selectors after each completed step and excludes repositories whose
-recovery key is unavailable from capture. `guardian-mcp` remains excluded.
+recovery key is unavailable from capture. SSH enrollment is one shared-core
+transaction: it stages the credential, runs the pinned capture-capability
+probe, commits the profile only on success, and removes the staged credential
+after any failed probe or profile commit. `guardian-mcp` remains excluded.
 
 ### CLI/service
 

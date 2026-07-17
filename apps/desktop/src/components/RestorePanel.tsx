@@ -2,9 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Check, Eye, LoaderCircle, RotateCcw } from "lucide-react";
 import type { Translate } from "../i18n";
 import { OperationFailureNotice } from "./OperationFailureNotice";
+import { safeErrorText } from "../shared/safe-error";
 import {
   executeRestore, hasTauriRuntime, listBackups, listRepositories, previewRestore,
-  type BackupSummary, type RepositorySummary, type RestoreFailure, type RestorePreview,
+  type BackupSummary, type RepositorySummary, type RestorePreview,
 } from "../shared/commands";
 
 interface RestorePanelProps { t: Translate; }
@@ -260,10 +261,5 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
 }
 
 function errorText(error: unknown, t: Translate): string {
-  return isRestoreFailure(error) ? `${error.message} ${error.remediation}` : t("restoreErrorFallback");
-}
-
-function isRestoreFailure(error: unknown): error is RestoreFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error
-    && typeof error.message === "string" && typeof error.remediation === "string";
+  return safeErrorText(error, t("restoreErrorFallback"));
 }

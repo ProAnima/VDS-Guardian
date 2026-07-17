@@ -49,6 +49,10 @@ inspection after decryption and before a restore destination is published.
   permissions where the platform supports them.
 - Prefer a dedicated backup account with least privilege and reviewed `sudo`
   commands over unrestricted root login.
+- Desktop SSH enrollment stages a new credential only long enough to run the
+  pinned `tar.zstd` preflight. The profile becomes visible to capture and setup
+  readiness only after that probe succeeds; probe or profile-commit failure
+  removes the staged credential, and cleanup failure is itself a hard error.
 
 ### Encrypted local vault fallback
 
@@ -437,6 +441,9 @@ clears that acknowledgement.
 - Tauri capabilities are allowlist-based. No generic shell or filesystem plugin
   is exposed to the WebView.
 - Command DTOs are validated, job IDs are unguessable, and errors are redacted.
+- The WebView renders native failure detail only when `code`, `message`, and
+  `remediation` pass one bounded structural decoder. Unknown, malformed, or
+  oversized rejection payloads use a fixed redacted fallback instead.
 - Rich backup content is never rendered as raw HTML in the WebView.
 
 ### MCP server

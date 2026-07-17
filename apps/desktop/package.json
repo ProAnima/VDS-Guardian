@@ -12,7 +12,9 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:linux": "tauri build --bundles deb,appimage",
+    "tauri:build:windows": "tauri build --bundles msi,nsis"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

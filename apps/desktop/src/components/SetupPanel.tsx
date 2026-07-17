@@ -27,7 +27,7 @@ export function SetupPanel({ t }: SetupPanelProps) {
       </section>
       <SetupStatusPanel resourcesRevision={resourcesRevision} />
       <SetupStep number="1" title="Идентичность подписи" icon={KeyRound}>
-        <SigningIdentityPanel t={t} />
+        <SigningIdentityPanel onIdentityChanged={resourcesChanged} t={t} />
       </SetupStep>
       <SetupStep number="2" title="Хранилище и recovery" icon={FolderArchive}>
         <RepositoryPanel onRepositoriesChanged={resourcesChanged} />
@@ -38,7 +38,7 @@ export function SetupPanel({ t }: SetupPanelProps) {
         <SshProfilePanel onProfilesChanged={resourcesChanged} />
       </SetupStep>
       <SetupStep number="4" title="Что сохраняем" icon={CheckCircle2}>
-        <CapturePlanPanel resourcesRevision={resourcesRevision} t={t} />
+        <CapturePlanPanel onPlansChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />
       </SetupStep>
     </main>
   );

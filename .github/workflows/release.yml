@@ -63,7 +63,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfuse2
       - run: npm ci
-      - run: npm run tauri:build --workspace @vds-guardian/desktop
+      - name: Build Windows release bundles
+        if: runner.os == 'Windows'
+        run: npm run tauri:build:windows --workspace @vds-guardian/desktop
+      - name: Build Linux release bundles
+        if: runner.os == 'Linux'
+        run: npm run tauri:build:linux --workspace @vds-guardian/desktop
       - name: Sign Windows bundles
         if: runner.os == 'Windows'
         env:
@@ -75,7 +80,13 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE) -or [string]::IsNullOrWhiteSpace($env:CERTIFICATE_PASSWORD) -or [string]::IsNullOrWhiteSpace($env:TIMESTAMP_URL)) { throw "Windows signing secrets are required." }
           $certificatePath = Join-Path $env:RUNNER_TEMP "vds-guardian-release.pfx"
           [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE))
-          Get-ChildItem target/release/bundle -Recurse -Include *.msi,*.exe | ForEach-Object { & signtool sign /fd SHA256 /f $certificatePath /p $env:CERTIFICATE_PASSWORD /tr $env:TIMESTAMP_URL /td SHA256 $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." } }
+          $bundles = @(
+            Get-ChildItem target/release/bundle/msi -File -Filter *.msi
+            Get-ChildItem target/release/bundle/nsis -File -Filter *.exe
+          )
+          if ($bundles.Count -ne 2) { throw "Expected exactly one MSI and one NSIS bundle." }
+          $bundles | ForEach-Object { & signtool sign /fd SHA256 /f $certificatePath /p $env:CERTIFICATE_PASSWORD /tr $env:TIMESTAMP_URL /td SHA256 $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." } }
+          $bundles | ForEach-Object { & signtool verify /pa /all $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed." } }
           Remove-Item -LiteralPath $certificatePath -Force
       - name: Sign Linux bundles
         if: runner.os == 'Linux'
@@ -88,12 +99,25 @@ jobs:
           export GNUPGHOME="$RUNNER_TEMP/guardian-gpg"
           install -m 700 -d "$GNUPGHOME"
           printf '%s' "$GPG_KEY" | base64 --decode | gpg --batch --import
-          find target/release/bundle -type f \( -name '*.deb' -o -name '*.AppImage' \) -print0 | xargs -0 -r -n1 gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign
+          mapfile -t debs < <(find target/release/bundle/deb -maxdepth 1 -type f -name '*.deb')
+          mapfile -t appimages < <(find target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage')
+          test "${#debs[@]}" -eq 1 && test "${#appimages[@]}" -eq 1 || { echo "Expected exactly one DEB and one AppImage bundle." >&2; exit 1; }
+          bundles=("${debs[@]}" "${appimages[@]}")
+          for bundle in "${bundles[@]}"; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign "$bundle"
+            gpg --batch --verify "$bundle.asc" "$bundle"
+          done
           rm -rf "$GNUPGHOME"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/release/bundle
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/deb/*.deb
+            target/release/bundle/deb/*.deb.asc
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.asc
           if-no-files-found: error
 
   publish:

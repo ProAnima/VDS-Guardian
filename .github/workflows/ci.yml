@@ -43,3 +43,51 @@ jobs:
       - name: Run clean-room restore/deploy drill
         if: runner.os == 'Linux'
         run: npm run test:integration:drill
+
+  package-smoke:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - name: Install Linux packaging prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfuse2
+      - run: npm ci
+      - name: Build unsigned Windows bundles
+        if: runner.os == 'Windows'
+        run: npm run tauri:build:windows --workspace @vds-guardian/desktop
+      - name: Validate unsigned Windows bundle contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = @(Get-ChildItem target/release/bundle/msi -File -Filter *.msi)
+          $nsis = @(Get-ChildItem target/release/bundle/nsis -File -Filter *.exe)
+          if ($msi.Count -ne 1 -or $nsis.Count -ne 1) { throw "Expected exactly one MSI and one NSIS bundle." }
+          @($msi + $nsis) | ForEach-Object {
+            if ((Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -ne 'NotSigned') { throw "Packaging smoke artifacts must be unsigned." }
+          }
+      - name: Build unsigned Linux bundles
+        if: runner.os == 'Linux'
+        run: npm run tauri:build:linux --workspace @vds-guardian/desktop
+      - name: Validate unsigned Linux bundle contract
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mapfile -t debs < <(find target/release/bundle/deb -maxdepth 1 -type f -name '*.deb')
+          mapfile -t appimages < <(find target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage')
+          test "${#debs[@]}" -eq 1 && test "${#appimages[@]}" -eq 1
+          test -x "${appimages[0]}"
+          test ! -d target/release/bundle/rpm

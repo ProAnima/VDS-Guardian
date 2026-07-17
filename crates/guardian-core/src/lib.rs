@@ -53,7 +53,10 @@ pub use embedded_database::{
     EmbeddedDatabaseBackupRequest, EmbeddedDatabaseBackupUseCase, EmbeddedDatabaseCapturePort,
     EmbeddedDatabaseCaptureRequest, EmbeddedDatabaseCaptureUseCase,
 };
-pub use enroll_profile::{EnrollProfileError, EnrollProfileUseCase};
+pub use enroll_profile::{
+    EnrollProfileError, EnrollProfileUseCase, EnrollVerifiedProfileError,
+    EnrollVerifiedProfileUseCase,
+};
 pub use host_trust::{
     HostKeyDiscoveryError, HostKeyDiscoveryPort, HostTrustError, TrustHostKeyUseCase,
 };

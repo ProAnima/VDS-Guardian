@@ -2,8 +2,8 @@ import { useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, KeyRound, LoaderCircle } from "lucide-react";
 import {
   hasTauriRuntime, importRecoveryBundle, pickRecoveryBundleInput, pickRepositoryPath,
-  type RepositoryFailure,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 
 export function RecoveryImportPanel({ onRepositoriesChanged }: { onRepositoriesChanged: () => void }) {
   const model = useImportModel(onRepositoriesChanged);
@@ -32,5 +32,4 @@ function useImportModel(onRepositoriesChanged: () => void) {
   return { repositoryId, setRepositoryId, repositoryPath, setRepositoryPath, inputPath, setInputPath, passphrase, setPassphrase, confirmation, setConfirmation, working, message, error, submit };
 }
 
-function errorText(error: unknown): string { return isRepositoryFailure(error) ? `${error.message} ${error.remediation}` : "Не удалось импортировать recovery bundle."; }
-function isRepositoryFailure(error: unknown): error is RepositoryFailure { return typeof error === "object" && error !== null && "message" in error && "remediation" in error; }
+function errorText(error: unknown): string { return safeErrorText(error, "Не удалось импортировать recovery bundle."); }

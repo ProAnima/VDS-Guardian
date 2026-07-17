@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, KeyRound, LoaderCircle } from "lucide-react";
 import {
   exportRecoveryBundle, hasTauriRuntime, listRepositories, pickRecoveryBundlePath,
-  type RepositoryFailure, type RepositorySummary,
+  type RepositorySummary,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 
 export function RecoveryBundlePanel({ resourcesRevision }: { resourcesRevision: number }) {
   const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
@@ -42,10 +43,5 @@ export function RecoveryBundlePanel({ resourcesRevision }: { resourcesRevision: 
 }
 
 function errorText(error: unknown): string {
-  if (isRepositoryFailure(error)) return `${error.message} ${error.remediation}`;
-  return "Не удалось экспортировать recovery bundle.";
-}
-
-function isRepositoryFailure(error: unknown): error is RepositoryFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error;
+  return safeErrorText(error, "Не удалось экспортировать recovery bundle.");
 }

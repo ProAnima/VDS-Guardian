@@ -1,6 +1,6 @@
 use guardian_core::{
-    CredentialId, EnrollProfileUseCase, HostPin, PreflightSshCaptureUseCase, ProfileId,
-    ProfileStorePort, SecretStore, SecretValue, SshEndpoint, VdsProfile,
+    CredentialId, EnrollVerifiedProfileError, EnrollVerifiedProfileUseCase, HostPin,
+    PreflightSshCaptureUseCase, ProfileId, ProfileStorePort, SecretValue, SshEndpoint, VdsProfile,
 };
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
@@ -115,29 +115,34 @@ fn enroll_blocking(
         .map_err(|_| ProfileCommandFailure::invalid_profile())?;
     let key = read_key(Path::new(&request.key_path))?;
     SshIdentity::validate(key.expose()).map_err(|_| ProfileCommandFailure::invalid_key())?;
-    let store = OsCredentialStore;
-    if store
-        .load(&credential_id)
-        .map_err(|_| ProfileCommandFailure::credential_store())?
-        .is_some()
-    {
-        return Err(ProfileCommandFailure::credential_store());
+    let profiles = ProfileStore::at(root);
+    let credentials = OsCredentialStore;
+    let ssh = SystemOpenSsh::default();
+    let probe = PinnedSshCapabilityProbe {
+        ssh: &ssh,
+        credentials: &credentials,
+    };
+    EnrollVerifiedProfileUseCase {
+        profiles: &profiles,
+        secrets: &credentials,
+        probe: &probe,
     }
-    store
-        .store(&credential_id, &key)
-        .map_err(|_| ProfileCommandFailure::credential_store())?;
-    let stored = store
-        .load(&credential_id)
-        .map_err(|_| ProfileCommandFailure::credential_store())?
-        .ok_or_else(ProfileCommandFailure::credential_store)?;
-    SshIdentity::validate(stored.expose())
-        .map_err(|_| ProfileCommandFailure::credential_store())?;
-    EnrollProfileUseCase {
-        store: &ProfileStore::at(root),
-    }
-    .execute(profile.clone())
-    .map_err(|_| ProfileCommandFailure::storage())?;
+    .execute(profile.clone(), &key)
+    .map_err(map_enrollment_error)?;
     Ok(ProfileSummary::from(&profile))
+}
+
+fn map_enrollment_error(error: EnrollVerifiedProfileError) -> ProfileCommandFailure {
+    match error {
+        EnrollVerifiedProfileError::InvalidProfile => ProfileCommandFailure::invalid_profile(),
+        EnrollVerifiedProfileError::Probe(_) | EnrollVerifiedProfileError::TarZstdUnsupported => {
+            ProfileCommandFailure::preflight()
+        }
+        EnrollVerifiedProfileError::ProfileStore(_) => ProfileCommandFailure::storage(),
+        EnrollVerifiedProfileError::CredentialExists
+        | EnrollVerifiedProfileError::SecretStore(_)
+        | EnrollVerifiedProfileError::Cleanup => ProfileCommandFailure::credential_store(),
+    }
 }
 
 fn test_blocking(root: PathBuf, profile_id: String) -> Result<(), ProfileCommandFailure> {

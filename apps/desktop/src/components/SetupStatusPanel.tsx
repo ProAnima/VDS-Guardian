@@ -3,6 +3,7 @@ import { CircleAlert, CircleCheck, LoaderCircle, RefreshCw } from "lucide-react"
 import {
   getSigningIdentityStatus, listCapturePlans, listRepositories, listSshProfiles,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 import { evaluateSetupReadiness, type SetupResources, type SetupStatusItem } from "./setup-readiness";
 interface LoadFailure { label: string; detail: string; }
 
@@ -49,4 +50,4 @@ async function loadSetupStatus(update: (result: { resources?: SetupResources; fa
 }
 
 function loadFailure(label: string, result: PromiseSettledResult<unknown>): LoadFailure | undefined { return result.status === "rejected" ? { label, detail: errorText(result.reason) } : undefined; }
-function errorText(error: unknown): string { return error instanceof Error ? error.message : "Повторите проверку; если ошибка сохранится, откройте диагностику."; }
+function errorText(error: unknown): string { return safeErrorText(error, "Повторите проверку; если ошибка сохранится, откройте диагностику."); }

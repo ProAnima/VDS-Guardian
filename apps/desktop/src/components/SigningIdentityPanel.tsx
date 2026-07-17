@@ -3,13 +3,14 @@ import { CircleAlert, CircleCheck, Fingerprint, KeyRound, LoaderCircle, RefreshC
 import type { Translate } from "../i18n";
 import {
   enrollSigningIdentity, getSigningIdentityStatus, hasTauriRuntime,
-  type SigningIdentityFailure, type SigningIdentityState, type SigningIdentityStatus,
+  type SigningIdentityState, type SigningIdentityStatus,
 } from "../shared/commands";
+import { safeErrorText } from "../shared/safe-error";
 
-interface SigningIdentityPanelProps { t: Translate; }
+interface SigningIdentityPanelProps { onIdentityChanged: () => void; t: Translate; }
 
-export function SigningIdentityPanel({ t }: SigningIdentityPanelProps) {
-  const model = useSigningIdentity(t);
+export function SigningIdentityPanel({ onIdentityChanged, t }: SigningIdentityPanelProps) {
+  const model = useSigningIdentity(t, onIdentityChanged);
   return (
     <section className="signing-panel" aria-labelledby="signing-identity-title">
       <SigningHeader state={model.status?.state} t={t} />
@@ -20,7 +21,7 @@ export function SigningIdentityPanel({ t }: SigningIdentityPanelProps) {
   );
 }
 
-function useSigningIdentity(t: Translate) {
+function useSigningIdentity(t: Translate, onIdentityChanged: () => void) {
   const [status, setStatus] = useState<SigningIdentityStatus>();
   const [failure, setFailure] = useState<string>();
   const [confirming, setConfirming] = useState(false);
@@ -28,7 +29,7 @@ function useSigningIdentity(t: Translate) {
   const [enrolling, setEnrolling] = useState(false);
   const refresh = useStatusLoader(t, setStatus, setFailure);
   useEffect(() => { void refresh(); }, [refresh]);
-  const submit = useEnrollment(t, setStatus, setFailure, setConfirming, setAcknowledged, setEnrolling);
+  const submit = useEnrollment(t, onIdentityChanged, setStatus, setFailure, setConfirming, setAcknowledged, setEnrolling);
   return { status, failure, confirming, acknowledged, enrolling, refresh, submit, setConfirming, setAcknowledged };
 }
 
@@ -39,7 +40,7 @@ function useStatusLoader(t: Translate, setStatus: (value: SigningIdentityStatus)
   }, [setFailure, setStatus, t]);
 }
 
-function useEnrollment(t: Translate, setStatus: (value: SigningIdentityStatus) => void, setFailure: (value: string | undefined) => void, setConfirming: (value: boolean) => void, setAcknowledged: (value: boolean) => void, setEnrolling: (value: boolean) => void) {
+function useEnrollment(t: Translate, onIdentityChanged: () => void, setStatus: (value: SigningIdentityStatus) => void, setFailure: (value: string | undefined) => void, setConfirming: (value: boolean) => void, setAcknowledged: (value: boolean) => void, setEnrolling: (value: boolean) => void) {
   return useCallback(async () => {
     setEnrolling(true);
     setFailure(undefined);
@@ -47,8 +48,9 @@ function useEnrollment(t: Translate, setStatus: (value: SigningIdentityStatus) =
       const enrolled = await enrollSigningIdentity();
       setStatus({ state: "ready", identity: enrolled.identity });
       setConfirming(false); setAcknowledged(false);
+      onIdentityChanged();
     } catch (error) { setFailure(errorText(error, t)); } finally { setEnrolling(false); }
-  }, [setAcknowledged, setConfirming, setEnrolling, setFailure, setStatus, t]);
+  }, [onIdentityChanged, setAcknowledged, setConfirming, setEnrolling, setFailure, setStatus, t]);
 }
 
 function SigningHeader({ state, t }: { state: SigningIdentityState | undefined; t: Translate }) {
@@ -79,9 +81,5 @@ function stateLabel(state: SigningIdentityState) {
 }
 
 function errorText(error: unknown, t: Translate): string {
-  return isSigningFailure(error) ? `${error.message} ${error.remediation}` : t("signingErrorFallback");
-}
-
-function isSigningFailure(error: unknown): error is SigningIdentityFailure {
-  return typeof error === "object" && error !== null && "message" in error && "remediation" in error && typeof error.message === "string" && typeof error.remediation === "string";
+  return safeErrorText(error, t("signingErrorFallback"));
 }

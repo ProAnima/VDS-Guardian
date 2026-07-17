@@ -18,6 +18,17 @@ the project. After configuring the secrets, create a protected signed `v*` tag;
 the workflow runs verification and the clean-room drill before creating the
 GitHub Release.
 
+Before signing credentials are available, Windows packaging can be preflighted
+locally with `npm run tauri:build:windows --workspace @vds-guardian/desktop`. A successful
+preflight must produce both MSI and NSIS bundles under `target/release/bundle`;
+they are intentionally unsigned candidates and must never be published as a
+release or used as signed-smoke-test evidence.
+
+Linux CI uses the matching `tauri:build:linux` script and accepts exactly one
+DEB and one AppImage. Release packaging uses these same platform scripts,
+verifies every signature immediately, and uploads only the explicit package
+allowlist rather than the entire bundler output directory.
+
 The workflow publishes platform signatures, an SPDX JSON SBOM, and
 `SHA256SUMS` plus its detached OpenPGP signature. Do not enable Tauri
 auto-updates or add updater keys as part of this procedure. GitHub also records
