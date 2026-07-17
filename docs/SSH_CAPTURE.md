@@ -1,7 +1,9 @@
 # Pinned SSH Capture Foundation
 
-`guardian-ssh` is a deliberately narrow adapter for a future backup use case.
-It is not a CLI command, Tauri command, or production-ready backup workflow.
+`guardian-ssh` is the deliberately narrow system-OpenSSH adapter used by the
+shared capture and deploy compositions. It is not itself a CLI or Tauri command,
+and its implementation alone does not make the product production-ready; the
+Release 0.1 gates in `DEVELOPMENT_PLAN.md` still decide readiness.
 
 ## Trust input
 

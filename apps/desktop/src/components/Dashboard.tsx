@@ -17,7 +17,7 @@ export function Dashboard({ status, t, onStartSetup }: DashboardProps) {
       <Hero status={status} t={t} onStartSetup={onStartSetup} />
       <StatusGrid t={t} />
       <div className="dashboard__columns">
-        <ServersPanel t={t} />
+        <ServersPanel t={t} onStartSetup={onStartSetup} />
         <RoadmapPanel t={t} />
       </div>
       <SecurityBanner t={t} />
@@ -34,13 +34,20 @@ function Hero({ status, t, onStartSetup }: DashboardProps) {
         <h1>{t("pageTitle")}</h1>
         <p>{t("pageDescription")}</p>
         <div className="hero-panel__actions">
-          <button className="button button--primary" type="button" onClick={onStartSetup}><Plus size={17} />Настроить первый бэкап</button>
+          <button className="button button--primary" type="button" onClick={onStartSetup}><Plus size={17} />{t("addServer")}</button>
           <button className="button button--secondary" type="button" onClick={onStartSetup}><Archive size={17} />{t("runBackup")}</button>
         </div>
       </div>
       <div className="safety-lock">
-        <span className="safety-lock__icon"><LockKeyhole size={23} aria-hidden="true" /></span>
-        <div><strong>{t("lockedTitle")}</strong><p>{t("lockedBody")}</p></div>
+        <span className="safety-lock__icon">
+          {status.liveOperationsEnabled
+            ? <ShieldCheck size={23} aria-hidden="true" />
+            : <LockKeyhole size={23} aria-hidden="true" />}
+        </span>
+        <div>
+          <strong>{t(status.liveOperationsEnabled ? "statusReady" : "lockedTitle")}</strong>
+          <p>{t(status.liveOperationsEnabled ? "securityBody" : "lockedBody")}</p>
+        </div>
         <code>{status.iteration}</code>
       </div>
     </section>
@@ -58,15 +65,15 @@ function StatusGrid({ t }: { t: Translate }) {
   );
 }
 
-function ServersPanel({ t }: { t: Translate }) {
+function ServersPanel({ t, onStartSetup }: Pick<DashboardProps, "t" | "onStartSetup">) {
   return (
     <section className="content-panel servers-panel">
-      <PanelHeader title={t("serversTitle")} action={t("serversAction")} />
+      <PanelHeader title={t("serversTitle")} action={t("serversAction")} onAction={onStartSetup} />
       <div className="empty-state">
         <div className="empty-state__visual"><Server size={31} strokeWidth={1.6} /><span /><span /></div>
         <h2>{t("emptyTitle")}</h2>
-        <p>{t("emptyBody")}</p>
-        <button type="button" className="text-button" disabled><span>{t("emptyAction")}</span><ArrowUpRight size={15} /></button>
+        <p>{t("setupServerBody")}</p>
+        <button type="button" className="text-button" onClick={onStartSetup}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
       </div>
     </section>
   );
@@ -74,10 +81,10 @@ function ServersPanel({ t }: { t: Translate }) {
 
 function RoadmapPanel({ t }: { t: Translate }) {
   const items = [
-    [t("roadmapFoundation"), t("statusReady"), "ready"],
-    [t("roadmapDomain"), t("statusInProgress"), "current"],
-    [t("roadmapRemote"), t("statusPlanned"), "planned"],
-    [t("roadmapRestore"), t("statusPlanned"), "planned"],
+    [t("roadmapFoundation"), t("statusInProgress"), "current"],
+    [t("roadmapDomain"), t("statusReady"), "ready"],
+    [t("roadmapRemote"), t("statusReady"), "ready"],
+    [t("roadmapRestore"), t("statusReady"), "ready"],
   ] as const;
   return (
     <section className="content-panel roadmap-panel">
@@ -95,8 +102,8 @@ function RoadmapPanel({ t }: { t: Translate }) {
   );
 }
 
-function PanelHeader({ title, action }: { title: string; action?: string }) {
-  return <header className="panel-header"><h2>{title}</h2>{action && <button type="button" disabled>{action}</button>}</header>;
+function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  return <header className="panel-header"><h2>{title}</h2>{action && <button type="button" disabled={!onAction} onClick={onAction}>{action}</button>}</header>;
 }
 
 function SecurityBanner({ t }: { t: Translate }) {

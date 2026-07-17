@@ -112,7 +112,8 @@ gate.
   filesystem push succeeds, the database push then fails" for deploy is still
   not possible at the unit level (the concrete `SystemOpenSsh` a deploy
   composition holds fails every push identically once SSH is unreachable at
-  all); a live deploy fault-injection case remains open. The drill's first-ever
+  all); the live combined-deploy drill now covers that exact staged-first-
+  payload/failed-second-payload sequence instead. The drill's first-ever
   successful run
   (2026-07-16) also surfaced and closed two independent, previously
   undiscovered defects in `guardian-archive`'s path validation — see ADR
@@ -242,8 +243,9 @@ independently.
   produces both MSI and NSIS bundles locally (2026-07-17); it exposed and
   closed a missing explicit icon-manifest entry before signing. CI and release
   packaging now share exact platform allowlists (MSI/NSIS and DEB/AppImage),
-  so an unexpected or missing format fails before any upload; the first CI run
-  of that packaging-smoke job and actual signed release evidence remain open.
+  so an unexpected or missing format fails before any upload. The first
+  packaging-smoke matrix passed on Windows and Linux for commit `43661a7` in CI
+  run `29591493609` (2026-07-17); actual signed release evidence remains open.
 - Documentation and UI use the same release status and terminology.
 
 Gate: a non-technical operator can configure one server, create one backup,
@@ -272,7 +274,7 @@ an ADR.
   drill covers filesystem plus SQLite.
 - Cover cancellation, corrupted payload, missing recovery key, disk exhaustion,
   changed host key, hostile archive metadata, and failure of the second payload.
-  Partially closed: the compiled-CLI restore drill now proves that a corrupted
+  Closed for this scoped matrix: the compiled-CLI restore drill proves that a corrupted
   encrypted filesystem payload and a missing recovery key both fail without
   publishing the destination. It also proves that a wrong recovery-bundle
   passphrase leaves no repository registration. It also proves local restore's
@@ -294,8 +296,9 @@ an ADR.
   restores through the compiled CLI on the clean machine; archive inspection
   rejects it and leaves neither a destination nor restore staging behind.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
-  basic case: both drill reports record phase timings, an RTO, and per-check
-  pass/fail state (`target/drill-reports/*.json`).
+  basic case: the restore, filesystem-only restore, and deploy reports record
+  phase timings, an RTO, and per-check pass/fail state
+  (`target/drill-reports/*.json`).
 - Run the drill from the same commit on Linux CI; keep Windows canonical gates
   green and perform a documented Windows desktop smoke test. Closed for CI:
   workflow run `29518019511` passed both the Ubuntu `verify → SSH integration

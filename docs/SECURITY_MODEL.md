@@ -170,10 +170,9 @@ first byte: capture leaves no local staging or sealed backup; deploy leaves no
 remote staging directory or target; both audit states are `cancelled`. Capture
 streams also have a five-minute idle-byte deadline that kills local SSH and
 discards the partial stream regardless of whether cancellation was
-requested. The
-adapter's fixed read-only `tar --zstd` probe uses the same pinned identity and a
-30-second SSH connect timeout. The shared preflight use case requires that
-probe's success before a future capture workflow can continue; its result alone
+requested. The adapter's fixed read-only `tar --zstd` probe uses the same pinned
+identity and a 30-second SSH connect timeout. The shared preflight use case
+requires that probe's success before capture can continue; its result alone
 never authorizes a backup.
 
 The filesystem capture composition does not expose a manifest-ready payload as
@@ -207,18 +206,18 @@ and only then extracts to the requested new destination. Key rotation is
 still open.
 
 The desktop enrollment screen follows the same boundary: the operator supplies
-an absolute path to a dedicated unencrypted OpenSSH or PEM private key and explicitly confirms
-that the pasted host key was verified out-of-band. The application validates
-the regular non-symlink key file, stores its bytes only in the OS credential
-store under a generated reference, persists only public profile data, and then
-runs a fixed pinned non-interactive SSH `true` probe. The probe never accepts an
-operator-supplied remote command and a changed host key fails closed. A failure
-after the credential-store write can leave an unreferenced local credential;
-it never creates a usable profile or exposes key bytes, and enrollment recovery
-and cleanup remain a hardening follow-up. Before a future capture can be
-enabled, the desktop also invokes the same pinned fixed `tar --zstd` capability
-preflight used by the core use case; it remains read-only and does not create a
-backup or authorize a live run on its own.
+an absolute path to a dedicated unencrypted OpenSSH or PEM private key and
+explicitly confirms that the pasted host key was verified out-of-band. One
+shared-core enrollment transaction validates the regular non-symlink key file,
+stages its bytes in the OS credential store under a generated reference, and
+runs the fixed pinned `tar --zstd` capability preflight before persisting any
+public profile data. The probe never accepts an operator-supplied remote command
+and a changed host key fails closed. A failed secret write, probe, or profile
+commit removes the staged credential and publishes no profile. If the operating
+system refuses that cleanup, enrollment returns a distinct hard error; an
+unreferenced credential may remain locally, but it never becomes a usable
+profile or exposes key bytes. The preflight remains read-only and does not
+create a backup or authorize a live run on its own.
 
 Desktop repository registration accepts only an absolute non-symlink directory
 path, initializes the existing local repository layout, and records a public
@@ -398,8 +397,8 @@ clears that acknowledgement.
 ### Restore safety
 
 - Default to dry-run and a new destination.
-- The initial restore planner rejects unsealed manifests and relative targets,
-  and requires an exact confirmation phrase before a future extraction step.
+- The restore planner rejects unsealed manifests and relative targets, and
+  requires an exact confirmation phrase before extraction.
 - Verify backup signature/checksums immediately before mutation.
 - Re-confirm server identity and show all deletions/service impacts.
 - Create a safety point before destructive in-place restore.
