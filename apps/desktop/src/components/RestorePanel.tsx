@@ -4,9 +4,10 @@ import type { Translate } from "../i18n";
 import { OperationFailureNotice } from "./OperationFailureNotice";
 import { safeErrorText } from "../shared/safe-error";
 import {
-  executeRestore, hasTauriRuntime, listBackups, listRepositories, previewRestore,
+  cancelJob, executeRestore, hasTauriRuntime, listBackups, listRepositories, previewRestore,
   type BackupSummary, type RepositorySummary, type RestorePreview,
 } from "../shared/commands";
+import { newRunId } from "../shared/run-id";
 
 interface RestorePanelProps { t: Translate; }
 
@@ -102,9 +103,12 @@ async function submitRestore(
   state: RestoreActionState,
   setters: RestoreActionSetters,
   setRestoring: (value: boolean) => void,
+  setRunId: (value: string | undefined) => void,
   t: Translate,
 ): Promise<void> {
   if (!state.plan) return;
+  const runId = newRunId();
+  setRunId(runId);
   setRestoring(true);
   setters.setFailure(undefined);
   try {
@@ -113,6 +117,7 @@ async function submitRestore(
       backupId: state.backupId,
       destination: state.destination,
       confirmation: state.confirmationInput,
+      runId,
     });
     setters.setResult(`${t("restoreSuccess")} ${restored.destination}`);
     setters.setPlan(undefined);
@@ -121,6 +126,7 @@ async function submitRestore(
     setters.setFailure(errorText(error, t));
   } finally {
     setRestoring(false);
+    setRunId(undefined);
   }
 }
 
@@ -129,16 +135,18 @@ function useRestoreActions(t: Translate, repositoryId: string, backupId: string,
   const [confirmationInput, setConfirmationInput] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [runId, setRunId] = useState<string>();
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
   const setters = { setPlan, setConfirmationInput, setResult, setFailure };
   const state = { repositoryId, backupId, destination, plan, confirmationInput };
 
   const preview = (event: FormEvent) => void submitPreview(event, state, setters, setPreviewing, t);
-  const restore = () => void submitRestore(state, setters, setRestoring, t);
+  const restore = () => void submitRestore(state, setters, setRestoring, setRunId, t);
   const cancelPlan = () => { setPlan(undefined); setConfirmationInput(""); };
+  const cancelRunningRestore = () => { if (runId) void cancelJob(runId); };
 
-  return { plan, confirmationInput, setConfirmationInput, previewing, restoring, result, failure, preview, restore, cancelPlan };
+  return { plan, confirmationInput, setConfirmationInput, previewing, restoring, result, failure, preview, restore, cancelPlan, cancelRunningRestore };
 }
 
 function useRestoreModel(t: Translate) {
@@ -255,6 +263,11 @@ function RestoreConfirmation({ model, t }: { model: RestoreModel; t: Translate }
           {model.restoring ? <LoaderCircle className="spin" size={16} /> : <RotateCcw size={16} />}
           {model.restoring ? t("restoreExecuting") : t("restoreExecute")}
         </button>
+        {model.restoring && (
+          <button className="button button--secondary" onClick={model.cancelRunningRestore} type="button">
+            {t("restoreCancelRunning")}
+          </button>
+        )}
       </div>
     </div>
   );

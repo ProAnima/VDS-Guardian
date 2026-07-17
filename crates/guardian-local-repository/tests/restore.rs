@@ -1,7 +1,7 @@
 mod support;
 
 use guardian_archive::TarZstdWriter;
-use guardian_core::{ArchivePath, BackupId, PayloadPath, RunId};
+use guardian_core::{ArchivePath, BackupId, CancellationHandle, PayloadPath, RunId};
 use guardian_core::{CredentialId, SecretStore, SecretStoreError, SecretValue};
 use guardian_local_repository::RepositoryError;
 use std::{collections::HashMap, io::Cursor, sync::Mutex};
@@ -67,6 +67,45 @@ fn approved_restore_extracts_a_verified_payload_to_a_new_target() -> TestResult 
         &NoopSecrets,
     )?;
     assert_eq!(std::fs::read(destination.join("srv/app/config"))?, b"safe");
+    Ok(())
+}
+
+#[test]
+fn cancelled_restore_never_publishes_a_destination() -> TestResult {
+    let root = TestRoot::new()?;
+    let local_repository = repository(&root)?;
+    let signer = TestSigner::new();
+    let run = RunId::parse("run-cancelled-restore")?;
+    let staging = local_repository.begin_staging(run.clone())?;
+    let payload = staging.write_payload(
+        "filesystem",
+        PayloadPath::parse("payload/filesystem.tar.zst")?,
+        "application/zstd",
+        &archive()?,
+    )?;
+    let mut manifest = manifest("backup-cancelled-restore", run)?;
+    manifest.add_payload(payload)?;
+    staging.seal(manifest, timestamp("2026-07-14T20:00:00Z")?, &signer)?;
+    let destination = root.path().join("cancelled-target");
+    let plan = local_repository.plan_restore(
+        &BackupId::parse("backup-cancelled-restore")?,
+        &destination,
+        &signer,
+    )?;
+    let cancellation = CancellationHandle::new();
+    cancellation.cancel();
+    assert!(matches!(
+        local_repository.execute_restore_with_cancellation(
+            &BackupId::parse("backup-cancelled-restore")?,
+            &destination,
+            &plan.confirmation,
+            &signer,
+            &NoopSecrets,
+            &cancellation,
+        ),
+        Err(RepositoryError::RestoreCancelled)
+    ));
+    assert!(!destination.exists());
     Ok(())
 }
 

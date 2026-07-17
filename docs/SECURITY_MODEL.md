@@ -159,15 +159,20 @@ for, stores, or otherwise sees the passphrase. Limited today to
 `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521` identities, registered only
 through `guardian-cli credential register-agent-key`; desktop enrollment
 UI is not wired up yet. Operator-triggered cancellation (ADR 0010) now
-covers capture and deploy: the CLI installs a Ctrl+C handler and the
-desktop app exposes a Cancel affordance backed by a per-job registry, both
+covers capture, deploy, and desktop local restore: the CLI installs a Ctrl+C
+handler for deploy and the desktop app exposes a Cancel affordance backed by a
+per-job registry, both
 setting a cross-thread handle the transport polls between reads; the
 spawned child is placed in its own process group so only that cooperative
-signal, not a raw OS interrupt racing it, ends it. Local restore extraction
-has no cancellation path yet. The Docker-backed drill now proves real capture
-and deploy cancellation after the corresponding stream has transferred its
-first byte: capture leaves no local staging or sealed backup; deploy leaves no
-remote staging directory or target; both audit states are `cancelled`. Capture
+signal, not a raw OS interrupt racing it, ends it. Local restore polls the same
+handle during decryption, tar extraction, and SQLite decompression and again
+before its single atomic publish; cancellation removes its fresh staging tree
+and leaves no destination. Adversarial tests force cancellation mid-stream for
+both archive forms and at the repository boundary. The Docker-backed drill now
+proves real capture and deploy cancellation after the corresponding stream has
+transferred its first byte: capture leaves no local staging or sealed backup;
+deploy leaves no remote staging directory or target; both audit states are
+`cancelled`. Capture
 streams also have a five-minute idle-byte deadline that kills local SSH and
 discards the partial stream regardless of whether cancellation was
 requested. The adapter's fixed read-only `tar --zstd` probe uses the same pinned

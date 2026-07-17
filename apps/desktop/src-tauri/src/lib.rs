@@ -174,7 +174,7 @@ async fn execute_deploy(
     deploy_commands::execute(app, request).await
 }
 
-/// Signals cancellation for a still-running capture or deploy job, if one is
+/// Signals cancellation for a still-running capture, restore, or deploy job, if one is
 /// registered under this run id. Synchronous and near-instant (a lock plus a
 /// flag store) — no `spawn_blocking` needed, unlike the long-running jobs it
 /// cancels. Returns whether a matching job was found, not whether it has

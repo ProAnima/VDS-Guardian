@@ -53,6 +53,26 @@ impl LocalRepository {
         verifier: &dyn ManifestVerifier,
         secrets: &dyn SecretStore,
     ) -> Result<RestorePlan, RepositoryError> {
+        self.execute_restore_with_cancellation(
+            backup_id,
+            destination,
+            confirmation,
+            verifier,
+            secrets,
+            &CancellationHandle::new(),
+        )
+    }
+
+    pub fn execute_restore_with_cancellation(
+        &self,
+        backup_id: &BackupId,
+        destination: impl AsRef<Path>,
+        confirmation: &str,
+        verifier: &dyn ManifestVerifier,
+        secrets: &dyn SecretStore,
+        cancellation: &CancellationHandle,
+    ) -> Result<RestorePlan, RepositoryError> {
+        check_restore_cancellation(cancellation)?;
         let destination = destination.as_ref();
         let plan = self.plan_restore(backup_id, destination, verifier)?;
         plan.approve(confirmation)
@@ -66,15 +86,23 @@ impl LocalRepository {
         let recovery = self.load_recovery_key(secrets).ok().flatten();
         let scratch_root = self.restore_scratch_root();
         let staging = reserve_restore_staging_directory(destination)?;
-        if let Err(error) = stage_restore_payloads(
-            &backup_root,
-            &manifest,
-            &plan,
-            secrets,
-            recovery.as_ref(),
-            &staging,
-            &scratch_root,
-        ) {
+        let context = RestorePayloadContext {
+            backup_root: &backup_root,
+            manifest: &manifest,
+            decryption: DecryptionContext {
+                backup_id: &manifest.backup_id,
+                secrets,
+                recovery: recovery.as_ref(),
+                scratch_root: &scratch_root,
+                cancellation: Some(cancellation),
+            },
+            cancellation,
+        };
+        if let Err(error) = stage_restore_payloads(&context, &plan, &staging) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+        if let Err(error) = check_restore_cancellation(cancellation) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
@@ -117,15 +145,16 @@ impl LocalRepository {
         let manifest = load_verified_manifest(&backup_root, verifier)?;
         let recovery = self.load_recovery_key(secrets).ok().flatten();
         let (payload, encryption) = resolve_payload_file(&backup_root, &manifest, payload_path)?;
-        let reader = decrypted_payload_reader(
-            &payload,
-            payload_path,
-            encryption.as_ref(),
-            &manifest.backup_id,
+        let scratch_root = self.restore_scratch_root();
+        let context = DecryptionContext {
+            backup_id: &manifest.backup_id,
             secrets,
-            recovery.as_ref(),
-            &self.restore_scratch_root(),
-        )?;
+            recovery: recovery.as_ref(),
+            scratch_root: &scratch_root,
+            cancellation: None,
+        };
+        let reader =
+            decrypted_payload_reader(&payload, payload_path, encryption.as_ref(), &context)?;
         let byte_length = reader.measured_len()?;
         Ok((reader, byte_length))
     }
@@ -175,88 +204,85 @@ fn reserve_restore_staging_directory(destination: &Path) -> Result<PathBuf, Repo
     Ok(path)
 }
 
+struct RestorePayloadContext<'a> {
+    backup_root: &'a Path,
+    manifest: &'a guardian_core::Manifest,
+    decryption: DecryptionContext<'a>,
+    cancellation: &'a CancellationHandle,
+}
+
 fn stage_restore_payloads(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
+    context: &RestorePayloadContext<'_>,
     plan: &RestorePlan,
-    secrets: &dyn SecretStore,
-    recovery: Option<&PayloadKey>,
     staging: &Path,
-    scratch_root: &Path,
 ) -> Result<(), RepositoryError> {
-    extract_payload(
-        backup_root,
-        manifest,
-        &plan.filesystem_payload,
-        secrets,
-        recovery,
-        staging,
-        scratch_root,
-    )?;
+    extract_payload(context, &plan.filesystem_payload, staging)?;
     if let Some(database_payload) = &plan.database_payload {
-        extract_database_payload(
-            backup_root,
-            manifest,
-            database_payload,
-            secrets,
-            recovery,
-            staging,
-            scratch_root,
-        )?;
+        extract_database_payload(context, database_payload, staging)?;
     }
     Ok(())
 }
 
 fn extract_payload(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
+    context: &RestorePayloadContext<'_>,
     payload_path: &PayloadPath,
-    secrets: &dyn SecretStore,
-    recovery: Option<&PayloadKey>,
     destination: &Path,
-    scratch_root: &Path,
 ) -> Result<guardian_archive::ArchiveInspection, RepositoryError> {
-    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
+    let (payload, encryption) =
+        resolve_payload_file(context.backup_root, context.manifest, payload_path)?;
     let source = decrypted_payload_reader(
         &payload,
         payload_path,
         encryption.as_ref(),
-        &manifest.backup_id,
-        secrets,
-        recovery,
-        scratch_root,
+        &context.decryption,
     )?;
-    extract_tar_zstd(source, destination, ArchiveLimits::conservative())
-        .map_err(RepositoryError::RestoreExtraction)
+    extract_tar_zstd_with_cancellation(
+        source,
+        destination,
+        ArchiveLimits::conservative(),
+        context.cancellation,
+    )
+    .map_err(map_restore_archive_error)
 }
 
 fn extract_database_payload(
-    backup_root: &Path,
-    manifest: &guardian_core::Manifest,
+    context: &RestorePayloadContext<'_>,
     payload_path: &PayloadPath,
-    secrets: &dyn SecretStore,
-    recovery: Option<&PayloadKey>,
     destination: &Path,
-    scratch_root: &Path,
 ) -> Result<u64, RepositoryError> {
-    let (payload, encryption) = resolve_payload_file(backup_root, manifest, payload_path)?;
+    let (payload, encryption) =
+        resolve_payload_file(context.backup_root, context.manifest, payload_path)?;
     let source = decrypted_payload_reader(
         &payload,
         payload_path,
         encryption.as_ref(),
-        &manifest.backup_id,
-        secrets,
-        recovery,
-        scratch_root,
+        &context.decryption,
     )?;
     // Bounds the *decompressed* database size; the compressed stream itself
     // was already bounded and digest-verified at capture and load time.
-    decompress_zstd_file(
+    decompress_zstd_file_with_cancellation(
         source,
         &destination.join("database.sqlite"),
         ArchiveLimits::conservative().max_expanded_bytes,
+        context.cancellation,
     )
-    .map_err(RepositoryError::RestoreExtraction)
+    .map_err(map_restore_archive_error)
+}
+
+fn check_restore_cancellation(cancellation: &CancellationHandle) -> Result<(), RepositoryError> {
+    if cancellation.is_cancelled() {
+        Err(RepositoryError::RestoreCancelled)
+    } else {
+        Ok(())
+    }
+}
+
+fn map_restore_archive_error(error: guardian_archive::ArchiveError) -> RepositoryError {
+    if matches!(error, guardian_archive::ArchiveError::Cancelled) {
+        RepositoryError::RestoreCancelled
+    } else {
+        RepositoryError::RestoreExtraction(error)
+    }
 }
 
 /// Decrypts (when the payload is encrypted) into a hardened scratch file and
@@ -266,4 +292,4 @@ fn extract_database_payload(
 /// its guard) is dropped.
 mod crypto;
 
-use crypto::decrypted_payload_reader;
+use crypto::{DecryptionContext, decrypted_payload_reader};

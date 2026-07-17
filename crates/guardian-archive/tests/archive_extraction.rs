@@ -1,6 +1,9 @@
-use guardian_archive::{ArchiveError, ArchiveLimits, TarZstdWriter, extract_tar_zstd};
-use guardian_core::ArchivePath;
-use std::io::Cursor;
+use guardian_archive::{
+    ArchiveError, ArchiveLimits, TarZstdWriter, extract_tar_zstd,
+    extract_tar_zstd_with_cancellation,
+};
+use guardian_core::{ArchivePath, CancellationHandle};
+use std::io::{self, Cursor, Read};
 
 #[test]
 fn extraction_writes_only_to_a_new_destination() -> Result<(), Box<dyn std::error::Error>> {
@@ -78,6 +81,27 @@ fn failed_extraction_removes_its_new_destination() -> Result<(), Box<dyn std::er
     Ok(())
 }
 
+#[test]
+fn cancelled_extraction_removes_its_partial_destination() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("restore");
+    let handle = CancellationHandle::new();
+    let archive = large_archive()?;
+    let source = CancelAfterReads::new(Cursor::new(archive), handle.clone(), 100);
+    assert!(matches!(
+        extract_tar_zstd_with_cancellation(
+            source,
+            &destination,
+            ArchiveLimits::conservative(),
+            &handle,
+        ),
+        Err(ArchiveError::Cancelled)
+    ));
+    assert!(!destination.exists());
+    Ok(())
+}
+
 fn archive() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let directory = ArchivePath::parse("srv")?;
     let app = ArchivePath::parse("srv/app")?;
@@ -92,4 +116,43 @@ fn archive() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         &mut contents,
     )?;
     Ok(writer.finish()?)
+}
+
+fn large_archive() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let file = ArchivePath::parse("srv/app/data.bin")?;
+    let contents = (0..1_000_000)
+        .map(|index| (index % 251) as u8)
+        .collect::<Vec<_>>();
+    let mut source = Cursor::new(contents);
+    let mut writer = TarZstdWriter::new(Vec::new())?;
+    writer.append_file(&file, u64::try_from(source.get_ref().len())?, &mut source)?;
+    Ok(writer.finish()?)
+}
+
+struct CancelAfterReads<R> {
+    inner: R,
+    handle: CancellationHandle,
+    remaining: usize,
+}
+
+impl<R> CancelAfterReads<R> {
+    fn new(inner: R, handle: CancellationHandle, remaining: usize) -> Self {
+        Self {
+            inner,
+            handle,
+            remaining,
+        }
+    }
+}
+
+impl<R: Read> Read for CancelAfterReads<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.remaining == 0 {
+            self.handle.cancel();
+        } else {
+            self.remaining -= 1;
+        }
+        let maximum = buffer.len().min(1);
+        self.inner.read(&mut buffer[..maximum])
+    }
 }

@@ -37,6 +37,8 @@ pub enum RepositoryError {
     UnsafeFilesystemEntry,
     #[error("restore destination already exists")]
     RestoreDestinationExists,
+    #[error("restore was cancelled")]
+    RestoreCancelled,
     #[error("manifest contract rejected the backup")]
     Manifest(#[from] ManifestError),
     #[error("restore plan could not be created")]

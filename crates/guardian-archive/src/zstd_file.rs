@@ -1,8 +1,9 @@
 //! Validation and extraction for a single file compressed with zstd (for
 //! example a database snapshot), as opposed to a tar.zst archive.
 
-use crate::{ArchiveError, bounded_zstd_reader, drain_expanded_stream};
-use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError};
+use crate::cancellation::{check as check_cancellation, map_read};
+use crate::{ArchiveError, bounded_zstd_reader, bounded_zstd_reader_inner, drain_expanded_stream};
+use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError, CancellationHandle};
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read},
@@ -17,7 +18,26 @@ pub fn decompress_zstd_file(
     destination: &Path,
     max_bytes: u64,
 ) -> Result<u64, ArchiveError> {
-    let result = decompress_new_zstd_file(source, destination, max_bytes);
+    decompress_zstd_file_inner(source, destination, max_bytes, None)
+}
+
+pub fn decompress_zstd_file_with_cancellation(
+    source: impl Read,
+    destination: &Path,
+    max_bytes: u64,
+    cancellation: &CancellationHandle,
+) -> Result<u64, ArchiveError> {
+    decompress_zstd_file_inner(source, destination, max_bytes, Some(cancellation))
+}
+
+fn decompress_zstd_file_inner(
+    source: impl Read,
+    destination: &Path,
+    max_bytes: u64,
+    cancellation: Option<&CancellationHandle>,
+) -> Result<u64, ArchiveError> {
+    check_cancellation(cancellation)?;
+    let result = decompress_new_zstd_file(source, destination, max_bytes, cancellation);
     if result.is_err() {
         let _ = fs::remove_file(destination);
     }
@@ -28,14 +48,15 @@ fn decompress_new_zstd_file(
     source: impl Read,
     destination: &Path,
     max_bytes: u64,
+    cancellation: Option<&CancellationHandle>,
 ) -> Result<u64, ArchiveError> {
-    let mut reader = bounded_zstd_reader(source, max_bytes)?;
+    let mut reader = bounded_zstd_reader_inner(source, max_bytes, cancellation)?;
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(destination)
         .map_err(|_| ArchiveError::Invalid)?;
-    io::copy(&mut reader, &mut output).map_err(|_| ArchiveError::Invalid)?;
+    io::copy(&mut reader, &mut output).map_err(|error| map_read(error, cancellation))?;
     output.sync_all().map_err(|_| ArchiveError::Invalid)?;
     Ok(reader.consumed)
 }
@@ -46,7 +67,7 @@ fn decompress_new_zstd_file(
 /// before `extract_tar_zstd` extracts).
 pub fn inspect_zstd_file(source: impl Read, max_bytes: u64) -> Result<u64, ArchiveError> {
     let mut reader = bounded_zstd_reader(source, max_bytes)?;
-    drain_expanded_stream(&mut reader)?;
+    drain_expanded_stream(&mut reader, None)?;
     Ok(reader.consumed)
 }
 
@@ -74,9 +95,12 @@ impl ArchiveInspectionPort for ZstdFileInspector {
 
 #[cfg(test)]
 mod tests {
-    use super::{ZstdFileInspector, decompress_zstd_file, inspect_zstd_file};
-    use guardian_core::ArchiveInspectionPort;
-    use std::io::Cursor;
+    use super::{
+        ZstdFileInspector, decompress_zstd_file, decompress_zstd_file_with_cancellation,
+        inspect_zstd_file,
+    };
+    use guardian_core::{ArchiveInspectionPort, CancellationHandle};
+    use std::io::{self, Cursor, Read};
 
     #[test]
     fn decompress_zstd_file_reconstructs_the_original_bytes()
@@ -137,5 +161,52 @@ mod tests {
         let consumed = inspect_zstd_file(Cursor::new(compressed), u64::try_from(original.len())?)?;
         assert_eq!(consumed, u64::try_from(original.len())?);
         Ok(())
+    }
+
+    #[test]
+    fn cancelled_decompression_removes_the_partial_file() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let original = (0..1_000_000)
+            .map(|index| (index % 251) as u8)
+            .collect::<Vec<_>>();
+        let compressed = zstd::stream::encode_all(Cursor::new(original), 0)?;
+        let handle = CancellationHandle::new();
+        let source = CancelAfterReads::new(Cursor::new(compressed), handle.clone(), 100);
+        let dir = tempfile::tempdir()?;
+        let destination = dir.path().join("database.sqlite");
+        assert!(matches!(
+            decompress_zstd_file_with_cancellation(source, &destination, 2_000_000, &handle,),
+            Err(crate::ArchiveError::Cancelled)
+        ));
+        assert!(!destination.exists());
+        Ok(())
+    }
+
+    struct CancelAfterReads<R> {
+        inner: R,
+        handle: CancellationHandle,
+        remaining: usize,
+    }
+
+    impl<R> CancelAfterReads<R> {
+        fn new(inner: R, handle: CancellationHandle, remaining: usize) -> Self {
+            Self {
+                inner,
+                handle,
+                remaining,
+            }
+        }
+    }
+
+    impl<R: Read> Read for CancelAfterReads<R> {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.remaining == 0 {
+                self.handle.cancel();
+            } else {
+                self.remaining -= 1;
+            }
+            let maximum = buffer.len().min(1);
+            self.inner.read(&mut buffer[..maximum])
+        }
     }
 }

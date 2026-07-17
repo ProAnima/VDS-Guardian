@@ -1,7 +1,8 @@
 # Operations Runbook
 
-Status: foundation only. Commands below describe the required operator contract;
-live commands will be enabled by milestones in `DEVELOPMENT_PLAN.md`.
+Status: the manual Release 0.1 filesystem-plus-SQLite workflow is implemented
+for controlled testing. Signed release evidence and the documented interactive
+Windows desktop smoke test remain open production-release gates.
 
 ## Normal backup
 
@@ -69,6 +70,11 @@ it explicitly, standing in for the human who would otherwise type or paste
 it. Capture, deploy, and cancellation use the same run-id-keyed job registry
 the desktop app uses, so a capture or deploy started via MCP can be
 cancelled the same cooperative way.
+
+In the desktop app, a running local restore also exposes **Cancel restore**.
+The operation checks cancellation while decrypting and extracting payloads and
+again before publishing; a cancelled restore removes its temporary staging tree
+and leaves the requested destination absent.
 
 ## Scheduled backup
 

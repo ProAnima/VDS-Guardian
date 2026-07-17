@@ -1,22 +1,34 @@
 use super::*;
 
+pub(super) struct DecryptionContext<'a> {
+    pub(super) backup_id: &'a BackupId,
+    pub(super) secrets: &'a dyn SecretStore,
+    pub(super) recovery: Option<&'a PayloadKey>,
+    pub(super) scratch_root: &'a Path,
+    pub(super) cancellation: Option<&'a CancellationHandle>,
+}
+
 pub(super) fn decrypted_payload_reader(
     payload: &Path,
     payload_path: &PayloadPath,
     encryption: Option<&guardian_core::PayloadEncryption>,
-    backup_id: &BackupId,
-    secrets: &dyn SecretStore,
-    recovery: Option<&PayloadKey>,
-    scratch_root: &Path,
+    context: &DecryptionContext<'_>,
 ) -> Result<DecryptedPayload, RepositoryError> {
+    check_optional_cancellation(context.cancellation)?;
     let Some(encryption) = encryption else {
         let file = File::open(payload)
             .map_err(|error| RepositoryError::io("open restore payload", error))?;
         return Ok(DecryptedPayload::Direct(file));
     };
-    let key = resolve_payload_key(encryption, backup_id, payload_path, secrets, recovery)?;
+    let key = resolve_payload_key(
+        encryption,
+        context.backup_id,
+        payload_path,
+        context.secrets,
+        context.recovery,
+    )?;
     let nonce = encryption.nonce()?;
-    let temporary = tempfile::NamedTempFile::new_in(scratch_root)
+    let temporary = tempfile::NamedTempFile::new_in(context.scratch_root)
         .map_err(|error| RepositoryError::io("create temporary decrypted payload", error))?;
     restrict_to_owner(temporary.path())?;
     let mut encrypted = File::open(payload)
@@ -24,14 +36,16 @@ pub(super) fn decrypted_payload_reader(
     let mut plaintext = temporary
         .reopen()
         .map_err(|error| RepositoryError::io("open temporary decrypted payload", error))?;
-    decrypt_reader_to(
+    let mut encrypted = RestoreCancellationReader::new(&mut encrypted, context.cancellation);
+    let result = decrypt_reader_to(
         &key,
         &mut encrypted,
         &mut plaintext,
-        &associated_data(backup_id, payload_path),
+        &associated_data(context.backup_id, payload_path),
         &nonce,
-    )
-    .map_err(|_| RepositoryError::Encryption)?;
+    );
+    check_optional_cancellation(context.cancellation)?;
+    result.map_err(|_| RepositoryError::Encryption)?;
     let file = temporary
         .reopen()
         .map_err(|error| RepositoryError::io("read temporary decrypted payload", error))?;
@@ -39,6 +53,42 @@ pub(super) fn decrypted_payload_reader(
         _guard: temporary,
         file,
     })
+}
+
+fn check_optional_cancellation(
+    cancellation: Option<&CancellationHandle>,
+) -> Result<(), RepositoryError> {
+    if cancellation.is_some_and(CancellationHandle::is_cancelled) {
+        Err(RepositoryError::RestoreCancelled)
+    } else {
+        Ok(())
+    }
+}
+
+struct RestoreCancellationReader<'a, R> {
+    inner: R,
+    cancellation: Option<&'a CancellationHandle>,
+}
+
+impl<'a, R> RestoreCancellationReader<'a, R> {
+    fn new(inner: R, cancellation: Option<&'a CancellationHandle>) -> Self {
+        Self {
+            inner,
+            cancellation,
+        }
+    }
+}
+
+impl<R: std::io::Read> std::io::Read for RestoreCancellationReader<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if self
+            .cancellation
+            .is_some_and(CancellationHandle::is_cancelled)
+        {
+            return Err(std::io::Error::other("restore cancelled"));
+        }
+        self.inner.read(buffer)
+    }
 }
 
 /// Resolves one payload's data key: the primary `SecretStore` entry first,

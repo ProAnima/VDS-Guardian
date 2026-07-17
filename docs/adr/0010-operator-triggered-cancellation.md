@@ -38,6 +38,14 @@ loops) and has a different risk profile (typically seconds to minutes, not
 the multi-hour risk of a stalled network connection). Deferred, not
 forgotten — see "Consequences" below.
 
+Follow-up on 2026-07-17 closes that deliberate local-restore gap for the
+desktop surface. `guardian-archive` now polls the same `CancellationHandle`
+while reading tar/zstd streams, and the repository checks it during payload
+decryption and immediately before atomic publication. Cancellation removes the
+fresh staging tree and is returned as a typed `RestoreCancelled` error. CLI and
+MCP restore remain synchronous and unchanged; no new transport or dependency
+was introduced.
+
 ## Decision
 
 ### `CancellationHandle` lives in `guardian-core`
@@ -183,9 +191,10 @@ an in-flight request; adapters do not mint ad-hoc IDs for it.
   gate.
 - `docs/ARCHITECTURE.md`'s cancellation/event-queue claims are corrected to
   match reality.
-- One real, named gap remains: local restore extraction has no cancellation
-  path yet (different mechanism, deferred to a follow-up that can reuse
-  `CancellationHandle` directly).
+- The named local-restore gap is closed for the desktop surface by the
+  2026-07-17 follow-up. Archive and repository regression tests force
+  cancellation and prove partial output cleanup; the clean-room drill does not
+  yet drive the desktop cancellation button end to end.
 - The clean-room drill now runs real mid-transfer capture and deploy
   cancellation: test-only forced-command fixtures throttle each filesystem
   stream only after its first byte, then the test cancels through the real

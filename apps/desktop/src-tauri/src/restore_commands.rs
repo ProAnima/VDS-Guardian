@@ -1,5 +1,5 @@
 use guardian_configuration::RepositoryStore;
-use guardian_core::{BackupId, RepositoryId};
+use guardian_core::{BackupId, CancellationHandle, JobRegistry, RepositoryId, RunId};
 use guardian_local_repository::{LocalRepository, TrustedBackup};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
@@ -14,6 +14,7 @@ pub struct RestoreRequest {
     backup_id: String,
     destination: String,
     confirmation: Option<String>,
+    run_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,7 +97,15 @@ pub async fn execute(
         .path()
         .app_config_dir()
         .map_err(|_| RestoreFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || execute_blocking(root, request))
+    let run_id = request
+        .run_id
+        .as_deref()
+        .ok_or_else(RestoreFailure::storage)
+        .and_then(|value| RunId::parse(value).map_err(|_| RestoreFailure::storage()))?;
+    let handle = CancellationHandle::new();
+    let registry = app.state::<JobRegistry>();
+    let _registration = registry.register(run_id, handle.clone());
+    tauri::async_runtime::spawn_blocking(move || execute_blocking(root, request, handle))
         .await
         .map_err(|_| RestoreFailure::storage())?
 }
@@ -112,22 +121,26 @@ fn plan(root: PathBuf, request: RestoreRequest) -> Result<RestorePreview, Restor
 fn execute_blocking(
     root: PathBuf,
     request: RestoreRequest,
+    handle: CancellationHandle,
 ) -> Result<RestorePreview, RestoreFailure> {
     let confirmation = request
         .confirmation
         .as_deref()
         .ok_or_else(RestoreFailure::confirmation)?;
     let (repository, backup_id, identity) = resolve(root, &request)?;
-    let plan = repository
-        .execute_restore(
-            &backup_id,
-            &request.destination,
-            confirmation,
-            &identity,
-            &OsCredentialStore,
-        )
-        .map_err(|_| RestoreFailure::rejected())?;
-    Ok(summary(plan))
+    let result = repository.execute_restore_with_cancellation(
+        &backup_id,
+        &request.destination,
+        confirmation,
+        &identity,
+        &OsCredentialStore,
+        &handle,
+    );
+    match result {
+        Ok(plan) => Ok(summary(plan)),
+        Err(_) if handle.is_cancelled() => Err(RestoreFailure::cancelled()),
+        Err(_) => Err(RestoreFailure::rejected()),
+    }
 }
 
 fn resolve(
@@ -188,6 +201,13 @@ impl RestoreFailure {
             code: "restore_confirmation_required",
             message: "Exact restore confirmation is required.",
             remediation: "Copy the confirmation phrase from the preview before restoring.",
+        }
+    }
+    fn cancelled() -> Self {
+        Self {
+            code: "restore_cancelled",
+            message: "The restore was cancelled by the operator.",
+            remediation: "The destination was not published. Review the backup and start a new restore when ready.",
         }
     }
     fn storage() -> Self {

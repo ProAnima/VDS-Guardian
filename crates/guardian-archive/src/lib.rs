@@ -1,10 +1,14 @@
 //! Streaming validation and extraction for tar.zst archives and single-file
 //! zstd payloads (for example a database snapshot).
 
+mod cancellation;
 mod writer;
 mod zstd_file;
 
-use guardian_core::{ArchiveInspectionPort, ArchiveInspectionPortError, ArchivePath};
+use cancellation::{CancellationReader, check as check_cancellation, map_read};
+use guardian_core::{
+    ArchiveInspectionPort, ArchiveInspectionPortError, ArchivePath, CancellationHandle,
+};
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read},
@@ -14,7 +18,10 @@ use tar::Archive;
 use thiserror::Error;
 
 pub use writer::{ArchiveWriteError, TarZstdWriter};
-pub use zstd_file::{ZstdFileInspector, decompress_zstd_file, inspect_zstd_file};
+pub use zstd_file::{
+    ZstdFileInspector, decompress_zstd_file, decompress_zstd_file_with_cancellation,
+    inspect_zstd_file,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArchiveLimits {
@@ -44,6 +51,8 @@ pub struct ArchiveInspection {
 
 #[derive(Debug, Error)]
 pub enum ArchiveError {
+    #[error("archive operation was cancelled")]
+    Cancelled,
     #[error("archive is malformed or exceeds a resource limit")]
     Invalid,
     #[error("archive entry path is unsafe")]
@@ -89,8 +98,27 @@ pub fn extract_tar_zstd(
     destination: &Path,
     limits: ArchiveLimits,
 ) -> Result<ArchiveInspection, ArchiveError> {
+    extract_tar_zstd_inner(source, destination, limits, None)
+}
+
+pub fn extract_tar_zstd_with_cancellation(
+    source: impl Read,
+    destination: &Path,
+    limits: ArchiveLimits,
+    cancellation: &CancellationHandle,
+) -> Result<ArchiveInspection, ArchiveError> {
+    extract_tar_zstd_inner(source, destination, limits, Some(cancellation))
+}
+
+fn extract_tar_zstd_inner(
+    source: impl Read,
+    destination: &Path,
+    limits: ArchiveLimits,
+    cancellation: Option<&CancellationHandle>,
+) -> Result<ArchiveInspection, ArchiveError> {
+    check_cancellation(cancellation)?;
     fs::create_dir(destination).map_err(|_| ArchiveError::Invalid)?;
-    let result = extract_new_tar_zstd(source, destination, limits);
+    let result = extract_new_tar_zstd(source, destination, limits, cancellation);
     if result.is_err() {
         let _ = fs::remove_dir_all(destination);
     }
@@ -101,8 +129,9 @@ fn extract_new_tar_zstd(
     source: impl Read,
     destination: &Path,
     limits: ArchiveLimits,
+    cancellation: Option<&CancellationHandle>,
 ) -> Result<ArchiveInspection, ArchiveError> {
-    let mut source = bounded_zstd_reader(source, limits.max_expanded_bytes)?;
+    let mut source = bounded_zstd_reader_inner(source, limits.max_expanded_bytes, cancellation)?;
     let mut inspection = ArchiveInspection {
         entries: 0,
         regular_files: 0,
@@ -111,16 +140,21 @@ fn extract_new_tar_zstd(
     };
     {
         let mut archive = Archive::new(&mut source);
-        for entry in archive.entries().map_err(|_| ArchiveError::Invalid)? {
+        for entry in archive
+            .entries()
+            .map_err(|error| map_read(error, cancellation))?
+        {
+            check_cancellation(cancellation)?;
             extract_entry(
-                entry.map_err(|_| ArchiveError::Invalid)?,
+                entry.map_err(|error| map_read(error, cancellation))?,
                 destination,
                 limits,
                 &mut inspection,
+                cancellation,
             )?;
         }
     }
-    drain_expanded_stream(&mut source)?;
+    drain_expanded_stream(&mut source, cancellation)?;
     inspection.expanded_bytes = source.consumed;
     Ok(inspection)
 }
@@ -130,7 +164,9 @@ fn extract_entry<R: Read>(
     destination: &Path,
     limits: ArchiveLimits,
     inspection: &mut ArchiveInspection,
+    cancellation: Option<&CancellationHandle>,
 ) -> Result<(), ArchiveError> {
+    check_cancellation(cancellation)?;
     let header = entry.header();
     let raw_path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
     let path = parse_entry_path(&raw_path, header.entry_type().is_dir())?;
@@ -165,7 +201,8 @@ fn extract_entry<R: Read>(
         .create_new(true)
         .open(&output)
         .map_err(|_| ArchiveError::Invalid)?;
-    let copied = io::copy(&mut entry, &mut output_file).map_err(|_| ArchiveError::Invalid)?;
+    let copied =
+        io::copy(&mut entry, &mut output_file).map_err(|error| map_read(error, cancellation))?;
     output_file.sync_all().map_err(|_| ArchiveError::Invalid)?;
     if copied != size {
         return Err(ArchiveError::Invalid);
@@ -242,17 +279,21 @@ fn inspect_tar<R: Read>(
             )?;
         }
     }
-    drain_expanded_stream(&mut source)?;
+    drain_expanded_stream(&mut source, None)?;
     inspection.expanded_bytes = source.consumed;
     Ok(inspection)
 }
 
-pub(crate) fn drain_expanded_stream(source: &mut impl Read) -> Result<(), ArchiveError> {
+pub(crate) fn drain_expanded_stream(
+    source: &mut impl Read,
+    cancellation: Option<&CancellationHandle>,
+) -> Result<(), ArchiveError> {
     let mut buffer = [0_u8; 64 * 1024];
     loop {
+        check_cancellation(cancellation)?;
         if source
             .read(&mut buffer)
-            .map_err(|_| ArchiveError::Invalid)?
+            .map_err(|error| map_read(error, cancellation))?
             == 0
         {
             return Ok(());
@@ -342,8 +383,22 @@ pub fn bounded_zstd_reader(
     source: impl Read,
     max_bytes: u64,
 ) -> Result<ReadBudget<impl Read>, ArchiveError> {
-    let decoder = zstd::stream::read::Decoder::new(source).map_err(|_| ArchiveError::Invalid)?;
-    Ok(ReadBudget::new(decoder, max_bytes))
+    bounded_zstd_reader_inner(source, max_bytes, None)
+}
+
+pub(crate) fn bounded_zstd_reader_inner(
+    source: impl Read,
+    max_bytes: u64,
+    cancellation: Option<&CancellationHandle>,
+) -> Result<ReadBudget<impl Read>, ArchiveError> {
+    check_cancellation(cancellation)?;
+    let source = CancellationReader::new(source, cancellation);
+    let decoder =
+        zstd::stream::read::Decoder::new(source).map_err(|error| map_read(error, cancellation))?;
+    Ok(ReadBudget::new(
+        CancellationReader::new(decoder, cancellation),
+        max_bytes,
+    ))
 }
 
 impl<R: Read> Read for ReadBudget<R> {

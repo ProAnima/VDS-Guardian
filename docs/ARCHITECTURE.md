@@ -238,17 +238,20 @@ recovery journal, never private key material.
   directory. Opening a repository reconciles interrupted moves by rollback or
   resumes a durably marked cleanup; contradictory state fails closed.
 - Operator-triggered cancellation (ADR 0010) covers SSH-backed capture and
-  deploy: the CLI installs a Ctrl+C handler, the desktop app tracks in-flight
-  jobs in a per-run registry with a Cancel affordance, and `guardian-mcp`
-  (ADR 0012) exposes the same per-run registry through a `cancel_job` tool —
-  all three setting a cross-thread handle the transport polls between reads.
+  deploy plus desktop local restore. The CLI installs a Ctrl+C handler for
+  deploy, the desktop app tracks all three operations in a per-run registry
+  with a Cancel affordance, and `guardian-mcp` (ADR 0012) exposes the same
+  registry for capture and deploy through a `cancel_job` tool. SSH transports
+  poll the cross-thread handle between reads; local restore checks it while
+  decrypting, decompressing, and extracting each payload and again before the
+  final atomic publish.
   The `JobRegistry` desktop and `guardian-mcp` share lives in `guardian-core`,
   not duplicated per surface. The spawned child is isolated into its own
   process group so only that cooperative signal, never a raw OS interrupt
-  racing it, ends the process. Local restore extraction has no cancellation
-  path yet. The clean-room drill exercises capture and deploy cancellation
-  after each stream transfers payload data and verifies terminal audit state
-  plus capture staging cleanup or remote deploy staging cleanup respectively.
+  racing it, ends the process. A cancelled local restore removes its fresh
+  staging tree and never publishes the destination. The clean-room drill
+  exercises capture and deploy cancellation after each stream transfers data;
+  focused archive/repository tests cover local restore cancellation and cleanup.
 - Every external call has connect, idle, and total timeouts.
 - Capture and push streams enforce a maximum byte ceiling so a runaway or
   hostile remote command cannot exhaust local disk or memory.

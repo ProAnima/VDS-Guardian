@@ -226,6 +226,10 @@ independently.
   as restore candidates.
 - Restore preview states the source backup, destination, expected payload, and
   rollback posture before confirmation. Closed in the UI.
+- A running desktop restore can be cancelled by the operator. Closed: the
+  desktop supplies a UUIDv7 run id to the shared `JobRegistry`; decryption,
+  tar extraction, and SQLite decompression poll its cancellation handle, remove
+  partial staging, and do not publish the destination.
 - Failures tell the operator what is safe, what may have changed, and what to do
   next. Partially closed for capture, restore, and deploy: their desktop
   failure notices preserve the typed error/remediation and add the operation's
@@ -279,7 +283,10 @@ an ADR.
   publishing the destination. It also proves that a wrong recovery-bundle
   passphrase leaves no repository registration. It also proves local restore's
   late second-payload failure cleanup with a valid filesystem payload followed
-  by an invalid SQLite zstd stream. Separate live capture and deploy drills
+  by an invalid SQLite zstd stream. Focused adversarial tests cancel local tar
+  extraction and SQLite decompression mid-stream and prove cleanup, while a
+  repository-level test proves a cancelled restore never publishes its target.
+  Separate live capture and deploy drills
   wait until the real stream has transferred its first byte, then cancel
   through `JobRegistry`. They prove `cancelled` (not `failed`) audit state;
   capture leaves neither local staging nor a sealed backup, and deploy leaves

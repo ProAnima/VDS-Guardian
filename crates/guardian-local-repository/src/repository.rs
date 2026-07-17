@@ -4,10 +4,12 @@ use crate::inventory::{TrustedBackup, load_verified_manifest, trusted_inventory}
 use crate::process_lock::ProcessLock;
 use crate::staging::{StagingBackup, associated_data, recovery_wrap_associated_data};
 use fs2::FileExt;
-use guardian_archive::{ArchiveLimits, decompress_zstd_file, extract_tar_zstd};
+use guardian_archive::{
+    ArchiveLimits, decompress_zstd_file_with_cancellation, extract_tar_zstd_with_cancellation,
+};
 use guardian_core::{
-    BackupId, CredentialId, ManifestVerifier, PayloadPath, RepositoryId, RestorePlan, RunId,
-    SecretStore,
+    BackupId, CancellationHandle, CredentialId, ManifestVerifier, PayloadPath, RepositoryId,
+    RestorePlan, RunId, SecretStore,
 };
 use guardian_encryption::{PayloadKey, decrypt_reader_to, decrypt_self_describing_reader_to};
 use serde::{Deserialize, Serialize};
