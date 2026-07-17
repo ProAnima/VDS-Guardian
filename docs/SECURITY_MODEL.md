@@ -10,6 +10,10 @@
 - SSH provides transport security only after host identity is pinned correctly.
 - A successful backup is not proof that the captured application is healthy.
 
+The clean-room restore drill includes a sealed, authenticated archive whose
+tar metadata contains a `../` escape path. It must be rejected by archive
+inspection after decryption and before a restore destination is published.
+
 ## Primary assets
 
 - SSH private keys and passphrases.
@@ -96,8 +100,9 @@
   cost profile, is idempotent for the same key, and refuses to overwrite a
   different working recovery key. The shared recovery service accepts only
   passphrase bytes from its adapter; the CLI reads them from a validated file,
-  never a bare command-line argument, and the future desktop flow must keep
-  them in memory only.
+  never a bare command-line argument. Desktop keeps them in memory only and
+  requires two matching entries before export, preventing an unnoticed typo
+  from producing the operator's only offline bundle.
 - Both `recovery export` and `recovery import` require a typed confirmation
   phrase computed from the repository id, matching the confirmation-gate
   convention restore and deploy already use. Neither `guardian-mcp` nor any
@@ -485,3 +490,14 @@ signing material is never exported with ordinary settings.
 These risks are addressed operationally through independent nodes, least
 privilege, offline/off-site copies, signed releases, and regular clean-room
 restore drills.
+
+## Release artifacts
+
+Desktop installers are published only from protected `v*` tags after canonical
+Windows/Linux verification and the Linux SSH/clean-room drills. Windows bundles
+receive Authenticode signatures and Linux bundles receive detached OpenPGP
+signatures; `SHA256SUMS` is generated after those platform signatures and is
+itself OpenPGP-signed. The workflow fails closed when required signing secrets
+are unavailable. Tauri auto-update endpoints and updater keys remain disabled;
+the release workflow is a distribution control, not an update channel. See ADR
+0014 and `docs/RELEASE_SIGNING.md`.

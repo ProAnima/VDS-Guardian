@@ -108,8 +108,10 @@ blocking worker. SSH profile enrollment, repository registration, recovery-bundl
 export/import, capture-plan save/run, Docker inventory browsing, and
 restore/deploy preview-and-execute now follow the same shape. Recovery-bundle
 commands call the shared `guardian-local-repository` service; desktop keeps an
-entered passphrase in memory and bundle import authenticates before registering
-an unknown repository. `guardian-mcp` remains excluded from that surface.
+entered passphrase in memory, requires it twice for export, and bundle import
+authenticates before registering an unknown repository. Guided setup refreshes
+dependent selectors after each completed step and excludes repositories whose
+recovery key is unavailable from capture. `guardian-mcp` remains excluded.
 
 ### CLI/service
 

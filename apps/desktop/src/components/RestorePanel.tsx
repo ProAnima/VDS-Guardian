@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, CircleAlert, Eye, LoaderCircle, RotateCcw } from "lucide-react";
+import { Check, Eye, LoaderCircle, RotateCcw } from "lucide-react";
 import type { Translate } from "../i18n";
+import { OperationFailureNotice } from "./OperationFailureNotice";
 import {
   executeRestore, hasTauriRuntime, listBackups, listRepositories, previewRestore,
   type BackupSummary, type RepositorySummary, type RestoreFailure, type RestorePreview,
@@ -25,7 +26,7 @@ export function RestorePanel({ t }: RestorePanelProps) {
         </header>
         {model.plan ? <RestoreConfirmation model={model} t={t} /> : <RestoreForm model={model} t={t} />}
         {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
-        {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
+        {model.failure && <OperationFailureNotice message={model.failure} safe="restoreFailureSafe" changed="restoreFailureChanged" t={t} />}
         {!hasTauriRuntime() && <p className="signing-panel__desktop">{t("restoreDesktopRequired")}</p>}
       </section>
     </main>

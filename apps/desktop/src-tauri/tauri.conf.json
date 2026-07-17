@@ -22,6 +22,5 @@
       }
     ]
   },
-  "bundle": { "active": false }
+  "bundle": { "active": true }
 }
-

@@ -7,8 +7,8 @@ import {
 
 const initialForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", keyPath: "" };
 
-export function SshProfilePanel() {
-  const model = useSshProfile();
+export function SshProfilePanel({ onProfilesChanged }: { onProfilesChanged: () => void }) {
+  const model = useSshProfile(onProfilesChanged);
   return <section className="ssh-profile-panel" aria-labelledby="ssh-profile-title">
     <header className="ssh-profile-panel__header"><div><p className="eyebrow"><Server size={15} aria-hidden="true" />Сервер</p><h2 id="ssh-profile-title">Добавить сервер</h2><p>Один SSH-профиль. Ключ сохранится только в хранилище учётных данных ОС.</p></div><span className="signing-state"><Wifi size={16} />SSH</span></header>
     <form className="ssh-profile-form" onSubmit={(event) => void model.submit(event)}>
@@ -27,7 +27,7 @@ export function SshProfilePanel() {
   </section>;
 }
 
-function useSshProfile() {
+function useSshProfile(onProfilesChanged: () => void) {
   const [profiles, setProfiles] = useState<SshProfileSummary[]>([]);
   const [form, setForm] = useState(initialForm);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -47,6 +47,7 @@ function useSshProfile() {
       await testSshProfile(profile.profileId);
       await preflightSshProfile(profile.profileId);
       setProfiles((current) => [...current, profile]);
+      onProfilesChanged();
       setForm(initialForm); setAcknowledged(false);
       setResult(`Сервер «${profile.label}» добавлен: SSH и tar.zstd для будущего backup подтверждены.`);
     } catch (error) { setFailure(errorText(error)); } finally { setWorking(false); }

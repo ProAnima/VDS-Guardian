@@ -26,6 +26,7 @@ guardian-vault = { path = "../guardian-vault" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zstd.workspace = true
 
 [lints]
 workspace = true

@@ -36,6 +36,10 @@ repository:
    repository and the bundle file (a password manager, a sealed physical
    copy) — losing it makes the bundle undecryptable, by design.
 
+The desktop export form requires the passphrase twice and refuses to create a
+bundle when the entries differ. A repository shown as `recovery не настроено`
+must be prepared before it is offered for capture or bundle export.
+
 To recover on a clean machine that has the repository directory and the
 bundle, but no state from the original machine's OS credential store:
 
@@ -128,12 +132,19 @@ A seventh case performs a combined remote deploy where the filesystem payload
 is staged successfully, then the database payload is a signed and encrypted
 but invalid zstd stream. The second push must fail, remove the whole remote
 staging tree, leave the target absent, and record `attempted` then `failed`.
+An eighth clean-machine restore fixture is also correctly signed and encrypted,
+but contains a tar `../` path; archive inspection rejects it after decryption
+and leaves neither a destination nor local restore staging behind.
 It does not prove
 rollback for any stack type —
 restore/deploy rollback is not implemented — and does not cover every
 supported stack type or failure mode, so it does not by itself satisfy the
 requirement above for a release claim. Run the drill manually for anything
 the automated version does not yet cover, or when CI access is unavailable.
+
+For the required interactive Windows desktop release evidence, follow
+[`WINDOWS_DESKTOP_SMOKE_TEST.md`](WINDOWS_DESKTOP_SMOKE_TEST.md). It requires a
+signed installer with a published checksum and records only redacted evidence.
 
 ## Incident rules
 

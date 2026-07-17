@@ -5,8 +5,8 @@ import {
   type RepositoryFailure,
 } from "../shared/commands";
 
-export function RecoveryImportPanel() {
-  const model = useImportModel();
+export function RecoveryImportPanel({ onRepositoriesChanged }: { onRepositoriesChanged: () => void }) {
+  const model = useImportModel(onRepositoriesChanged);
   return <section className="repository-panel" aria-labelledby="recovery-import-title">
     <header className="repository-panel__header"><div><p className="eyebrow"><KeyRound size={15} />Clean-machine recovery</p><h2 id="recovery-import-title">Импортировать ключ восстановления</h2><p>Сначала выберите исходное хранилище и bundle. Новое хранилище появится в приложении только после проверки пароля.</p></div></header>
     <form className="repository-form" onSubmit={(event) => void model.submit(event)}>
@@ -26,9 +26,9 @@ function PathField({ label, value, onChange, pick }: { label: string; value: str
   return <label><span>{label}</span><span className="path-picker"><input value={value} onChange={(event) => onChange(event.target.value)} required /><button type="button" onClick={() => void pick().then((path) => path && onChange(path))}>Обзор…</button></span></label>;
 }
 
-function useImportModel() {
+function useImportModel(onRepositoriesChanged: () => void) {
   const [repositoryId, setRepositoryId] = useState(""); const [repositoryPath, setRepositoryPath] = useState(""); const [inputPath, setInputPath] = useState(""); const [passphrase, setPassphrase] = useState(""); const [confirmation, setConfirmation] = useState(""); const [working, setWorking] = useState(false); const [message, setMessage] = useState<string>(); const [error, setError] = useState<string>();
-  const submit = async (event: FormEvent) => { event.preventDefault(); setWorking(true); setError(undefined); setMessage(undefined); try { const result = await importRecoveryBundle({ repositoryId, repositoryPath, inputPath, passphrase, confirmation }); setPassphrase(""); setConfirmation(""); setMessage(`Хранилище «${result.label}» готово к проверке и восстановлению.`); } catch (reason) { setError(errorText(reason)); } finally { setWorking(false); } };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setWorking(true); setError(undefined); setMessage(undefined); try { const result = await importRecoveryBundle({ repositoryId, repositoryPath, inputPath, passphrase, confirmation }); setPassphrase(""); setConfirmation(""); onRepositoriesChanged(); setMessage(`Хранилище «${result.label}» готово к проверке и восстановлению.`); } catch (reason) { setError(errorText(reason)); } finally { setWorking(false); } };
   return { repositoryId, setRepositoryId, repositoryPath, setRepositoryPath, inputPath, setInputPath, passphrase, setPassphrase, confirmation, setConfirmation, working, message, error, submit };
 }
 

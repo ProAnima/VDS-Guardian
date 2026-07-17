@@ -24,11 +24,10 @@ and restore it to a new destination without a mandatory cloud service.
 > flow, and
 > an automated clean-room drill (including compiled-CLI recovery import on a
 > clean vault and registry, now passing end-to-end locally and on Linux CI)
-> are implemented
-> foundations. A complete operator-facing setup/status flow and a
-> clean-room hostile-failure matrix remain release blockers. Do not use
-> the application as a disaster-recovery system until the Release 0.1 exit
-> gate passes.
+> are implemented foundations. The remaining Release 0.1 blockers include
+> signed Windows/Linux installer artifacts with published checksums and the
+> release-candidate Windows desktop smoke evidence. Do not use the application
+> as a disaster-recovery system until the Release 0.1 exit gate passes.
 
 ## Design goals
 

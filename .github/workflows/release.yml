@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: clippy,rustfmt
+      - name: Install Linux desktop prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm ci
+      - run: npm run verify
+      - name: Run Linux release drills
+        if: runner.os == 'Linux'
+        run: |
+          npm run test:integration:ssh
+          npm run test:integration:drill
+
+  package:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: guardian-windows
+          - os: ubuntu-24.04
+            artifact: guardian-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - name: Install Linux desktop prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfuse2
+      - run: npm ci
+      - run: npm run tauri:build --workspace @vds-guardian/desktop
+      - name: Sign Windows bundles
+        if: runner.os == 'Windows'
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE) -or [string]::IsNullOrWhiteSpace($env:CERTIFICATE_PASSWORD) -or [string]::IsNullOrWhiteSpace($env:TIMESTAMP_URL)) { throw "Windows signing secrets are required." }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "vds-guardian-release.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE))
+          Get-ChildItem target/release/bundle -Recurse -Include *.msi,*.exe | ForEach-Object { & signtool sign /fd SHA256 /f $certificatePath /p $env:CERTIFICATE_PASSWORD /tr $env:TIMESTAMP_URL /td SHA256 $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." } }
+          Remove-Item -LiteralPath $certificatePath -Force
+      - name: Sign Linux bundles
+        if: runner.os == 'Linux'
+        env:
+          GPG_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY_BASE64 }}
+          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+        shell: bash
+        run: |
+          test -n "$GPG_KEY" && test -n "$GPG_PASSPHRASE" || { echo "Linux signing secrets are required." >&2; exit 1; }
+          export GNUPGHOME="$RUNNER_TEMP/guardian-gpg"
+          install -m 700 -d "$GNUPGHOME"
+          printf '%s' "$GPG_KEY" | base64 --decode | gpg --batch --import
+          find target/release/bundle -type f \( -name '*.deb' -o -name '*.AppImage' \) -print0 | xargs -0 -r -n1 gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign
+          rm -rf "$GNUPGHOME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/release/bundle
+          if-no-files-found: error
+
+  publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Generate release SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: release-artifacts
+          output-file: release-artifacts/VDS-Guardian-${{ github.ref_name }}.spdx.json
+          format: spdx-json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Create signed checksums
+        env:
+          GPG_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY_BASE64 }}
+          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+        shell: bash
+        run: |
+          test -n "$GPG_KEY" && test -n "$GPG_PASSPHRASE" || { echo "Linux signing secrets are required." >&2; exit 1; }
+          (cd release-artifacts && find . -type f ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          export GNUPGHOME="$RUNNER_TEMP/guardian-gpg"
+          install -m 700 -d "$GNUPGHOME"
+          printf '%s' "$GPG_KEY" | base64 --decode | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign release-artifacts/SHA256SUMS
+          rm -rf "$GNUPGHOME"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find release-artifacts -type f -print0)
+          gh release create "${GITHUB_REF_NAME}" "${files[@]}" --title "VDS Guardian ${GITHUB_REF_NAME}" --generate-notes

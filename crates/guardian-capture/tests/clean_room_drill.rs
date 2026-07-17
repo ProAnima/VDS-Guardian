@@ -93,6 +93,8 @@ fn restore_drill() -> TestResult {
         &signer,
         &profile,
     )?;
+    let hostile_archive =
+        support::create_hostile_archive_backup(&repository, &vault, &signer, &profile)?;
     drop(signer);
     drop(vault);
     std::fs::remove_dir_all(&vault_dir)?;
@@ -105,6 +107,7 @@ fn restore_drill() -> TestResult {
         &recovery,
         &capture.sealed.backup_id,
         &second_payload_failure.backup_id,
+        &hostile_archive.backup_id,
     )?;
     let hostile_phase = Phase::new("hostile_fail_closed", hostile_start.elapsed());
 
@@ -118,6 +121,7 @@ fn restore_drill() -> TestResult {
     )?;
     let restore_phase = Phase::new("restore", restore_start.elapsed());
 
+    let verify_start = Instant::now();
     let expected_config = workdir.path().join("expected-config.yaml");
     source.copy_out("/srv/app/config.yaml", &expected_config)?;
 
@@ -134,7 +138,7 @@ fn restore_drill() -> TestResult {
     let seeded_row: String =
         database.query_row("SELECT body FROM notes WHERE id = 1", [], |row| row.get(0))?;
     let database_matches = integrity == "ok" && seeded_row == "clean-room drill seed row";
-    let verify_phase = Phase::new("verify", restore_start.elapsed());
+    let verify_phase = Phase::new("verify", verify_start.elapsed());
     let rto_seconds = restore_start.elapsed().as_secs_f64();
 
     assert!(
@@ -163,6 +167,7 @@ fn restore_drill() -> TestResult {
             Check::new("missing_recovery_key_no_partial_target", true),
             Check::new("corrupted_payload_no_partial_target", true),
             Check::new("second_payload_failure_no_partial_target", true),
+            Check::new("hostile_archive_metadata_no_partial_target", true),
         ],
         rto_seconds,
     )?;
@@ -210,6 +215,7 @@ fn filesystem_only_restore_drill() -> TestResult {
         "filesystem-only-run",
     )?;
     let destination = workdir.path().join("restored");
+    let restore_start = Instant::now();
     let plan = repository.plan_restore(&capture.sealed.backup_id, &destination, &signer)?;
     repository.execute_restore(
         &capture.sealed.backup_id,
@@ -218,6 +224,8 @@ fn filesystem_only_restore_drill() -> TestResult {
         &signer,
         &vault,
     )?;
+    let restore_phase = Phase::new("restore", restore_start.elapsed());
+    let verify_start = Instant::now();
     let expected = workdir.path().join("expected.yaml");
     source.copy_out("/srv/app/config.yaml", &expected)?;
     let matches =
@@ -226,15 +234,21 @@ fn filesystem_only_restore_drill() -> TestResult {
         matches,
         "filesystem-only restore did not reproduce captured content"
     );
+    let verify_phase = Phase::new("verify", verify_start.elapsed());
+    let rto_seconds = restore_start.elapsed().as_secs_f64();
     support::write_report(
         "filesystem-only-restore",
         capture.sealed.backup_id.as_str(),
-        &[Phase::new("capture", capture.duration)],
+        &[
+            Phase::new("capture", capture.duration),
+            restore_phase,
+            verify_phase,
+        ],
         &[
             Check::new("filesystem_byte_exact", matches),
             Check::new("no_database_payload", true),
         ],
-        0.0,
+        rto_seconds,
     )?;
     Ok(())
 }
@@ -332,6 +346,7 @@ fn deploy_drill() -> TestResult {
     )?;
     let deploy_phase = Phase::new("deploy", deploy_start.elapsed());
 
+    let verify_start = Instant::now();
     let known_hosts = support::write_known_hosts(workdir.path(), &target_host)?;
     let integrity = support::run_verification_command(
         target.port(),
@@ -351,7 +366,7 @@ fn deploy_drill() -> TestResult {
         &known_hosts,
         "cat /srv/drill-deploy/srv/app/config.yaml",
     )?;
-    let verify_phase = Phase::new("verify", deploy_start.elapsed());
+    let verify_phase = Phase::new("verify", verify_start.elapsed());
     let rto_seconds = deploy_start.elapsed().as_secs_f64();
 
     let database_integrity_ok = integrity == "ok";

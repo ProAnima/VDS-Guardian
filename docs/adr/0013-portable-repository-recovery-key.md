@@ -350,10 +350,10 @@ round trip
 
 Recovery-key rotation and recovery-bundle replacement (named explicitly in
 `docs/DEVELOPMENT_PLAN.md` as Release 0.2 scope, not silently dropped here).
-Desktop bundle export now uses the shared recovery service and keeps the
-passphrase in memory only; clean-machine bundle import remains Release 0.1
-operator-path work. Repository recovery initialization is available from the
-repository panel. Backfilling recovery wrapping onto backups sealed before this
+Desktop bundle export/import now use the shared recovery service and keep the
+passphrase in memory only; export requires two matching entries. Repository
+recovery initialization is available from the repository panel. Backfilling
+recovery wrapping onto backups sealed before this
 feature shipped is impossible without violating "immutable after seal".
 Passphrase strength enforcement or a passphrase-manager integration —
 `--passphrase-file` accepts whatever the operator supplies; a weak
@@ -370,9 +370,10 @@ incorrect recovery key fails closed at every layer (capture-time
 precondition, restore-time AEAD authentication, bundle-level AEAD
 authentication), matching the Gate this ADR exists to close.
 
-Explicitly not delivered by this slice: key rotation, recovery-bundle
-replacement, desktop bundle import, and retroactive wrapping of
-pre-existing v2 backups. Follow-up on 2026-07-16: the clean-room restore drill
+The original slice did not deliver key rotation, recovery-bundle replacement,
+desktop bundle import, or retroactive wrapping of pre-existing v2 backups.
+Desktop import was delivered by a subsequent operator-path follow-up; the
+other three remain open. Follow-up on 2026-07-16: the clean-room restore drill
 was extended to build the production CLI, remove the original operator state,
 import the recovery bundle into a clean vault and registry, and restore through
 that compiled CLI; the path subsequently passed on Linux CI. A later hardening

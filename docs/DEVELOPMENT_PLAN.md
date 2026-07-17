@@ -211,16 +211,27 @@ independently.
   recovery-key readiness without exposing internal architecture. Partially
   closed: desktop exports and imports an offline recovery bundle through the
   shared service; import authenticates the bundle before registering a new
-  repository.
+  repository. Dependent selectors now refresh after each completed setup step,
+  recovery readiness is visible, and an unprepared repository cannot be
+  selected for capture or export. Export requires two matching passphrase
+  entries at both the UI and native-command boundary.
 - Restore picker exposes only sealed, freshly signature-verified backups and
   labels that verification state; failed and cancelled runs are never offered
   as restore candidates.
 - Restore preview states the source backup, destination, expected payload, and
   rollback posture before confirmation. Closed in the UI.
 - Failures tell the operator what is safe, what may have changed, and what to do
-  next.
+  next. Partially closed for capture, restore, and deploy: their desktop
+  failure notices preserve the typed error/remediation and add the operation's
+  published-target and temporary-staging posture. Closed for setup too: one
+  dashboard status view reports the signing identity, recovery-key readiness,
+  SSH profile, and capture-plan prerequisites; it surfaces resource-read
+  failures without hiding their safe remediation text.
 - Produce signed Windows and Linux installer artifacts with published
-  checksums; automatic updates remain deferred.
+  checksums; automatic updates remain deferred. The tag-only, fail-closed
+  workflow and signing-material contract are now documented in ADR 0014 and
+  `docs/RELEASE_SIGNING.md`; actual signed release evidence and provenance
+  attestation remain open.
 - Documentation and UI use the same release status and terminology.
 
 Gate: a non-technical operator can configure one server, create one backup,
@@ -266,8 +277,10 @@ an ADR.
   filling an operator disk. A combined deploy drill then succeeds at staging
   the filesystem payload before an invalid database zstd stream fails; it
   proves that the second push removes the entire remote staging tree and never
-  publishes the target. Hostile archive metadata is covered at the archive
-  boundary but not yet in this live drill.
+  publishes the target. The real clean-room restore drill also seals a validly
+  signed and encrypted payload containing hostile `../` tar metadata, then
+  restores through the compiled CLI on the clean machine; archive inspection
+  rejects it and leaves neither a destination nor restore staging behind.
 - Record byte/data integrity, elapsed time, and cleanup state. Closed for the
   basic case: both drill reports record phase timings, an RTO, and per-check
   pass/fail state (`target/drill-reports/*.json`).
@@ -277,8 +290,10 @@ an ADR.
   → clean-room drill` chain and the Windows canonical gate for commit
   `3912a90`. A subsequent docs-only run exposed that Rust's default parallel
   test execution could race three live SSH containers on a small runner; the
-  drill is now serialized with bounded fixture-readiness deadlines. A
-  documented interactive Windows desktop smoke test remains open.
+  drill is now serialized with bounded fixture-readiness deadlines. The
+  interactive Windows desktop smoke-test procedure is documented in
+  `docs/WINDOWS_DESKTOP_SMOKE_TEST.md`; execution against a signed candidate
+  remains release evidence still to be collected.
 
 Exit gate for 0.1: a clean machine with documented recovery material restores a
 backup to a clean destination, verifies the expected filesystem and SQLite

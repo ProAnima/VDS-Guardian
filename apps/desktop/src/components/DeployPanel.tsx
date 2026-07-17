@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, CircleAlert, Eye, LoaderCircle, Rocket } from "lucide-react";
+import { Check, Eye, LoaderCircle, Rocket } from "lucide-react";
 import type { Translate } from "../i18n";
+import { OperationFailureNotice } from "./OperationFailureNotice";
 import {
   cancelJob, executeDeploy, hasTauriRuntime, listBackups, listRepositories, listSshProfiles, previewDeploy,
   type BackupSummary, type DeployFailure, type DeploymentPreview, type RepositorySummary, type SshProfileSummary,
@@ -25,7 +26,7 @@ export function DeployPanel({ t }: DeployPanelProps) {
         </header>
         {model.plan ? <DeployConfirmation model={model} t={t} /> : <DeployForm model={model} t={t} />}
         {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
-        {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
+        {model.failure && <OperationFailureNotice message={model.failure} safe="deployFailureSafe" changed="deployFailureChanged" t={t} />}
         {!hasTauriRuntime() && <p className="signing-panel__desktop">{t("restoreDesktopRequired")}</p>}
       </section>
     </main>

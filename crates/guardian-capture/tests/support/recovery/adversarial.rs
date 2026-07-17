@@ -17,11 +17,13 @@ pub fn prove_hostile_restore_failures(
     fixture: &RecoveryFixture,
     backup_id: &BackupId,
     second_payload_failure_backup_id: &BackupId,
+    hostile_archive_backup_id: &BackupId,
 ) -> Result<(), Box<dyn Error>> {
     wrong_passphrase_leaves_no_registration(root, fixture)?;
     missing_recovery_key_leaves_no_destination(root, fixture, backup_id)?;
     corrupted_payload_leaves_no_destination(root, fixture, backup_id)?;
     second_payload_failure_leaves_no_destination(root, fixture, second_payload_failure_backup_id)?;
+    hostile_archive_leaves_no_destination(root, fixture, hostile_archive_backup_id)?;
     Ok(())
 }
 
@@ -46,6 +48,30 @@ fn second_payload_failure_leaves_no_destination(
         &destination,
     )?;
     assert_destination_absent(&destination, "failed second payload")?;
+    assert_no_restore_staging(root)
+}
+
+fn hostile_archive_leaves_no_destination(
+    root: &Path,
+    fixture: &RecoveryFixture,
+    backup_id: &BackupId,
+) -> Result<(), Box<dyn Error>> {
+    let repositories = root.join("hostile-archive-repositories");
+    let vault = root.join("hostile-archive-vault");
+    let signing = root.join("hostile-archive-signing");
+    let destination = root.join("hostile-archive-destination");
+    fs::create_dir(&repositories)?;
+    vault_init(&vault)?;
+    recovery_import_from(&repositories, &vault, fixture, &fixture.repository_path)?;
+    expect_restore_failure(
+        &repositories,
+        &signing,
+        &vault,
+        fixture,
+        backup_id,
+        &destination,
+    )?;
+    assert_destination_absent(&destination, "hostile archive metadata")?;
     assert_no_restore_staging(root)
 }
 

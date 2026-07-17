@@ -74,6 +74,7 @@ export interface RepositorySummary {
   repositoryId: string;
   label: string;
   path: string;
+  recoveryReady: boolean;
 }
 
 export interface RepositoryFailure {
@@ -84,6 +85,7 @@ export interface RepositoryFailure {
 export interface ExportRecoveryBundleRequest {
   repositoryId: string;
   passphrase: string;
+  passphraseConfirmation: string;
   outputPath: string;
   confirmation: string;
 }

@@ -7,8 +7,8 @@ import {
 
 const emptyForm: RepositoryRequest = { label: "", path: "" };
 
-export function RepositoryPanel() {
-  const model = useRepository();
+export function RepositoryPanel({ onRepositoriesChanged }: { onRepositoriesChanged: () => void }) {
+  const model = useRepository(onRepositoriesChanged);
   return <section className="repository-panel" aria-labelledby="repository-title">
     <header className="repository-panel__header"><div><p className="eyebrow"><HardDrive size={15} aria-hidden="true" />Хранилище</p><h2 id="repository-title">Выбрать место для бэкапов</h2><p>Одна выделенная папка. В ней приложение создаст независимое хранилище recovery points.</p></div><span className="signing-state"><FolderArchive size={16} />Локально</span></header>
     <form className="repository-form" onSubmit={(event) => void model.submit(event)}>
@@ -18,11 +18,11 @@ export function RepositoryPanel() {
     </form>
     {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
     {model.result && <p className="repository-panel__success"><CircleCheck size={16} />{model.result}</p>}
-    {model.repositories.length > 0 && <div className="repository-panel__items">{model.repositories.map((repository) => <span key={repository.repositoryId}>{repository.label} · {repository.path}<button className="button button--secondary" type="button" disabled={model.working} onClick={() => void model.prepare(repository)}>Подготовить recovery</button></span>)}</div>}
+    {model.repositories.length > 0 && <div className="repository-panel__items">{model.repositories.map((repository) => <span key={repository.repositoryId}>{repository.label} · {repository.path} · {repository.recoveryReady ? "recovery готово" : "recovery не настроено"}{!repository.recoveryReady && <button className="button button--secondary" type="button" disabled={model.working} onClick={() => void model.prepare(repository)}>Подготовить recovery</button>}</span>)}</div>}
   </section>;
 }
 
-function useRepository() {
+function useRepository(onRepositoriesChanged: () => void) {
   const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [working, setWorking] = useState(false);
@@ -38,17 +38,18 @@ function useRepository() {
     setWorking(true); setFailure(undefined); setResult(undefined);
     try {
       const repository = await registerRepository(form);
-      setRepositories((current) => [...current, repository]); setForm(emptyForm);
       await initializeRepositoryRecovery(repository.repositoryId);
+      await refresh(); setForm(emptyForm); onRepositoriesChanged();
       setResult(`Хранилище «${repository.label}» создано и защищено recovery-ключом.`);
-    } catch (error) { setFailure(errorText(error)); } finally { setWorking(false); }
+    } catch (error) { await refresh(); onRepositoriesChanged(); setFailure(errorText(error)); } finally { setWorking(false); }
   };
   const prepare = async (repository: RepositorySummary) => {
     setWorking(true); setFailure(undefined); setResult(undefined);
     try {
       await initializeRepositoryRecovery(repository.repositoryId);
+      await refresh(); onRepositoriesChanged();
       setResult(`Recovery для «${repository.label}» готово.`);
-    } catch (error) { setFailure(errorText(error)); } finally { setWorking(false); }
+    } catch (error) { await refresh(); onRepositoriesChanged(); setFailure(errorText(error)); } finally { setWorking(false); }
   };
   return { repositories, form, working, result, failure, setForm, submit, prepare };
 }
