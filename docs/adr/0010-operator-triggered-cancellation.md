@@ -158,7 +158,7 @@ back to the frontend, the frontend cannot learn a server-generated run id
 while the original `run_capture_plan`/`execute_deploy` call is still
 pending. Rather than introduce Tauri's event system for the first time in
 this codebase, the run id is now **frontend-supplied**
-(`crypto.randomUUID()` — 36 characters, hyphens allowed, comfortably under
+(`newRunId()` — UUIDv7, 36 characters, hyphens allowed, comfortably under
 `RunId`'s 64-character ASCII-alnum-or-`-`/`_` limit) and threaded straight
 through to the same audit-trail identifier `write_capture_audit`/
 `write_deploy_audit` already use, replacing what was previously generated
@@ -170,13 +170,11 @@ only collision gate. Either way this is an *emergent* property of already-
 existing infrastructure, not a purpose-built id-uniqueness check — named
 here so a future reader doesn't have to rediscover it.
 
-**Named explicitly, not left for a future reader to discover on their
-own:** `CODEX.md` states "every job has a UUIDv7 correlation ID." Neither
-the previous server-generated id (`"run-" + 32 hex characters`, not a UUID
-shape at all) nor `crypto.randomUUID()` (UUIDv4 — no native browser v7
-API exists, and no `uuid` package is a dependency of this app today)
-satisfies that invariant. This change does not newly violate it, but does
-not close it either; treat it as a pre-existing, still-open gap.
+Follow-up on 2026-07-17 closes the correlation-id gap: desktop now produces
+UUIDv7 in one shared helper and Rust-created IDs use `RunId::new()` backed by
+the `uuid` crate's v7 generator. The MCP protocol deliberately continues to
+accept caller-supplied, syntax-validated IDs so an external client can cancel
+an in-flight request; adapters do not mint ad-hoc IDs for it.
 
 ## Consequences
 
@@ -185,10 +183,9 @@ not close it either; treat it as a pre-existing, still-open gap.
   gate.
 - `docs/ARCHITECTURE.md`'s cancellation/event-queue claims are corrected to
   match reality.
-- Two real, named gaps remain: local restore extraction has no
-  cancellation path yet (different mechanism, deferred to a follow-up that
-  can reuse `CancellationHandle` directly), and the UUIDv7 correlation-id
-  invariant remains unmet for both capture and deploy run ids.
+- One real, named gap remains: local restore extraction has no cancellation
+  path yet (different mechanism, deferred to a follow-up that can reuse
+  `CancellationHandle` directly).
 - The clean-room drill now runs real mid-transfer capture and deploy
   cancellation: test-only forced-command fixtures throttle each filesystem
   stream only after its first byte, then the test cancels through the real

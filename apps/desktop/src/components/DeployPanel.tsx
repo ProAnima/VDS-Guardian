@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Check, Eye, LoaderCircle, Rocket } from "lucide-react";
 import type { Translate } from "../i18n";
 import { OperationFailureNotice } from "./OperationFailureNotice";
+import { newRunId } from "../shared/run-id";
 import {
   cancelJob, executeDeploy, hasTauriRuntime, listBackups, listRepositories, listSshProfiles, previewDeploy,
   type BackupSummary, type DeployFailure, type DeploymentPreview, type RepositorySummary, type SshProfileSummary,
@@ -120,7 +121,7 @@ async function submitDeploy(
   t: Translate,
 ): Promise<void> {
   if (!state.plan) return;
-  const runId = crypto.randomUUID();
+  const runId = newRunId();
   setRunId(runId);
   setDeploying(true);
   setters.setFailure(undefined);

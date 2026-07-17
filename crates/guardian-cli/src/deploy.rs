@@ -9,7 +9,6 @@ use guardian_local_repository::LocalRepository;
 use guardian_profile_store::ProfileStore;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager};
 use guardian_ssh::SystemOpenSsh;
-use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
@@ -213,13 +212,7 @@ fn execute_deploy(
 }
 
 fn random_run_id() -> Result<RunId, DeployFailure> {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    let suffix = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    RunId::parse(format!("deploy-{suffix}")).map_err(|_| DeployFailure::storage())
+    Ok(RunId::new())
 }
 
 fn summarize(plan: &DeploymentPlan, target_profile: &VdsProfile) -> DeploymentPlanSummary {

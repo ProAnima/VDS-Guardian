@@ -21,7 +21,6 @@ guardian-vault = { path = "../guardian-vault" }
 base64.workspace = true
 ctrlc.workspace = true
 fs2.workspace = true
-rand_core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

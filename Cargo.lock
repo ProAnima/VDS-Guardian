@@ -1722,7 +1722,6 @@ dependencies = [
  "guardian-signing",
  "guardian-ssh",
  "guardian-vault",
- "rand_core",
  "serde",
  "serde_json",
  "tempfile",
@@ -1749,6 +1748,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
+ "uuid",
  "zeroize",
 ]
 

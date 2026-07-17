@@ -100,11 +100,9 @@ SSH, filesystem, keyring, scheduler, archive, database adapters
 
 ## Observability and audit
 
-- Every job should have a stable correlation ID. **Not yet met**: `RunId` is
-  a validated opaque string, not a UUIDv7 — the desktop frontend mints
-  `crypto.randomUUID()` (UUIDv4), and no `uuid` crate exists anywhere in the
-  workspace. Named as a still-open, pre-existing gap in
-  `docs/adr/0010-operator-triggered-cancellation.md` rather than closed here.
+- Every locally created job has a stable UUIDv7 correlation ID. Caller-supplied
+  external IDs remain strictly syntax-validated for MCP cancellation
+  compatibility; adapters must not mint ad-hoc identifiers.
 - Audit events are append-only and redact secrets, key paths, raw environment
   values, and sensitive command output.
 - Metrics use bounded labels only. Hostnames and backup IDs do not become metric

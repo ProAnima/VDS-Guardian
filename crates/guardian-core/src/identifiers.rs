@@ -45,6 +45,20 @@ identifier!(RepositoryId, "repository");
 identifier!(CredentialId, "credential");
 identifier!(DatabaseId, "database");
 
+impl RunId {
+    /// Creates a sortable, random UUIDv7 correlation identifier for a new job.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7().to_string())
+    }
+}
+
+impl Default for RunId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn parse_identifier(value: String, kind: &'static str) -> Result<String, IdentifierError> {
     let valid = !value.is_empty()
         && value.len() <= 64
@@ -264,7 +278,16 @@ pub enum IdentifierError {
 
 #[cfg(test)]
 mod tests {
-    use super::{ArchivePath, BackupId, PayloadPath, RemoteTargetPath, Timestamp};
+    use super::{ArchivePath, BackupId, PayloadPath, RemoteTargetPath, RunId, Timestamp};
+
+    #[test]
+    fn generated_run_ids_are_uuid_v7() {
+        let value = RunId::new();
+        assert_eq!(value.as_str().len(), 36);
+        assert_eq!(&value.as_str()[14..15], "7");
+        assert!(matches!(value.as_str().as_bytes()[19], b'8'..=b'b'));
+        assert!(RunId::parse(value.as_str()).is_ok());
+    }
 
     #[test]
     fn identifiers_reject_path_syntax() {

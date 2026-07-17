@@ -52,6 +52,7 @@ ctrlc = "3"
 rusqlite = { version = "0.32", features = ["bundled"] }
 rmcp = { version = "0.16", features = ["server", "macros", "schemars", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
+uuid = { version = "1", features = ["v7"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
