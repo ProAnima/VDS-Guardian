@@ -1,19 +1,77 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, ClipboardList, LoaderCircle } from "lucide-react";
+import { Check, ClipboardList, Database, LoaderCircle } from "lucide-react";
 import type { Translate } from "../i18n";
+import { captureErrorText } from "../shared/capture-error";
+import {
+  cancelJob, hasTauriRuntime, listRepositories, listSshProfiles, previewCaptureSelection,
+  runCapturePlan, saveCapturePlan, type BackupSelectionItem, type CaptureSelectionPreview,
+  type RepositorySummary, type SshProfileSummary,
+} from "../shared/commands";
+import { newRunId } from "../shared/run-id";
+import { CaptureSelectionReview } from "./CaptureSelectionReview";
+import { BackupSelectionSummary } from "./BackupSelectionSummary";
 import { DockerMountPicker } from "./DockerMountPicker";
 import { OperationFailureNotice } from "./OperationFailureNotice";
-import { captureErrorText } from "../shared/capture-error";
-import { newRunId } from "../shared/run-id";
-import { cancelJob, hasTauriRuntime, listRepositories, listSshProfiles, runCapturePlan, saveCapturePlan, type RepositorySummary, type SshProfileSummary } from "../shared/commands";
+import { RemoteFileExplorer } from "./RemoteFileExplorer";
 
-export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: { onPlansChanged: () => void; resourcesRevision: number; t: Translate }) {
-  const [profiles, setProfiles] = useState<SshProfileSummary[]>([]); const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
-  const [profileId, setProfileId] = useState(""); const [repositoryId, setRepositoryId] = useState(""); const [roots, setRoots] = useState("/srv/app"); const [databasePath, setDatabasePath] = useState(""); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [runId, setRunId] = useState<string>(); const [planId, setPlanId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
-  const addRootPath = (path: string) => { setRoots((current) => (current.trim() ? `${current}\n${path}` : path)); };
-  useEffect(() => { void Promise.all([listSshProfiles(), listRepositories()]).then(([nextProfiles, nextRepositories]) => { const readyRepositories = nextRepositories.filter((item) => item.recoveryReady); setProfiles(nextProfiles); setRepositories(readyRepositories); setProfileId(nextProfiles[0]?.profileId ?? ""); setRepositoryId(readyRepositories[0]?.repositoryId ?? ""); }); }, [resourcesRevision]);
-  const submit = async (event: FormEvent) => { event.preventDefault(); if (!hasTauriRuntime()) return; setWorking(true); setFailure(undefined); try { const plan = await saveCapturePlan({ profileId, repositoryId, roots: roots.split("\n").map((root) => root.trim()).filter(Boolean), databasePath: databasePath.trim() || undefined }); setPlanId(plan.planId); onPlansChanged(); setResult(`${t("setupPlanSaved")} ${plan.roots.join(", ")}${plan.databasePath ? ` + ${plan.databasePath}` : ""}`); } catch { setFailure(t("setupPlanFailed")); } finally { setWorking(false); } };
-  const run = async () => { if (!planId) return; const nextRunId = newRunId(); setRunId(nextRunId); setRunning(true); setFailure(undefined); try { const job = await runCapturePlan(planId, nextRunId); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setRunning(false); setRunId(undefined); } };
-  const cancel = async () => { if (!runId) return; await cancelJob(runId); };
-  return <section className="repository-panel" aria-labelledby="plan-title"><header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("setupPlanEyebrow")}</p><h2 id="plan-title">{t("setupPlanTitle")}</h2><p>{t("setupPlanBody")}</p></div></header><form className="repository-form" onSubmit={(event) => void submit(event)}><label><span>{t("setupServer")}</span><select value={profileId} onChange={(event) => setProfileId(event.target.value)} required>{profiles.map((profile) => <option key={profile.profileId} value={profile.profileId}>{profile.label}</option>)}</select></label><label><span>{t("setupStorage")}</span><select value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)} required>{repositories.map((repository) => <option key={repository.repositoryId} value={repository.repositoryId}>{repository.label}</option>)}</select></label><label className="repository-form__actions"><span>{t("setupRoots")}</span><textarea value={roots} onChange={(event) => setRoots(event.target.value)} required /></label><DockerMountPicker profileId={profileId} onAddPath={addRootPath} t={t} /><label className="repository-form__actions"><span>{t("captureDatabasePath")}</span><input value={databasePath} onChange={(event) => setDatabasePath(event.target.value)} placeholder="/srv/app/app.sqlite" /></label><div className="repository-form__actions"><button className="button button--primary" disabled={!profileId || !repositoryId || working || running} type="submit">{working ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{working ? t("setupSavingPlan") : t("setupSavePlan")}</button>{planId && <button className="button button--secondary" disabled={working || running} type="button" onClick={() => void run()}>{running ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{running ? t("captureRunning") : t("captureRun")}</button>}{running && <button className="button button--secondary" type="button" onClick={() => void cancel()}>{t("captureCancel")}</button>}</div></form>{result && <p className="repository-panel__success"><Check size={16} />{result}</p>}{failure && <OperationFailureNotice message={failure} safe="captureFailureSafe" changed="captureFailureChanged" t={t} />}</section>;
+interface CapturePlanPanelProps { onPlansChanged: () => void; resourcesRevision: number; t: Translate; }
+
+export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: CapturePlanPanelProps) {
+  const model = useCaptureSelection(onPlansChanged, resourcesRevision, t);
+  return <section className="repository-panel" aria-labelledby="plan-title">
+    <header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("setupPlanEyebrow")}</p><h2 id="plan-title">{t("setupPlanTitle")}</h2><p>{t("browserBody")}</p></div></header>
+    <SelectionForm model={model} t={t} />
+    {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.save()} t={t} />}
+    {model.planId && <RunPlanControls model={model} t={t} />}
+    {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
+    {model.failure && <OperationFailureNotice message={model.failure} safe="captureFailureSafe" changed="captureFailureChanged" t={t} />}
+  </section>;
 }
+
+function SelectionForm({ model, t }: { model: CaptureSelectionModel; t: Translate }) {
+  return <form className="repository-form" onSubmit={(event) => void model.review(event)}>
+    <label><span>{t("setupServer")}</span><select value={model.profileId} onChange={(event) => model.changeProfile(event.target.value)} required>{model.profiles.map((profile) => <option key={profile.profileId} value={profile.profileId}>{profile.label}</option>)}</select></label>
+    <label><span>{t("setupStorage")}</span><select value={model.repositoryId} onChange={(event) => model.changeRepository(event.target.value)} required>{model.repositories.map((repository) => <option key={repository.repositoryId} value={repository.repositoryId}>{repository.label}</option>)}</select></label>
+    <div className="capture-workspace repository-form__actions"><div className="capture-workspace__sources">
+      <RemoteFileExplorer profileId={model.profileId} selectedPaths={itemPaths(model.items)} onTogglePath={model.toggleRemotePath} t={t} />
+      <DockerMountPicker profileId={model.profileId} selectedItems={model.items} onToggleItem={model.toggleDockerItem} t={t} />
+    </div><BackupSelectionSummary items={model.items} onClear={model.clearItems} onRemove={model.removeItem} t={t} /></div>
+    <label className="capture-sqlite repository-form__actions"><span className="capture-sqlite__icon"><Database size={16} /></span><span><strong>{t("captureDatabasePath")}</strong><small>{t("captureDatabaseHint")}</small></span><input value={model.databasePath} onChange={(event) => model.changeDatabase(event.target.value)} placeholder="/srv/app/app.sqlite" /></label>
+    <div className="capture-primary-action repository-form__actions"><div><strong>{t("captureReadyTitle")}</strong><span>{model.items.length === 0 ? t("captureReadyEmpty") : t("captureReadyBody")}</span></div><button className="button button--primary" disabled={!model.profileId || !model.repositoryId || model.items.length === 0 || model.reviewing || model.running} type="submit">{model.reviewing ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.reviewing ? t("captureReviewing") : t("captureReview")}</button></div>
+  </form>;
+}
+
+function RunPlanControls({ model, t }: { model: CaptureSelectionModel; t: Translate }) {
+  return <div className="repository-form__actions"><button className="button button--secondary" disabled={model.working || model.running} type="button" onClick={() => void model.run()}>{model.running ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.running ? t("captureRunning") : t("captureRun")}</button>{model.running && <button className="button button--secondary" type="button" onClick={() => void model.cancel()}>{t("captureCancel")}</button>}</div>;
+}
+
+function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: number, t: Translate) {
+  const [profiles, setProfiles] = useState<SshProfileSummary[]>([]); const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
+  const [profileId, setProfileId] = useState(""); const [repositoryId, setRepositoryId] = useState(""); const [items, setItems] = useState<BackupSelectionItem[]>([]); const [databasePath, setDatabasePath] = useState("");
+  const [preview, setPreview] = useState<CaptureSelectionPreview>(); const [planId, setPlanId] = useState<string>(); const [reviewing, setReviewing] = useState(false); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [runId, setRunId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
+  const invalidate = () => { setPreview(undefined); setPlanId(undefined); setResult(undefined); };
+  const changeProfile = (value: string) => { setProfileId(value); setItems([]); invalidate(); };
+  const changeRepository = (value: string) => { setRepositoryId(value); invalidate(); };
+  const changeDatabase = (value: string) => { setDatabasePath(value); invalidate(); };
+  const toggleRemotePath = (path: string) => { setItems((current) => current.some((item) => item.kind === "remote_path" && item.absolutePath === path) ? current.filter((item) => item.kind !== "remote_path" || item.absolutePath !== path) : [...current, { kind: "remote_path", absolutePath: path }]); invalidate(); };
+  const toggleDockerItem = (item: BackupSelectionItem) => { setItems((current) => current.some((candidate) => selectionKey(candidate) === selectionKey(item)) ? current.filter((candidate) => selectionKey(candidate) !== selectionKey(item)) : [...current, item]); invalidate(); };
+  const removeItem = (item: BackupSelectionItem) => { setItems((current) => current.filter((candidate) => selectionKey(candidate) !== selectionKey(item))); invalidate(); };
+  const clearItems = () => { setItems([]); invalidate(); };
+  useEffect(() => { void loadResources(setProfiles, setRepositories, setProfileId, setRepositoryId); }, [resourcesRevision]);
+  const review = async (event: FormEvent) => { event.preventDefault(); if (!hasTauriRuntime()) return; setReviewing(true); setFailure(undefined); try { setPreview(await previewCaptureSelection({ profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined })); } catch { setFailure(t("captureReviewFailed")); } finally { setReviewing(false); } };
+  const save = async () => { if (!preview) return; setWorking(true); setFailure(undefined); try { const plan = await saveCapturePlan({ profileId, repositoryId, roots: preview.normalizedRoots, databasePath: preview.sqlitePath }); setPlanId(plan.planId); onPlansChanged(); setResult(`${t("setupPlanSaved")} ${plan.roots.join(", ")}`); } catch { setFailure(t("setupPlanFailed")); } finally { setWorking(false); } };
+  const run = async () => { if (!planId) return; const nextRunId = newRunId(); setRunId(nextRunId); setRunning(true); setFailure(undefined); try { const job = await runCapturePlan(planId, nextRunId); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setRunning(false); setRunId(undefined); } };
+  const cancel = async () => { if (runId) await cancelJob(runId); };
+  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, planId, reviewing, working, running, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, save, run, cancel };
+}
+
+type CaptureSelectionModel = ReturnType<typeof useCaptureSelection>;
+
+async function loadResources(setProfiles: (items: SshProfileSummary[]) => void, setRepositories: (items: RepositorySummary[]) => void, setProfileId: (id: string) => void, setRepositoryId: (id: string) => void) {
+  const [profiles, repositories] = await Promise.all([listSshProfiles(), listRepositories()]); const ready = repositories.filter((item) => item.recoveryReady);
+  setProfiles(profiles); setRepositories(ready); setProfileId(profiles[0]?.profileId ?? ""); setRepositoryId(ready[0]?.repositoryId ?? "");
+}
+
+function pathsForItem(item: BackupSelectionItem): string[] { if (item.kind === "remote_path") return [item.absolutePath]; if (item.kind === "docker_mount") return [item.capturablePath]; return item.capturablePaths; }
+function itemPaths(items: BackupSelectionItem[]): string[] { return items.flatMap(pathsForItem); }
+function selectionKey(item: BackupSelectionItem): string { return JSON.stringify(item); }

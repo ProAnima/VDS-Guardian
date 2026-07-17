@@ -1,5 +1,7 @@
 use fs2::FileExt;
-use guardian_core::{ProfileId, ProfileStorePort, ProfileStorePortError, VdsProfile};
+use guardian_core::{
+    ProfileId, ProfileStorePort, ProfileStorePortError, SecretStore, SecretStoreError, VdsProfile,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -38,6 +40,33 @@ impl ProfileStore {
             .profiles
             .insert(profile.profile_id.as_str().to_owned(), profile);
         self.write(&document)
+    }
+
+    pub fn remove(&self, profile_id: &ProfileId) -> Result<Option<VdsProfile>, ProfileStoreError> {
+        let _lock = self.lock()?;
+        let mut document = self.read()?;
+        let removed = document.profiles.remove(profile_id.as_str());
+        if removed.is_some() {
+            self.write(&document)?;
+        }
+        Ok(removed)
+    }
+
+    pub fn remove_with_secret(
+        &self,
+        profile_id: &ProfileId,
+        secrets: &dyn SecretStore,
+    ) -> Result<bool, ProfileDeletionError> {
+        let Some(profile) = self.remove(profile_id)? else {
+            return Ok(false);
+        };
+        if let Err(error) = secrets.delete(&profile.credential_id) {
+            return match self.upsert(profile) {
+                Ok(()) => Err(ProfileDeletionError::Secret(error)),
+                Err(_) => Err(ProfileDeletionError::Rollback),
+            };
+        }
+        Ok(true)
     }
 
     fn read(&self) -> Result<Document, ProfileStoreError> {
@@ -179,4 +208,14 @@ pub enum ProfileStoreError {
     Busy,
     #[error("profile storage rejected an unsafe filesystem entry")]
     UnsafeFilesystemEntry,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ProfileDeletionError {
+    #[error(transparent)]
+    Store(#[from] ProfileStoreError),
+    #[error("profile credential cleanup failed")]
+    Secret(#[source] SecretStoreError),
+    #[error("profile deletion rollback failed")]
+    Rollback,
 }

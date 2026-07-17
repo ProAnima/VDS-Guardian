@@ -14,6 +14,8 @@ use tauri::Manager;
 pub struct DockerContainerSummary {
     pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compose_project: Option<String>,
     pub state: DockerContainerState,
     pub mounts: Vec<DockerMountSummary>,
 }
@@ -77,6 +79,7 @@ impl From<&guardian_core::DockerContainer> for DockerContainerSummary {
         Self {
             id: container.id.clone(),
             name: container.name.clone(),
+            compose_project: container.compose_project.clone(),
             state: container.state,
             mounts: container
                 .mounts

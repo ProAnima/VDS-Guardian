@@ -34,10 +34,17 @@ try {
   if (capture.status !== 0) throw new Error(`SSH capture failed: ${capture.stderr?.trim() || "no diagnostic"}`);
   fs.closeSync(output);
   if (fs.statSync(archive).size === 0) throw new Error("SSH capture stream was empty");
+  const browseArgs = [...sshArgs.slice(0, -1), "LC_ALL=C find '/srv' -mindepth 1 -maxdepth 1 -printf '%y %s %f\\0'"];
+  const browse = spawnSync("ssh", browseArgs, { shell: false });
+  if (browse.status !== 0) throw new Error(`SSH browse failed: ${browse.stderr?.toString().trim() || "no diagnostic"}`);
+  const records = browse.stdout.toString("utf8").split("\0").filter(Boolean);
+  if (!records.some((record) => record === "d 4096 app" || /^d \d+ app$/.test(record))) {
+    throw new Error("SSH browse did not return the fixture directory");
+  }
   fs.writeFileSync(knownHosts, `[127.0.0.1]:${port} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA==\n`);
   const rejected = spawnSync("ssh", sshArgs, { stdio: "ignore", shell: false }).status;
   if (rejected === 0) throw new Error("changed host key was accepted");
-  console.log("Disposable SSH capture and changed-key rejection passed.");
+  console.log("Disposable SSH capture, browse, and changed-key rejection passed.");
 } finally {
   if (container) spawnSync("docker", ["rm", "-f", container], { stdio: "ignore", shell: false });
   fs.rmSync(temporary, { recursive: true, force: true });

@@ -53,6 +53,40 @@ inspection after decryption and before a restore destination is published.
   pinned `tar.zstd` preflight. The profile becomes visible to capture and setup
   readiness only after that probe succeeds; probe or profile-commit failure
   removes the staged credential, and cleanup failure is itself a hard error.
+- Desktop profile deletion requires an explicit per-card confirmation and is
+  refused while a saved capture plan references that profile. The profile
+  document is rewritten atomically before its credential is removed; if secure
+  credential cleanup fails, the profile is restored so the UI never silently
+  leaves a selectable profile without its key.
+- Password-based SSH is unavailable until a native adapter or one-shot askpass
+  broker delivers the password through memory-only local IPC. Password bytes
+  must never enter argv, environment variables, shell input, configuration,
+  logs, diagnostics, or temporary files. `sshpass` and terminal-prompt scraping
+  are forbidden. Host-key pinning and capability preflight remain mandatory.
+
+### Remote browsing and selection
+
+- Directory browsing is read-only, paginated, and bounded by entry count,
+  metadata bytes, output bytes, and deadline. It lists one validated absolute
+  directory at a time and never recursively scans a server implicitly.
+- Browsing treats names, types, timestamps, sizes, cursors, and transport output
+  as hostile. Symlinks may be displayed but are never followed or selectable as
+  an implicit target. Sockets, devices, and other special entries are not
+  capturable through the explorer.
+- Page cursors bind their offset to a digest of the sorted listing. A changed
+  listing rejects a stale cursor instead of silently mixing directory states.
+- The adapter accepts a typed directory path, never an operator command or
+  command fragment. Any fixed-command implementation requires adversarial
+  quoting/output-parser tests before use; SFTP implementations require the same
+  pinned-host and bounded-output guarantees.
+- Docker container/group selection resolves only to validated capturable mount
+  paths. The preview displays the resolved host paths and consistency warnings;
+  execute resolves and validates them again instead of trusting UI metadata.
+- The implemented preview rejects client-supplied Docker paths that do not
+  exactly match the current validated inventory, and binds its confirmation
+  identity to the logical items and normalized roots. This preview is not yet
+  an execution authorization gate; that revalidation remains required before
+  direct selection execution is exposed.
 
 ### Encrypted local vault fallback
 

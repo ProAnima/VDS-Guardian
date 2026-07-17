@@ -1,4 +1,4 @@
-import { CheckCircle2, FolderArchive, KeyRound, ListChecks, Server, type LucideIcon } from "lucide-react";
+import { CheckCircle2, FolderArchive, KeyRound, ListChecks, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
@@ -6,7 +6,6 @@ import { RepositoryPanel } from "./RepositoryPanel";
 import { RecoveryBundlePanel } from "./RecoveryBundlePanel";
 import { RecoveryImportPanel } from "./RecoveryImportPanel";
 import { SigningIdentityPanel } from "./SigningIdentityPanel";
-import { SshProfilePanel } from "./SshProfilePanel";
 import { SetupStatusPanel } from "./SetupStatusPanel";
 
 interface SetupPanelProps {
@@ -34,10 +33,7 @@ export function SetupPanel({ t }: SetupPanelProps) {
         <RecoveryBundlePanel resourcesRevision={resourcesRevision} t={t} />
         <RecoveryImportPanel onRepositoriesChanged={resourcesChanged} t={t} />
       </SetupStep>
-      <SetupStep number="3" title={t("setupStepServer")} icon={Server}>
-        <SshProfilePanel onProfilesChanged={resourcesChanged} t={t} />
-      </SetupStep>
-      <SetupStep number="4" title={t("setupStepPlan")} icon={CheckCircle2}>
+      <SetupStep number="3" title={t("setupStepPlan")} icon={CheckCircle2}>
         <CapturePlanPanel onPlansChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />
       </SetupStep>
     </main>

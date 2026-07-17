@@ -42,7 +42,9 @@ events/       bounded job events consumed by GUI and CLI
 
 Adapters will be added by capability, not bundled into the domain crate:
 
-- SSH/SFTP transport with host-key pinning and keepalive/cancellation. The
+- SSH/SFTP transport with host-key pinning and keepalive/cancellation. A
+  read-only `RemoteBrowserPort` provides bounded, paginated directory pages
+  without following symlinks or accepting arbitrary commands. The
   `guardian-ssh` adapter uses system OpenSSH through direct argv, temporary
   exact `known_hosts` input, and non-interactive strict host-key checking;
   it now covers read-only archive/database capture, Docker inventory
@@ -114,7 +116,30 @@ dependent selectors after each completed step and excludes repositories whose
 recovery key is unavailable from capture. SSH enrollment is one shared-core
 transaction: it stages the credential, runs the pinned capture-capability
 probe, commits the profile only on success, and removes the staged credential
-after any failed probe or profile commit. `guardian-mcp` remains excluded.
+after any failed probe or profile commit. The desktop server manager also owns
+the explicit deletion adapter: it blocks profiles referenced by capture plans,
+atomically removes an unused profile, deletes its OS-stored credential, and
+compensates by restoring the profile if credential cleanup fails.
+`guardian-mcp` remains excluded.
+The desktop navigation separates the server manager from backup preparation:
+the Servers view contains only saved server cards and enrollment, while the
+Backups view owns signing, repository recovery readiness, and capture-plan
+selection. This keeps infrastructure prerequisites out of the routine server
+management path without duplicating their application services.
+The Backups view composes `RemoteBrowserPort` with Docker inventory. The shared
+`preview_capture_selection` policy owns the serialized logical-item contract,
+re-resolves Docker mounts/groups against current inventory, removes duplicate
+or nested roots, and returns warnings plus a deterministic preview identity.
+Desktop consumes that preview before persisting the normalized roots. Making
+the preview an execution precondition for desktop and MCP remains the next
+application-service step.
+The desktop explorer presents the two discovery sources as separate bounded
+sections: a paginated filesystem table with path breadcrumbs, metadata,
+non-selectable reasons, retry/loading/empty states, and current-folder
+selection; and a Docker inventory grouped into Compose applications and
+individual persistent mounts. A persistent selection summary preserves the
+logical item identity rather than flattening Docker choices into UI-only path
+strings. This is presentation state only; core preview remains authoritative.
 
 ### CLI/service
 
@@ -161,13 +186,15 @@ planned -> staging -> captured -> verifying -> sealed
 1. Resolve a versioned backup plan and create a fresh staging directory.
 2. Record pinned server identity, tool versions, plan digest, and start time.
 3. Run preflight and capability probes with no mutation.
-4. Capture database-consistent dumps and selected filesystem streams.
-5. Record Docker Compose/config/image metadata without assuming images are
+4. Resolve the operator's visual filesystem/Docker selection to explicit,
+   normalized capture roots.
+5. Capture database-consistent dumps and selected filesystem streams.
+6. Record logical Docker selection metadata without assuming images are
    sufficient to recover persistent data.
-6. Finalize manifest and checksums; optionally scan under a strict resource cap.
-7. Verify every payload and required plan item.
-8. Sign manifest metadata using the backup node identity.
-9. Atomically rename staging to its final backup ID and apply best-effort
+7. Finalize manifest and checksums; optionally scan under a strict resource cap.
+8. Verify every payload and required plan item.
+9. Sign manifest metadata using the backup node identity.
+10. Atomically rename staging to its final backup ID and apply best-effort
    read-only attributes. Only then is state `sealed`.
 
 An interrupted staging directory is never resumed as a trusted backup. It may

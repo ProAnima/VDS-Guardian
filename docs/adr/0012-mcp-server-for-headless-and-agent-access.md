@@ -6,6 +6,10 @@ Date: 2026-07-16
 
 Accepted.
 
+Amended by ADR 0015: read-only remote-directory browsing is now exposed, and a
+future explicit capture selection may be accepted only through a preview plus
+confirmation gate. Trust enrollment and credential handling remain excluded.
+
 ## Context
 
 Earlier the same session, the product's interface philosophy was redirected:
@@ -150,7 +154,7 @@ real authentication design, not a retrofit onto this one.
 
 **Read-only/discovery** (no mutation, no confirmation gate needed):
 `list_ssh_profiles`, `list_repositories`, `list_capture_plans`,
-`list_docker_containers`, `list_backups` — each a thin wrapper over
+`list_docker_containers`, `browse_remote_directory`, `list_backups` — each a thin wrapper over
 `ProfileStore::list`/`RepositoryStore::list`/`CapturePlanStore::list`/
 `DiscoverDockerInventoryUseCase`/`LocalRepository::list_sealed_backups`,
 mirroring the exact desktop/CLI call shape.

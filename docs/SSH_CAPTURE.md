@@ -79,6 +79,24 @@ The local stream is capped at 8 MiB; exceeding the cap terminates SSH and
 discards output. The JSON parser treats all returned metadata as hostile before
 it can enter the inventory use case.
 
+## Remote directory browser
+
+The read-only explorer lists exactly one validated absolute directory with a
+fixed GNU `find` template:
+
+```text
+LC_ALL=C find '<directory>' -mindepth 1 -maxdepth 1 -printf '%y %s %f\0'
+```
+
+The directory is encoded by the reviewed single-quote encoder; no command text
+is accepted. Output is capped at 1 MiB and NUL-delimited so spaces cannot split
+names. The local parser requires UTF-8, rejects traversal/control characters,
+malformed sizes and incomplete records, sorts entries, and returns at most 200
+per page. Symlinks and special files are visible but never selectable or
+followed. Page cursors bind the next offset to a digest of the sorted listing,
+so a changed directory invalidates a stale cursor. Desktop and MCP call the
+same `BrowseRemoteDirectoryUseCase`.
+
 ## Failure behavior
 
 The output destination is created exclusively. Each OpenSSH invocation has a

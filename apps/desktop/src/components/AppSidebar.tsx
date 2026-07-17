@@ -1,4 +1,4 @@
-import { LayoutDashboard, Rocket, RotateCcw, Server, type LucideIcon } from "lucide-react";
+import { Archive, LayoutDashboard, Rocket, RotateCcw, Server, type LucideIcon } from "lucide-react";
 import type { MessageKey } from "../i18n/messages-primary";
 import type { Translate } from "../i18n";
 import type { ViewId } from "../App";
@@ -12,7 +12,8 @@ interface NavItem {
 
 const primaryNav: NavItem[] = [
   { key: "navOverview", icon: LayoutDashboard, view: "overview" },
-  { key: "navServers", icon: Server, view: "setup" },
+  { key: "navServers", icon: Server, view: "servers" },
+  { key: "navBackups", icon: Archive, view: "backup" },
   { key: "navRestore", icon: RotateCcw, view: "restore" },
   { key: "navDeploy", icon: Rocket, view: "deploy" },
 ];

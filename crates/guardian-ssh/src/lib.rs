@@ -2,6 +2,7 @@
 
 mod process;
 mod push;
+mod remote_browser;
 mod secret_identity;
 mod stream;
 
@@ -24,6 +25,7 @@ use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
 pub use push::{PushResult, StagingTarget};
+pub use remote_browser::SshRemoteBrowserAdapter;
 pub use secret_identity::SshIdentity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,6 +318,25 @@ impl SystemOpenSsh {
             user,
             identity_file,
             docker_inspect_command().into(),
+            destination,
+            Some(maximum_output_bytes),
+        )
+    }
+
+    pub fn browse_directory_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        directory: &guardian_core::RemotePath,
+        destination: &Path,
+        maximum_output_bytes: u64,
+    ) -> Result<CaptureResult, SshError> {
+        self.run_to(
+            host,
+            user,
+            identity_file,
+            remote_browser::browse_command(directory).into(),
             destination,
             Some(maximum_output_bytes),
         )

@@ -4,21 +4,22 @@ import type { FoundationStatus } from "../shared/commands";
 interface DashboardProps {
   status: FoundationStatus;
   t: Translate;
-  onStartSetup: () => void;
+  onAddServer: () => void;
+  onRunBackup: () => void;
 }
 
-export function Dashboard({ status, t, onStartSetup }: DashboardProps) {
+export function Dashboard({ status, t, onAddServer, onRunBackup }: DashboardProps) {
   return (
     <main className="dashboard">
-      <Hero status={status} t={t} onStartSetup={onStartSetup} />
-      <SetupPanel t={t} onStartSetup={onStartSetup} />
+      <Hero status={status} t={t} onAddServer={onAddServer} onRunBackup={onRunBackup} />
+      <SetupPanel t={t} onAddServer={onAddServer} />
       <SecurityBanner t={t} />
       <footer className="app-footer"><span>{t("footerPlatform")}</span><span>{t("footerLicense")}</span></footer>
     </main>
   );
 }
 
-function Hero({ status, t, onStartSetup }: DashboardProps) {
+function Hero({ status, t, onAddServer, onRunBackup }: DashboardProps) {
   return (
     <section className="hero-panel">
       <div className="hero-panel__content">
@@ -26,8 +27,8 @@ function Hero({ status, t, onStartSetup }: DashboardProps) {
         <h1>{t("pageTitle")}</h1>
         <p>{t("pageDescription")}</p>
         <div className="hero-panel__actions">
-          <button className="button button--primary" type="button" onClick={onStartSetup}><Plus size={17} />{t("addServer")}</button>
-          <button className="button button--secondary" type="button" onClick={onStartSetup}><Archive size={17} />{t("runBackup")}</button>
+          <button className="button button--primary" type="button" onClick={onAddServer}><Plus size={17} />{t("addServer")}</button>
+          <button className="button button--secondary" type="button" onClick={onRunBackup}><Archive size={17} />{t("runBackup")}</button>
         </div>
       </div>
       <div className="safety-lock">
@@ -46,15 +47,15 @@ function Hero({ status, t, onStartSetup }: DashboardProps) {
   );
 }
 
-function SetupPanel({ t, onStartSetup }: Pick<DashboardProps, "t" | "onStartSetup">) {
+function SetupPanel({ t, onAddServer }: Pick<DashboardProps, "t" | "onAddServer">) {
   return (
     <section className="content-panel servers-panel">
-      <PanelHeader title={t("setupHeroTitle")} action={t("serversAction")} onAction={onStartSetup} />
+      <PanelHeader title={t("setupHeroTitle")} action={t("serversAction")} onAction={onAddServer} />
       <div className="empty-state">
         <div className="empty-state__visual"><Server size={31} strokeWidth={1.6} /><span /><span /></div>
         <h2>{t("setupStepServer")}</h2>
         <p>{t("setupHeroBody")}</p>
-        <button type="button" className="text-button" onClick={onStartSetup}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
+        <button type="button" className="text-button" onClick={onAddServer}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
       </div>
     </section>
   );

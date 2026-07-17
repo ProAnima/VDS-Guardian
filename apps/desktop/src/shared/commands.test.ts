@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   enrollSigningIdentity,
   enrollSshProfile,
+  deleteSshProfile,
+  browseRemoteDirectory,
   executeDeploy,
   executeRestore,
   getFoundationStatus,
@@ -9,6 +11,7 @@ import {
   listBackups,
   listSshProfiles,
   previewDeploy,
+  previewCaptureSelection,
   previewRestore,
 } from "./commands";
 
@@ -37,6 +40,8 @@ describe("foundation bridge", () => {
       hostKey: "ssh-ed25519 AAAA",
       keyPath: "C:/Keys/vds",
     })).rejects.toThrow("desktop runtime");
+    await expect(deleteSshProfile("profile-001")).rejects.toThrow("desktop runtime");
+    await expect(browseRemoteDirectory("profile-001", "/srv")).rejects.toThrow("desktop runtime");
   });
 
   it("never previews or restores a backup from the browser preview", async () => {
@@ -55,5 +60,13 @@ describe("foundation bridge", () => {
     };
     await expect(previewDeploy(request)).rejects.toThrow("desktop runtime");
     await expect(executeDeploy(request)).rejects.toThrow("desktop runtime");
+  });
+
+  it("never previews a capture selection from the browser preview", async () => {
+    await expect(previewCaptureSelection({
+      profileId: "profile-001",
+      repositoryId: "repository-001",
+      items: [{ kind: "remote_path", absolutePath: "/srv" }],
+    })).rejects.toThrow("desktop runtime");
   });
 });

@@ -160,6 +160,49 @@ impl RemoteTargetPath {
     }
 }
 
+/// A read-only absolute POSIX path on a remote Linux server. Unlike a deploy
+/// target, root is valid because it is a useful starting point for browsing.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct RemotePath(String);
+
+impl RemotePath {
+    pub fn parse(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        let value = value.into();
+        let valid = value == "/"
+            || (value.starts_with('/')
+                && value.len() <= 1_024
+                && !value.contains(['\0', '\n', '\r', '\\'])
+                && value
+                    .split('/')
+                    .skip(1)
+                    .all(|segment| !matches!(segment, "" | "." | "..")));
+        valid
+            .then_some(Self(value))
+            .ok_or(IdentifierError::InvalidRemotePath)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn child(&self, name: &str) -> Result<Self, IdentifierError> {
+        let separator = if self.0 == "/" { "" } else { "/" };
+        Self::parse(format!("{}{separator}{name}", self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for RemotePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(serde::de::Error::custom)
+    }
+}
+
 impl<'de> Deserialize<'de> for RemoteTargetPath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -272,13 +315,17 @@ pub enum IdentifierError {
     InvalidArchivePath,
     #[error("remote target path must be a safe absolute POSIX path")]
     InvalidRemoteTargetPath,
+    #[error("remote path must be a safe absolute POSIX path")]
+    InvalidRemotePath,
     #[error("timestamp must use UTC second precision: YYYY-MM-DDTHH:MM:SSZ")]
     InvalidTimestamp,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ArchivePath, BackupId, PayloadPath, RemoteTargetPath, RunId, Timestamp};
+    use super::{
+        ArchivePath, BackupId, PayloadPath, RemotePath, RemoteTargetPath, RunId, Timestamp,
+    };
 
     #[test]
     fn generated_run_ids_are_uuid_v7() {
@@ -346,5 +393,21 @@ mod tests {
             );
         }
         assert!(RemoteTargetPath::parse("/srv/app").is_ok());
+    }
+
+    #[test]
+    fn remote_browse_paths_allow_root_but_reject_traversal() {
+        assert!(RemotePath::parse("/").is_ok());
+        assert!(RemotePath::parse("/srv/app").is_ok());
+        for hostile in ["relative", "/srv/../etc", "/srv//app", "/srv\napp"] {
+            assert!(RemotePath::parse(hostile).is_err(), "accepted {hostile:?}");
+        }
+        let root = RemotePath::parse("/").unwrap_or_else(|error| unreachable!("{error}"));
+        assert_eq!(
+            root.child("srv")
+                .unwrap_or_else(|error| unreachable!("{error}"))
+                .as_str(),
+            "/srv"
+        );
     }
 }

@@ -4,8 +4,9 @@ VDS Guardian is intentionally a small backup-and-restore application. Its first
 release has one job:
 
 ```text
-connect to one Linux server
-        -> capture explicitly selected data
+add and verify one Linux server
+        -> browse filesystem and Docker-backed data
+        -> capture an explicit visual selection
         -> store one verified backup on a local/removable disk
         -> restore that backup to a new local or remote destination
 ```
@@ -23,8 +24,10 @@ Included:
 - a scriptable CLI for enrollment, restore, and deploy (not capture);
 - a typed external API (an MCP server) over the same application-service
   boundary, for external tools and AI agents;
-- pinned OpenSSH connection to a remote Linux server;
-- operator-selected absolute filesystem paths;
+- pinned SSH connection to a remote Linux server, initially by key/agent and
+  later by the memory-only password broker required by ADR 0015;
+- bounded read-only remote filesystem browsing and Docker mount/group selection;
+- operator-selected data compiled to explicit absolute filesystem paths;
 - streaming tar.zst capture into a local or removable repository;
 - optional SQLite snapshot stored in the same backup transaction;
 - encrypted, versioned, checksum-verified backups;
@@ -35,7 +38,7 @@ Included:
 
 Not required for the first release:
 
-- automatic Docker or Compose inventory;
+- automatic Docker/Compose backup, recreation, image export, or quiescing;
 - PostgreSQL or MySQL dump/restore adapters;
 - arbitrary quiesce hooks;
 - in-place restore of an existing live server;
@@ -44,8 +47,8 @@ Not required for the first release:
 - organization policies, approval workflows, Kubernetes, or malware scanning.
 
 Existing implementations outside the first-release boundary may remain in the
-repository, but they are frozen except for correctness or security fixes. They
-must not expand the release gate or create a second orchestration path.
+repository, but they are frozen except for correctness or security fixes. The
+operator contract and DTO shapes are defined in `PRODUCT_REQUIREMENTS.md`.
 
 ## Completed foundation
 
@@ -195,8 +198,9 @@ clean-room restore drill described above.
 - Return bounded progress states and stable error/remediation codes. Tool
   calls stay synchronous (matching CLI/desktop precedent); no progress-
   notification streaming yet.
-- Keep filesystem paths explicit; Docker discovery is optional input assistance,
-  not part of capture correctness.
+- Keep filesystem paths explicit at the core boundary. The operator may select
+  filesystem or Docker nodes visually, but preview must resolve every selection
+  to those validated paths; Docker labels never replace capture correctness.
 
 Gate: the same fixture plan produces the same sealed backup and restore result
 when triggered through the desktop app and the API layer. Met at the
@@ -219,13 +223,35 @@ independently.
   creation instead of retaining stale prerequisite state. SSH profiles now
   enter that readiness view only after a successful pinned capability preflight;
   a failed probe or profile commit removes its staged credential and publishes
-  no selectable profile. Export requires two matching passphrase entries at
-  both the UI and native-command boundary.
+  no selectable profile. Saved profiles are now presented as server cards and
+  can be removed with an explicit confirmation; deletion is blocked while a
+  capture plan references the server and cleans up its OS-stored key as one
+  compensated operation. Server management is now its own concise desktop view;
+  backup preparation remains on the separate Backups view. Export requires two
+  matching passphrase entries at both the UI and native-command boundary.
+- Backups must replace raw path entry as the primary interaction with a bounded
+  filesystem/Docker explorer, shared selection preview, and one Create backup
+  action. Partially closed: core owns the bounded page contract and use case;
+  pinned SSH, desktop, and MCP expose the same read-only directory browser.
+  Core now also owns the logical filesystem/Docker selection DTO and preview
+  policy: Docker references are checked against current inventory, nested roots
+  are normalized, and consistency warnings plus a deterministic confirmation
+  identity are returned. Desktop now provides the production interaction shell:
+  breadcrumb filesystem navigation, metadata columns, safe unavailable-item
+  explanations, retained-page retry/loading states, Compose groups, individual
+  persistent mounts, and a logical-item selection summary. It renders the
+  shared preview before saving its normalized plan. Open: validate this shell
+  in the release-candidate desktop usability drill, collapse preview/save/run
+  into one Create backup flow
+  and add the confirmation-gated MCP preview/execute-selection tools defined by
+  ADR 0015; execute must re-resolve the preview rather than trust saved paths.
 - Restore picker exposes only sealed, freshly signature-verified backups and
   labels that verification state; failed and cancelled runs are never offered
   as restore candidates.
 - Restore preview states the source backup, destination, expected payload, and
-  rollback posture before confirmation. Closed in the UI.
+  rollback posture before confirmation. Closed in the current UI. Open: adopt
+  the shared `adds`/`replaces`/`conflicts` impact DTO; `replaces` remains empty
+  while Release 0.1 permits only a new destination.
 - A running desktop restore can be cancelled by the operator. Closed: the
   desktop supplies a UUIDv7 run id to the shared `JobRegistry`; decryption,
   tar extraction, and SQLite decompression poll its cancellation handle, remove
@@ -336,11 +362,11 @@ Only after 0.1 is proven:
 Exit gate: scheduled backups and retention cannot bypass the same application
 use cases or weaken the manual 0.1 restore proof.
 
-## Release 0.3 — discovery and additional workloads (P2)
+## Release 0.3 — additional workloads (P2)
 
 Candidates, selected by real operator demand:
 
-- Docker/Compose inventory and mount selection;
+- automatic Docker/Compose recreation, image metadata recovery, and quiesce adapters;
 - PostgreSQL and MySQL dump/restore adapters;
 - versioned application quiesce adapters;
 - richer health checks and restore reports;

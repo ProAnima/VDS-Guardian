@@ -98,6 +98,16 @@ export interface ImportRecoveryBundleRequest {
 }
 export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
+export type BackupSelectionItem =
+  | { kind: "remote_path"; absolutePath: string }
+  | { kind: "docker_mount"; containerId: string; mountDestination: string; capturablePath: string }
+  | { kind: "docker_group"; groupId: string; capturablePaths: string[] };
+export interface BackupSelection { profileId: string; repositoryId: string; items: BackupSelectionItem[]; sqlitePath?: string; }
+export type CaptureSelectionWarning =
+  | { kind: "covered_path"; path: string; coveredBy: string }
+  | { kind: "live_docker_data"; containerId: string; containerName: string }
+  | { kind: "sqlite_also_in_filesystem"; sqlitePath: string; coveredBy: string };
+export interface CaptureSelectionPreview { profileId: string; repositoryId: string; normalizedRoots: string[]; logicalItems: BackupSelectionItem[]; warnings: CaptureSelectionWarning[]; sqlitePath?: string; confirmation: string; }
 export interface CaptureJobSummary { backupId: string; }
 export interface CaptureFailure { code: string; message: string; remediation: string; }
 
@@ -111,8 +121,11 @@ export interface DeploymentPreview { backupId: string; targetProfileId: string; 
 export interface DeployFailure { code: string; message: string; remediation: string; }
 
 export interface DockerMountSummary { kind: "bind" | "volume" | "tmpfs"; destination: string; capturablePath?: string; }
-export interface DockerContainerSummary { id: string; name: string; state: "created" | "running" | "paused" | "restarting" | "exited" | "dead"; mounts: DockerMountSummary[]; }
+export interface DockerContainerSummary { id: string; name: string; composeProject?: string; state: "created" | "running" | "paused" | "restarting" | "exited" | "dead"; mounts: DockerMountSummary[]; }
 export interface DockerCommandFailure { code: string; message: string; remediation: string; }
+export type RemoteEntryKind = "directory" | "regular_file" | "symlink" | "other";
+export interface RemoteBrowseEntry { name: string; absolutePath: string; kind: RemoteEntryKind; size?: number; modifiedAt?: string; selectable: boolean; unavailableReason?: "symlink" | "special_file"; }
+export interface RemoteBrowsePage { directory: string; entries: RemoteBrowseEntry[]; nextCursor?: string; truncated: boolean; }
 
 export const previewStatus: FoundationStatus = {
   product: "VDS Guardian",
@@ -155,6 +168,11 @@ export async function listSshProfiles(): Promise<SshProfileSummary[]> {
   return invoke<SshProfileSummary[]>("list_ssh_profiles");
 }
 
+export async function deleteSshProfile(profileId: string): Promise<void> {
+  requireTauriRuntime();
+  return invoke<void>("delete_ssh_profile", { request: { profileId, confirmed: true } });
+}
+
 export async function testSshProfile(profileId: string): Promise<void> {
   requireTauriRuntime();
   return invoke<void>("test_ssh_profile", { profileId });
@@ -187,6 +205,7 @@ export async function importRecoveryBundle(request: ImportRecoveryBundleRequest)
   return invoke<RepositorySummary>("import_recovery_bundle", { request });
 }
 export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
+export async function previewCaptureSelection(request: BackupSelection): Promise<CaptureSelectionPreview> { requireTauriRuntime(); return invoke<CaptureSelectionPreview>("preview_capture_selection", { request }); }
 export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
 export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }
 export async function cancelJob(runId: string): Promise<boolean> { if (!hasTauriRuntime()) return false; return invoke<boolean>("cancel_job", { runId }); }
@@ -196,6 +215,7 @@ export async function executeRestore(request: RestoreRequest): Promise<RestorePr
 export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
 export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
 export async function listDockerContainers(profileId: string): Promise<DockerContainerSummary[]> { requireTauriRuntime(); return invoke<DockerContainerSummary[]>("list_docker_containers", { profileId }); }
+export async function browseRemoteDirectory(profileId: string, directory: string, cursor?: string): Promise<RemoteBrowsePage> { requireTauriRuntime(); return invoke<RemoteBrowsePage>("browse_remote_directory", { request: { profileId, directory, cursor, limit: 100 } }); }
 // OpenSSH commonly stores private identities without a conventional extension
 // (for example `id_rsa` or an operator-provided `id_rsa.priv`). File type is
 // validated by the desktop command after selection, never by this UI filter.

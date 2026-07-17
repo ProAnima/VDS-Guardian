@@ -31,7 +31,7 @@ describe("Dashboard", () => {
   it("shows the active safety flow and opens setup actions", async () => {
     const startSetup = vi.fn();
     await act(async () => root.render(
-      <Dashboard status={status} t={(key) => key} onStartSetup={startSetup} />,
+      <Dashboard status={status} t={(key) => key} onAddServer={startSetup} onRunBackup={startSetup} />,
     ));
 
     expect(container.textContent).toContain("securityBody");
@@ -45,7 +45,7 @@ describe("Dashboard", () => {
 
   it("keeps the fail-closed explanation when live operations are disabled", async () => {
     await act(async () => root.render(
-      <Dashboard status={{ ...status, liveOperationsEnabled: false }} t={(key) => key} onStartSetup={vi.fn()} />,
+      <Dashboard status={{ ...status, liveOperationsEnabled: false }} t={(key) => key} onAddServer={vi.fn()} onRunBackup={vi.fn()} />,
     ));
 
     expect(container.textContent).toContain("lockedTitle");

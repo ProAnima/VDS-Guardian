@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-RUN apk add --no-cache openssh-server tar zstd \
+RUN apk add --no-cache findutils openssh-server tar zstd \
     && adduser -D -s /bin/sh backup \
     && passwd -d backup \
     && mkdir -p /run/sshd /home/backup/.ssh /srv/app \

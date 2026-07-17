@@ -7,10 +7,12 @@ import { SigningIdentityPanel } from "./SigningIdentityPanel";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const commands = vi.hoisted(() => ({
+  browseRemoteDirectory: vi.fn(),
   enrollSigningIdentity: vi.fn(),
   getSigningIdentityStatus: vi.fn(),
   listRepositories: vi.fn(),
   listSshProfiles: vi.fn(),
+  previewCaptureSelection: vi.fn(),
   saveCapturePlan: vi.fn(),
 }));
 
@@ -42,6 +44,16 @@ describe("setup resource refresh", () => {
     commands.saveCapturePlan.mockResolvedValue({
       planId: "plan-1", profileId: "server-1", repositoryId: "repo-1", roots: ["/srv/app"],
     });
+    commands.previewCaptureSelection.mockResolvedValue({
+      profileId: "server-1", repositoryId: "repo-1", normalizedRoots: ["/srv"],
+      logicalItems: [{ kind: "remote_path", absolutePath: "/srv" }], warnings: [],
+      confirmation: "CREATE BACKUP FOR server-1 IN repo-1 abcdef123456",
+    });
+    commands.browseRemoteDirectory.mockResolvedValue({
+      directory: "/",
+      entries: [{ name: "srv", absolutePath: "/srv", kind: "directory", selectable: true }],
+      truncated: false,
+    });
   });
 
   afterEach(async () => {
@@ -69,9 +81,19 @@ describe("setup resource refresh", () => {
     await act(async () => root.render(
       <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
     ));
-    await vi.waitFor(() => expect(button("setupSavePlan").disabled).toBe(false));
+    await vi.waitFor(() => expect(button("browserOpen").disabled).toBe(false));
+    await act(async () => button("browserOpen").click());
+    const selection = await vi.waitFor(() => {
+      const candidate = container.querySelector<HTMLInputElement>('input[aria-label="browserSelect srv"]');
+      if (!candidate) throw new Error("Remote path selection was not rendered");
+      return candidate;
+    });
+    await act(async () => selection.click());
+    expect(button("captureReview").disabled).toBe(false);
 
     await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(button("captureReviewSave")).toBeDefined());
+    await act(async () => button("captureReviewSave").click());
 
     await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
   });

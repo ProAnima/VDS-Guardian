@@ -1,6 +1,13 @@
 use guardian_configuration::{CapturePlanStore, RepositoryStore, StoredCapturePlan};
-use guardian_core::{FilesystemCapturePlan, PlanId, ProfileId, ProfileStorePort, RepositoryId};
+use guardian_core::{
+    BackupSelection, BackupSelectionItem, CaptureSelectionPreview, DiscoverDockerInventoryUseCase,
+    FilesystemCapturePlan, PlanId, ProfileId, ProfileStorePort, RepositoryId,
+    preview_capture_selection,
+};
+use guardian_docker::SshDockerInventoryAdapter;
+use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
+use guardian_ssh::SystemOpenSsh;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -55,6 +62,60 @@ pub async fn list(app: tauri::AppHandle) -> Result<Vec<PlanSummary>, PlanFailure
     tauri::async_runtime::spawn_blocking(move || list_blocking(root))
         .await
         .map_err(|_| PlanFailure::internal())?
+}
+
+pub async fn preview(
+    app: tauri::AppHandle,
+    request: BackupSelection,
+) -> Result<CaptureSelectionPreview, PlanFailure> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| PlanFailure::storage())?;
+    tauri::async_runtime::spawn_blocking(move || preview_blocking(root, request))
+        .await
+        .map_err(|_| PlanFailure::internal())?
+}
+
+fn preview_blocking(
+    root: PathBuf,
+    request: BackupSelection,
+) -> Result<CaptureSelectionPreview, PlanFailure> {
+    let profiles = ProfileStore::at(root.join("profiles"));
+    profiles
+        .get(&request.profile_id)
+        .map_err(|_| PlanFailure::storage())?
+        .ok_or_else(PlanFailure::invalid_reference)?;
+    RepositoryStore::at(root.join("repositories"))
+        .get(&request.repository_id)
+        .map_err(|_| PlanFailure::storage())?
+        .ok_or_else(PlanFailure::invalid_reference)?;
+    let inventory = docker_inventory(&profiles, &request)?;
+    preview_capture_selection(&request, inventory.as_ref()).map_err(|_| PlanFailure::invalid())
+}
+
+fn docker_inventory(
+    profiles: &ProfileStore,
+    request: &BackupSelection,
+) -> Result<Option<guardian_core::DockerInventory>, PlanFailure> {
+    if !request
+        .items
+        .iter()
+        .any(|item| !matches!(item, BackupSelectionItem::RemotePath { .. }))
+    {
+        return Ok(None);
+    }
+    let ssh = SystemOpenSsh::default();
+    DiscoverDockerInventoryUseCase {
+        profiles,
+        inventory: &SshDockerInventoryAdapter {
+            ssh: &ssh,
+            credentials: &OsCredentialStore,
+        },
+    }
+    .execute(&request.profile_id)
+    .map(Some)
+    .map_err(|_| PlanFailure::invalid())
 }
 
 fn save_blocking(root: PathBuf, request: SavePlanRequest) -> Result<PlanSummary, PlanFailure> {

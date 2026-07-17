@@ -14,17 +14,20 @@ export into a passphrase-protected offline bundle and import on a clean
 machine (ADR 0013); capture/deploy cancellation is wired through CLI,
 desktop, and `guardian-mcp` adapters; and the desktop app, CLI, and
 `guardian-mcp` share one application-service boundary (ADR 0012). The
-release is not production-ready: the operator-facing setup/status/restore
-flow and the hostile failure matrix are incomplete (sections 4 and 5).
+release is not production-ready: the simple server explorer/selection path
+(ADR 0015), signed installers, and release-candidate desktop evidence remain
+incomplete (sections 4 and 5).
 The compiled clean-machine path, including recovery-key import, passed on
-Windows locally and on Linux CI for commit `3912a90`. Docker discovery,
-additional databases, scheduling, retention automation, and updater work
-are outside Release 0.1. The ordered scope and gates live in
+Windows locally and on Linux CI for commit `3912a90`. Bounded Docker
+inventory/mount selection is now part of the operator path; automatic Docker
+backup/recreation, additional databases, scheduling, retention automation,
+and updater work remain outside Release 0.1. The ordered scope and gates live in
 `docs/DEVELOPMENT_PLAN.md`.
 
 ## Source of truth
 
 - `CODEX.md`: architecture and non-negotiable invariants.
+- `docs/PRODUCT_REQUIREMENTS.md`: operator experience and serialized workflow contracts.
 - `docs/ARCHITECTURE.md`: component boundaries and runtime topology.
 - `docs/SECURITY_MODEL.md`: threat model and security controls.
 - `docs/BACKUP_FORMAT.md`: on-disk compatibility contract.

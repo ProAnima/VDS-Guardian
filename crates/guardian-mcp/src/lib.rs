@@ -70,6 +70,18 @@ pub struct ProfileIdParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BrowseDirectoryParams {
+    /// The enrolled SSH profile's id.
+    pub profile_id: String,
+    /// A validated absolute POSIX directory, for example `/srv`.
+    pub directory: String,
+    /// Opaque cursor returned by the preceding page, if any.
+    pub cursor: Option<String>,
+    /// Number of entries requested, from 1 through 200.
+    pub limit: u16,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RepositoryIdParams {
     /// The registered repository's id.
     pub repository_id: String,
@@ -192,6 +204,27 @@ impl GuardianMcpServer {
         Ok(
             match discovery::list_docker_containers(&self.config, &params.profile_id) {
                 Ok(containers) => ok(&containers),
+                Err(failure) => err(&failure),
+            },
+        )
+    }
+
+    #[tool(
+        description = "Read one bounded page from a directory on an enrolled server. Read-only, pinned SSH; symlinks are never followed or selectable."
+    )]
+    async fn browse_remote_directory(
+        &self,
+        Parameters(params): Parameters<BrowseDirectoryParams>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        Ok(
+            match discovery::browse_remote_directory(
+                &self.config,
+                &params.profile_id,
+                &params.directory,
+                params.cursor,
+                params.limit,
+            ) {
+                Ok(page) => ok(&page),
                 Err(failure) => err(&failure),
             },
         )
@@ -445,6 +478,7 @@ mod tests {
         let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
         for expected in [
             "list_ssh_profiles",
+            "browse_remote_directory",
             "run_capture",
             "preview_restore",
             "execute_deploy",

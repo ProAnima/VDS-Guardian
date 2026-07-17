@@ -4,6 +4,7 @@ mod archive;
 mod audit;
 mod cancellation;
 mod capture;
+mod capture_selection;
 mod database;
 mod database_connection;
 mod deploy;
@@ -18,6 +19,7 @@ mod plan;
 mod preflight;
 mod profile;
 mod profile_port;
+mod remote_browser;
 mod restore;
 mod retention;
 mod secret;
@@ -33,6 +35,10 @@ pub use capture::{
     CapturePortError, CaptureRequestError, CaptureUseCaseError, FilesystemBackupRequest,
     FilesystemBackupUseCase, FilesystemCapturePort, FilesystemCaptureRequest,
     FilesystemCaptureUseCase,
+};
+pub use capture_selection::{
+    BackupSelection, BackupSelectionItem, CaptureSelectionError, CaptureSelectionPreview,
+    CaptureSelectionWarning, preview_capture_selection,
 };
 pub use database::{
     DatabaseCapability, DatabaseCapabilityProbeError, DatabaseCapabilityProbePort, DatabaseEngine,
@@ -62,7 +68,7 @@ pub use host_trust::{
 };
 pub use identifiers::{
     ArchivePath, BackupId, CredentialId, DatabaseId, IdentifierError, PayloadPath, PlanId,
-    ProfileId, RemoteTargetPath, RepositoryId, RunId, Timestamp,
+    ProfileId, RemotePath, RemoteTargetPath, RepositoryId, RunId, Timestamp,
 };
 pub use job_registry::{JobRegistration, JobRegistry};
 pub use manifest::{
@@ -76,6 +82,11 @@ pub use preflight::{
 };
 pub use profile::{HostPin, ProfileError, SshEndpoint, VdsProfile, host_key_fingerprint};
 pub use profile_port::{ProfileStorePort, ProfileStorePortError};
+pub use remote_browser::{
+    BrowseRemoteDirectoryError, BrowseRemoteDirectoryUseCase, MAX_REMOTE_PAGE_ENTRIES,
+    RemoteBrowseEntry, RemoteBrowseError, RemoteBrowsePage, RemoteBrowseRequest, RemoteBrowserPort,
+    RemoteBrowserPortError, RemoteEntryKind, RemoteEntryUnavailableReason,
+};
 pub use restore::{RestorePlan, RestorePlanError};
 pub use retention::{
     RetentionOutcome, RetentionPlan, RetentionPlanError, RetentionPolicy, RetentionPolicyError,

@@ -3,16 +3,20 @@
 //! repository's sealed backups. None of these mutate anything, so none
 //! carry a confirmation gate.
 
-use crate::config::ServerConfig;
+use crate::{config::ServerConfig, secret_store::resolve_store};
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
-use guardian_core::{DiscoverDockerInventoryUseCase, ProfileId, RepositoryId};
+use guardian_core::{
+    BrowseRemoteDirectoryUseCase, DiscoverDockerInventoryUseCase, ProfileId, RemoteBrowsePage,
+    RemoteBrowseRequest, RemotePath, RepositoryId,
+};
 use guardian_docker::SshDockerInventoryAdapter;
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager};
-use guardian_ssh::SystemOpenSsh;
+use guardian_ssh::{SshRemoteBrowserAdapter, SystemOpenSsh};
 use serde::Serialize;
+use std::time::Duration;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +48,12 @@ impl DiscoveryFailure {
         Self {
             code: "docker_inspection_failed",
             message: "Could not read Docker containers from this server.",
+        }
+    }
+    fn browse_failed() -> Self {
+        Self {
+            code: "remote_browser_unavailable",
+            message: "The requested server directory could not be read safely.",
         }
     }
     fn rejected() -> Self {
@@ -148,6 +158,8 @@ pub(crate) fn list_capture_plans(
 pub struct DockerContainerSummary {
     pub id: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compose_project: Option<String>,
     pub state: guardian_core::DockerContainerState,
     pub mounts: Vec<DockerMountSummary>,
 }
@@ -165,6 +177,7 @@ impl From<&guardian_core::DockerContainer> for DockerContainerSummary {
         Self {
             id: container.id.clone(),
             name: container.name.clone(),
+            compose_project: container.compose_project.clone(),
             state: container.state,
             mounts: container
                 .mounts
@@ -191,10 +204,12 @@ pub(crate) fn list_docker_containers(
 ) -> Result<Vec<DockerContainerSummary>, DiscoveryFailure> {
     let profile_id = ProfileId::parse(profile_id).map_err(|_| DiscoveryFailure::not_found())?;
     let profiles = ProfileStore::at(&config.profiles_dir);
+    let secrets = resolve_store(config.vault_dir.as_deref())
+        .map_err(|_| DiscoveryFailure::inspection_failed())?;
     let ssh = SystemOpenSsh::default();
     let adapter = SshDockerInventoryAdapter {
         ssh: &ssh,
-        credentials: &OsCredentialStore,
+        credentials: &secrets,
     };
     let inventory = DiscoverDockerInventoryUseCase {
         profiles: &profiles,
@@ -207,6 +222,36 @@ pub(crate) fn list_docker_containers(
         .iter()
         .map(DockerContainerSummary::from)
         .collect())
+}
+
+pub(crate) fn browse_remote_directory(
+    config: &ServerConfig,
+    profile_id: &str,
+    directory: &str,
+    cursor: Option<String>,
+    limit: u16,
+) -> Result<RemoteBrowsePage, DiscoveryFailure> {
+    let profile_id = ProfileId::parse(profile_id).map_err(|_| DiscoveryFailure::not_found())?;
+    let request = RemoteBrowseRequest {
+        directory: RemotePath::parse(directory).map_err(|_| DiscoveryFailure::browse_failed())?,
+        cursor,
+        limit,
+    };
+    let profiles = ProfileStore::at(&config.profiles_dir);
+    let secrets = resolve_store(config.vault_dir.as_deref())
+        .map_err(|_| DiscoveryFailure::browse_failed())?;
+    let ssh = SystemOpenSsh::default()
+        .with_total_timeout(Duration::from_secs(30))
+        .with_idle_timeout(Duration::from_secs(15));
+    BrowseRemoteDirectoryUseCase {
+        profiles: &profiles,
+        browser: &SshRemoteBrowserAdapter {
+            ssh: &ssh,
+            credentials: &secrets,
+        },
+    }
+    .execute(&profile_id, &request)
+    .map_err(|_| DiscoveryFailure::browse_failed())
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]

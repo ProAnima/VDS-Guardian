@@ -14,9 +14,10 @@ for remote Linux servers. It is built for operators who need isolated,
 independently stored recovery points and a predictable path from a failed or
 compromised VDS to a clean, working deployment.
 
-The first release focuses on one manual path: connect to a Linux server, capture
-explicitly selected data, store a verified backup on a local or removable disk,
-and restore it to a new destination without a mandatory cloud service.
+The first release focuses on one manual path: add a Linux server, browse its
+filesystem and Docker-backed persistent data, capture an explicit selection,
+store a verified backup on a local or removable disk, and restore it to a new
+destination without a mandatory cloud service.
 
 > **Project status:** Release 0.1 hardening. Pinned SSH capture, encrypted sealed
 > backups with a portable per-repository recovery key, local restore,
@@ -40,7 +41,8 @@ and restore it to a new destination without a mandatory cloud service.
   restorable backups.
 - SHA-256 manifests, signed metadata, verification, quarantine, and restore
   drills.
-- Explicit operator-selected filesystem paths and an optional SQLite snapshot.
+- A concise Servers view plus a bounded filesystem/Docker explorer that resolves
+  visual selections to explicit paths, with an optional SQLite snapshot.
 - Portable recovery material so an independent backup disk remains restorable
   after loss of the original operator machine.
 - SSH private keys live in the OS credential store or an operator-selected

@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 base64.workspace = true
 guardian-core.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 

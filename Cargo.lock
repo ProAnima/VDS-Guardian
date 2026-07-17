@@ -1884,6 +1884,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "guardian-core",
+ "sha2",
  "tempfile",
  "thiserror 2.0.18",
 ]

@@ -86,6 +86,9 @@ independence and complicates deletion and recovery.
   remote deploy targets (ADR 0007), which is supplied at deploy time and
   explicitly checked against these two fields to block self-overwrite
 - plan ID/version/digest
+- optional signed logical-selection metadata mapping operator-visible filesystem
+  or Docker labels to the normalized capture roots; labels are explanatory only
+  and never override payload paths, hashes, or restore validation
 - consistency level and quiesce results
 - payload entries: logical role, relative path, byte length, SHA-256, media type
 - required/optional item results

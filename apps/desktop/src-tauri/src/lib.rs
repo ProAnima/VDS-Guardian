@@ -3,6 +3,8 @@ mod docker_commands;
 mod job_commands;
 mod plan_commands;
 mod profile_commands;
+mod profile_delete;
+mod remote_browser_commands;
 mod repository_commands;
 mod restore_commands;
 mod signing_commands;
@@ -43,6 +45,14 @@ async fn list_ssh_profiles(
     app: tauri::AppHandle,
 ) -> Result<Vec<profile_commands::ProfileSummary>, profile_commands::ProfileCommandFailure> {
     profile_commands::list(app).await
+}
+
+#[tauri::command]
+async fn delete_ssh_profile(
+    app: tauri::AppHandle,
+    request: profile_delete::DeleteProfileRequest,
+) -> Result<(), profile_delete::DeleteProfileFailure> {
+    profile_delete::delete(app, request).await
 }
 
 #[tauri::command]
@@ -112,6 +122,14 @@ async fn save_capture_plan(
 }
 
 #[tauri::command]
+async fn preview_capture_selection(
+    app: tauri::AppHandle,
+    request: guardian_core::BackupSelection,
+) -> Result<guardian_core::CaptureSelectionPreview, plan_commands::PlanFailure> {
+    plan_commands::preview(app, request).await
+}
+
+#[tauri::command]
 async fn list_capture_plans(
     app: tauri::AppHandle,
 ) -> Result<Vec<plan_commands::PlanSummary>, plan_commands::PlanFailure> {
@@ -159,6 +177,14 @@ async fn list_docker_containers(
 }
 
 #[tauri::command]
+async fn browse_remote_directory(
+    app: tauri::AppHandle,
+    request: remote_browser_commands::BrowseDirectoryRequest,
+) -> Result<guardian_core::RemoteBrowsePage, remote_browser_commands::BrowseDirectoryFailure> {
+    remote_browser_commands::browse(app, request).await
+}
+
+#[tauri::command]
 async fn preview_deploy(
     app: tauri::AppHandle,
     request: deploy_commands::DeployRequest,
@@ -198,6 +224,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             enroll_signing_identity,
             enroll_ssh_profile,
             list_ssh_profiles,
+            delete_ssh_profile,
             test_ssh_profile,
             preflight_ssh_profile,
             register_repository,
@@ -206,6 +233,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             export_recovery_bundle,
             import_recovery_bundle,
             save_capture_plan,
+            preview_capture_selection,
             list_capture_plans,
             run_capture_plan,
             list_backups,
@@ -214,7 +242,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preview_deploy,
             execute_deploy,
             cancel_job,
-            list_docker_containers
+            list_docker_containers,
+            browse_remote_directory
         ])
         .run(tauri::generate_context!())?;
     Ok(())

@@ -23,12 +23,12 @@ All three surfaces call the same Rust use cases. The UI, Tauri commands, CLI,
 and MCP tool handlers may orchestrate work but must not implement backup,
 verification, retention, or restore rules independently.
 
-The first release proves one manual path: pinned SSH capture of explicit paths
-to a local/removable repository, verification, and restore to a new local or
-remote destination. Scheduling, broad Docker discovery, additional database
-engines, in-place recovery, and cloud storage are later capabilities. Existing
-foundation for them must not create parallel orchestration or expand the first
-release gate.
+The first release proves one manual path: enroll a pinned SSH server, browse a
+bounded filesystem/Docker projection, select explicit data, capture it to a
+local/removable repository, verify it, and restore to a new local or remote
+destination (ADR 0015). SQLite is the only required database-specific adapter.
+Scheduling, automatic Docker recreation, additional database engines, in-place
+recovery, and cloud storage are later capabilities.
 
 ## Non-negotiable invariants
 
@@ -40,6 +40,11 @@ release gate.
   treated as an ordinary file tree.
 - Remote input, manifests, paths, and command output are untrusted and validated.
 - SSH host keys are pinned. A changed host identity fails closed.
+- Password authentication, once implemented, preserves host pinning and never
+  exposes a password through argv, environment, shell text, config, logs, or a
+  temporary file.
+- Remote browsing is read-only, bounded, paginated, does not follow symlinks,
+  and cannot accept an arbitrary command.
 - Private keys and passphrases never enter repository configuration or logs.
 - Destructive server mutations require an explicit plan, scope preview, typed
   confirmation, audit record, and a fresh pre-restore backup unless waived by a
