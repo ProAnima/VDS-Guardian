@@ -1,5 +1,5 @@
-import { CheckCircle2, FolderArchive, KeyRound, ListChecks, type LucideIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Settings2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
 import { RepositoryPanel } from "./RepositoryPanel";
@@ -19,39 +19,23 @@ export function SetupPanel({ t }: SetupPanelProps) {
     <main className="dashboard">
       <section className="hero-panel">
         <div className="hero-panel__content">
-          <p className="eyebrow"><ListChecks size={15} aria-hidden="true" />{t("setupHeroEyebrow")}</p>
-          <h1>{t("setupHeroTitle")}</h1>
-          <p>{t("setupHeroBody")}</p>
+          <p className="eyebrow"><ShieldCheck size={15} aria-hidden="true" />{t("backupHeroEyebrow")}</p>
+          <h1>{t("backupHeroTitle")}</h1>
+          <p>{t("backupHeroBody")}</p>
         </div>
       </section>
       <SetupStatusPanel resourcesRevision={resourcesRevision} t={t} />
-      <SetupStep number="1" title={t("setupStepIdentity")} icon={KeyRound}>
-        <SigningIdentityPanel onIdentityChanged={resourcesChanged} t={t} />
-      </SetupStep>
-      <SetupStep number="2" title={t("setupStepRepository")} icon={FolderArchive}>
-        <RepositoryPanel onRepositoriesChanged={resourcesChanged} t={t} />
-        <RecoveryBundlePanel resourcesRevision={resourcesRevision} t={t} />
-        <RecoveryImportPanel onRepositoriesChanged={resourcesChanged} t={t} />
-      </SetupStep>
-      <SetupStep number="3" title={t("setupStepPlan")} icon={CheckCircle2}>
-        <CapturePlanPanel onPlansChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />
-      </SetupStep>
+      <CapturePlanPanel onPlansChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />
+      <details className="backup-settings">
+        <summary><Settings2 size={17} />{t("backupSettingsTitle")}</summary>
+        <p>{t("backupSettingsBody")}</p>
+        <div className="backup-settings__content">
+          <SigningIdentityPanel onIdentityChanged={resourcesChanged} t={t} />
+          <RepositoryPanel onRepositoriesChanged={resourcesChanged} t={t} />
+          <RecoveryBundlePanel resourcesRevision={resourcesRevision} t={t} />
+          <RecoveryImportPanel onRepositoriesChanged={resourcesChanged} t={t} />
+        </div>
+      </details>
     </main>
-  );
-}
-
-interface SetupStepProps {
-  number: string;
-  title: string;
-  icon: LucideIcon;
-  children: ReactNode;
-}
-
-function SetupStep({ number, title, icon: Icon, children }: SetupStepProps) {
-  return (
-    <section className="content-panel">
-      <header className="panel-header"><h2><span className="roadmap-list__number">{number}</span> <Icon size={17} aria-hidden="true" /> {title}</h2></header>
-      {children}
-    </section>
   );
 }

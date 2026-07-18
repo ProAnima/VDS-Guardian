@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CircleAlert, CircleCheck, LoaderCircle, RefreshCw } from "lucide-react";
 import {
-  getSigningIdentityStatus, listCapturePlans, listRepositories, listSshProfiles,
+  getSigningIdentityStatus, listRepositories, listSshProfiles,
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import { evaluateSetupReadiness, type SetupResources, type SetupStatusItem } from "./setup-readiness";
@@ -11,7 +11,7 @@ interface LoadFailure { label: string; detail: string; }
 export function SetupStatusPanel({ resourcesRevision, t }: { resourcesRevision: number; t: Translate }) {
   const model = useSetupStatus(resourcesRevision, t);
   return <section className="setup-status" aria-labelledby="setup-status-title">
-    <header><div><p className="eyebrow">{t("readinessEyebrow")}</p><h2 id="setup-status-title">{t("readinessTitle")}</h2><p>{t("readinessBody")}</p></div><button className="text-button" disabled={model.loading} onClick={model.reload} type="button"><RefreshCw size={15} />{t("readinessRefresh")}</button></header>
+    <header><div><p className="eyebrow">{t("backupChecklistEyebrow")}</p><h2 id="setup-status-title">{t("backupChecklistTitle")}</h2><p>{t("backupChecklistBody")}</p></div><button className="text-button" disabled={model.loading} onClick={model.reload} type="button"><RefreshCw size={15} />{t("readinessRefresh")}</button></header>
     {model.loading && !model.resources && <p className="setup-status__loading"><LoaderCircle className="spin" size={16} />{t("readinessLoading")}</p>}
     {model.resources && <div className="setup-status__items">{evaluateSetupReadiness(model.resources, t).map((item) => <StatusItem key={item.label} item={item} />)}</div>}
     {model.failures.length > 0 && <div className="setup-status__failures" role="alert">{model.failures.map((failure) => <p key={failure.label}><CircleAlert size={16} />{t("readinessFailurePrefix")} «{failure.label}»: {failure.detail}</p>)}</div>}
@@ -37,16 +37,15 @@ function useSetupStatus(resourcesRevision: number, t: Translate) {
 }
 
 async function loadSetupStatus(t: Translate, update: (result: { resources?: SetupResources; failures: LoadFailure[] }) => void) {
-  const [identity, repositories, profiles, plans] = await Promise.allSettled([getSigningIdentityStatus(), listRepositories(), listSshProfiles(), listCapturePlans()]);
+  const [identity, repositories, profiles] = await Promise.allSettled([getSigningIdentityStatus(), listRepositories(), listSshProfiles()]);
   const failures = [
     loadFailure(t("readinessIdentity"), identity, t), loadFailure(t("readinessRepositoriesResource"), repositories, t),
-    loadFailure(t("readinessServersResource"), profiles, t), loadFailure(t("readinessPlansResource"), plans, t),
+    loadFailure(t("readinessServersResource"), profiles, t),
   ].flatMap((failure) => failure ? [failure] : []);
   update({ resources: {
     identity: identity.status === "fulfilled" ? identity.value : undefined,
     repositories: repositories.status === "fulfilled" ? repositories.value : undefined,
     profiles: profiles.status === "fulfilled" ? profiles.value : undefined,
-    plans: plans.status === "fulfilled" ? plans.value : undefined,
   }, failures });
 }
 

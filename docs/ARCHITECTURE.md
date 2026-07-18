@@ -140,6 +140,10 @@ selection; and a Docker inventory grouped into Compose applications and
 individual persistent mounts. A persistent selection summary preserves the
 logical item identity rather than flattening Docker choices into UI-only path
 strings. This is presentation state only; core preview remains authoritative.
+The pinned-SSH filesystem adapter supplies entry type, size, second-precision
+UTC modification time, and basename through one reviewed read-only `find`
+command. Modification time participates in the listing digest used by bounded
+page cursors, so a metadata-only directory change invalidates a stale page.
 
 ### CLI/service
 

@@ -233,6 +233,9 @@ independently.
   filesystem/Docker explorer, shared selection preview, and one Create backup
   action. Partially closed: core owns the bounded page contract and use case;
   pinned SSH, desktop, and MCP expose the same read-only directory browser.
+  The pinned-SSH adapter now populates the explorer's modification-time column,
+  and size/time metadata participates in stale-cursor detection instead of the
+  UI advertising a field that the production adapter leaves empty.
   Core now also owns the logical filesystem/Docker selection DTO and preview
   policy: Docker references are checked against current inventory, nested roots
   are normalized, and consistency warnings plus a deterministic confirmation

@@ -50,11 +50,11 @@ function Hero({ status, t, onAddServer, onRunBackup }: DashboardProps) {
 function SetupPanel({ t, onAddServer }: Pick<DashboardProps, "t" | "onAddServer">) {
   return (
     <section className="content-panel servers-panel">
-      <PanelHeader title={t("setupHeroTitle")} action={t("serversAction")} onAction={onAddServer} />
+      <PanelHeader title={t("dashboardStartTitle")} action={t("serversAction")} onAction={onAddServer} />
       <div className="empty-state">
         <div className="empty-state__visual"><Server size={31} strokeWidth={1.6} /><span /><span /></div>
-        <h2>{t("setupStepServer")}</h2>
-        <p>{t("setupHeroBody")}</p>
+        <h2>{t("dashboardStartServerTitle")}</h2>
+        <p>{t("dashboardStartServerBody")}</p>
         <button type="button" className="text-button" onClick={onAddServer}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
       </div>
     </section>

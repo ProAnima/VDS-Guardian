@@ -61,7 +61,7 @@ fn pinned_host(profile: &VdsProfile) -> Result<PinnedHost, RemoteBrowserPortErro
 
 pub(crate) fn browse_command(directory: &RemotePath) -> String {
     format!(
-        "LC_ALL=C find {} -mindepth 1 -maxdepth 1 -printf '%y %s %f\\0'",
+        "LC_ALL=C find {} -mindepth 1 -maxdepth 1 -printf '%y %s %TY-%Tm-%TdT%TH:%TM:%.2TSZ %f\\0'",
         shell_quote(directory.as_str())
     )
 }
@@ -103,6 +103,9 @@ fn listing_digest(entries: &[RemoteBrowseEntry]) -> String {
         hasher.update(entry.absolute_path.as_str().as_bytes());
         hasher.update([0, entry.kind as u8, u8::from(entry.selectable)]);
         hasher.update(entry.size.unwrap_or_default().to_be_bytes());
+        if let Some(modified_at) = &entry.modified_at {
+            hasher.update(modified_at.as_str().as_bytes());
+        }
     }
     hasher
         .finalize()
@@ -151,13 +154,19 @@ fn parse_record(
     parent: &RemotePath,
 ) -> Result<RemoteBrowseEntry, RemoteBrowserPortError> {
     let rendered = std::str::from_utf8(record).map_err(|_| RemoteBrowserPortError::Rejected)?;
-    let mut fields = rendered.splitn(3, ' ');
+    let mut fields = rendered.splitn(4, ' ');
     let kind = fields.next().ok_or(RemoteBrowserPortError::Rejected)?;
     let size = fields
         .next()
         .ok_or(RemoteBrowserPortError::Rejected)?
         .parse::<u64>()
         .map_err(|_| RemoteBrowserPortError::Rejected)?;
+    let modified_at = fields
+        .next()
+        .ok_or(RemoteBrowserPortError::Rejected)
+        .and_then(|value| {
+            guardian_core::Timestamp::parse(value).map_err(|_| RemoteBrowserPortError::Rejected)
+        })?;
     let name = fields.next().ok_or(RemoteBrowserPortError::Rejected)?;
     let absolute_path = parent
         .child(name)
@@ -168,7 +177,7 @@ fn parse_record(
         absolute_path,
         kind,
         size: (kind == RemoteEntryKind::RegularFile).then_some(size),
-        modified_at: None,
+        modified_at: Some(modified_at),
         selectable,
         unavailable_reason,
     })
@@ -217,7 +226,8 @@ mod tests {
             cursor: None,
             limit: 2,
         };
-        let page = parse_listing(b"l 7 current\0f 42 z.txt\0d 0 app\0", &request)?;
+        let listing = b"l 7 2026-07-18T10:00:00Z current\0f 42 2026-07-18T10:01:00Z z.txt\0d 0 2026-07-18T09:59:00Z app\0";
+        let page = parse_listing(listing, &request)?;
         assert_eq!(page.entries[0].name, "app");
         assert_eq!(page.entries[1].kind, RemoteEntryKind::Symlink);
         assert!(!page.entries[1].selectable);
@@ -227,7 +237,7 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("truncated page cursor is missing"))?;
         assert!(cursor.starts_with("v1_2_"));
         let next = parse_listing(
-            b"l 7 current\0f 42 z.txt\0d 0 app\0",
+            listing,
             &RemoteBrowseRequest {
                 cursor: Some(cursor),
                 ..request.clone()
@@ -245,12 +255,21 @@ mod tests {
             cursor: None,
             limit: 1,
         };
-        let first = parse_listing(b"d 0 app\0f 42 z.txt\0", &request)?;
+        let first = parse_listing(
+            b"d 0 2026-07-18T10:00:00Z app\0f 42 2026-07-18T10:00:00Z z.txt\0",
+            &request,
+        )?;
         let stale = RemoteBrowseRequest {
             cursor: first.next_cursor,
             ..request
         };
-        assert!(parse_listing(b"d 0 app\0f 43 z.txt\0", &stale).is_err());
+        assert!(
+            parse_listing(
+                b"d 0 2026-07-18T10:00:00Z app\0f 43 2026-07-18T10:00:00Z z.txt\0",
+                &stale,
+            )
+            .is_err()
+        );
         Ok(())
     }
 
@@ -261,9 +280,10 @@ mod tests {
             cursor: None,
             limit: 20,
         };
-        assert!(parse_listing(b"f 1 ../etc\0", &request).is_err());
-        assert!(parse_listing(b"f nope file\0", &request).is_err());
-        assert!(parse_listing(b"f 1 unterminated", &request).is_err());
+        assert!(parse_listing(b"f 1 2026-07-18T10:00:00Z ../etc\0", &request).is_err());
+        assert!(parse_listing(b"f nope 2026-07-18T10:00:00Z file\0", &request).is_err());
+        assert!(parse_listing(b"f 1 invalid file\0", &request).is_err());
+        assert!(parse_listing(b"f 1 2026-07-18T10:00:00Z unterminated", &request).is_err());
         Ok(())
     }
 }

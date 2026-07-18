@@ -44,6 +44,7 @@
 .repository-panel__header > div > p:not(.eyebrow) { max-width: 670px; margin: 8px 0 0; color: var(--text-muted); font-size: 0.76rem; line-height: 1.65; }
 .ssh-profile-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 22px; }
 .ssh-profile-form label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 0.69rem; font-weight: 650; }
+.ssh-profile-form label > small { color: var(--text-muted); font-weight: 450; line-height: 1.45; }
 .ssh-profile-form input:not([type="checkbox"]) { width: 100%; min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); background: var(--surface); font: 0.73rem var(--font-mono); }
 .ssh-profile-form__wide, .ssh-profile-form__ack, .ssh-profile-form__actions { grid-column: 1 / -1; }
 .ssh-profile-form__ack { grid-template-columns: 16px 1fr !important; align-items: start; cursor: pointer; font-weight: 500 !important; line-height: 1.45; }
@@ -222,7 +223,7 @@
 .setup-status h2 { margin: 5px 0 0; font-size: 1rem; }
 .setup-status header > div > p:last-child { margin: 7px 0 0; color: var(--text-muted); font-size: 0.73rem; }
 .setup-status__loading { display: flex; align-items: center; gap: 8px; margin: 18px 0 0; color: var(--text-muted); font-size: 0.73rem; }
-.setup-status__items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.setup-status__items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .setup-status__items > div { display: flex; gap: 8px; min-width: 0; padding: 11px; border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border)); border-radius: var(--radius-sm); color: var(--amber); background: var(--amber-soft); }
 .setup-status__items > div[data-ready] { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--accent); background: var(--accent-soft); }
 .setup-status__items svg { flex: none; margin-top: 1px; }
@@ -233,6 +234,11 @@
 .setup-status__failures p { display: flex; align-items: flex-start; gap: 8px; margin: 0; }
 .setup-status__failures p + p { margin-top: 7px; }
 .setup-status__failures svg { flex: none; color: var(--danger); }
+.backup-settings { padding: 18px 20px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); }
+.backup-settings > summary { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 0.78rem; font-weight: 700; cursor: pointer; list-style: none; }
+.backup-settings > summary::-webkit-details-marker { display: none; }
+.backup-settings > p { margin: 9px 0 0; color: var(--text-muted); font-size: 0.71rem; }
+.backup-settings__content { display: grid; gap: 16px; margin-top: 18px; }
 .signing-confirm { margin-top: 22px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised); }
 .signing-confirm strong { font-size: 0.82rem; }
 .signing-confirm p { margin: 7px 0 0; color: var(--text-muted); font-size: 0.74rem; line-height: 1.6; }

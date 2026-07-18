@@ -73,8 +73,13 @@ inspection after decryption and before a restore destination is published.
   as hostile. Symlinks may be displayed but are never followed or selectable as
   an implicit target. Sockets, devices, and other special entries are not
   capturable through the explorer.
+- The pinned-SSH adapter requests only entry type, byte size, UTC modification
+  time, and basename from its fixed `find` invocation. All four fields are
+  parsed as untrusted bounded output; malformed timestamps fail the page rather
+  than being presented as trustworthy metadata.
 - Page cursors bind their offset to a digest of the sorted listing. A changed
-  listing rejects a stale cursor instead of silently mixing directory states.
+  listing, including changed size or modification time, rejects a stale cursor
+  instead of silently mixing directory states.
 - The adapter accepts a typed directory path, never an operator command or
   command fragment. Any fixed-command implementation requires adversarial
   quoting/output-parser tests before use; SFTP implementations require the same

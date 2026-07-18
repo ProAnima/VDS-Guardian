@@ -87,11 +87,11 @@ describe("setup resource refresh", () => {
       return candidate;
     });
     await act(async () => selection.click());
-    expect(button("captureReview").disabled).toBe(false);
+    expect(button("backupReview").disabled).toBe(false);
 
     await act(async () => container.querySelector("form")?.requestSubmit());
-    await vi.waitFor(() => expect(button("captureRun")).toBeDefined());
-    await act(async () => button("captureRun").click());
+    await vi.waitFor(() => expect(button("backupCreate")).toBeDefined());
+    await act(async () => button("backupCreate").click());
 
     await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
     expect(commands.runCaptureSelection).toHaveBeenCalledWith(expect.objectContaining({

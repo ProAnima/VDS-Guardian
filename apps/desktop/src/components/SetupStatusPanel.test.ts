@@ -8,9 +8,19 @@ describe("evaluateSetupReadiness", () => {
       identity: { state: "ready", identity: null },
       repositories: [{ repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: false }],
       profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" }],
-      plans: [{ planId: "plan", profileId: "server", repositoryId: "repo", roots: ["/srv/app"] }],
     }, createTranslator("ru"));
 
-    expect(items.find((item) => item.label === "Хранилище и recovery")).toMatchObject({ readiness: "attention", detail: "Recovery готово: 0/1." });
+    expect(items.find((item) => item.label === "Хранилище бэкапов")).toMatchObject({ readiness: "attention", detail: "Ключ восстановления готов: 0/1." });
+  });
+
+  it("does not require a saved plan before the visual backup flow", () => {
+    const items = evaluateSetupReadiness({
+      identity: { state: "ready", identity: null },
+      repositories: [{ repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: true }],
+      profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" }],
+    }, createTranslator("en"));
+
+    expect(items).toHaveLength(3);
+    expect(items.every((item) => item.readiness === "ready")).toBe(true);
   });
 });

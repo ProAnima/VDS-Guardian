@@ -19,7 +19,7 @@ interface CapturePlanPanelProps { onPlansChanged: () => void; resourcesRevision:
 export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: CapturePlanPanelProps) {
   const model = useCaptureSelection(onPlansChanged, resourcesRevision, t);
   return <section className="repository-panel" aria-labelledby="plan-title">
-    <header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("setupPlanEyebrow")}</p><h2 id="plan-title">{t("setupPlanTitle")}</h2><p>{t("browserBody")}</p></div></header>
+    <header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("backupHeroEyebrow")}</p><h2 id="plan-title">{t("backupChooseDataTitle")}</h2><p>{t("backupChooseDataBody")}</p></div></header>
     <SelectionForm model={model} t={t} />
     {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.run()} t={t} />}
     {model.running && <RunPlanControls model={model} t={t} />}
@@ -37,7 +37,7 @@ function SelectionForm({ model, t }: { model: CaptureSelectionModel; t: Translat
       <DockerMountPicker profileId={model.profileId} selectedItems={model.items} onToggleItem={model.toggleDockerItem} t={t} />
     </div><BackupSelectionSummary items={model.items} onClear={model.clearItems} onRemove={model.removeItem} t={t} /></div>
     <label className="capture-sqlite repository-form__actions"><span className="capture-sqlite__icon"><Database size={16} /></span><span><strong>{t("captureDatabasePath")}</strong><small>{t("captureDatabaseHint")}</small></span><input value={model.databasePath} onChange={(event) => model.changeDatabase(event.target.value)} placeholder="/srv/app/app.sqlite" /></label>
-    <div className="capture-primary-action repository-form__actions"><div><strong>{t("captureReadyTitle")}</strong><span>{model.items.length === 0 ? t("captureReadyEmpty") : t("captureReadyBody")}</span></div><button className="button button--primary" disabled={!model.profileId || !model.repositoryId || model.items.length === 0 || model.reviewing || model.running} type="submit">{model.reviewing ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.reviewing ? t("captureReviewing") : t("captureReview")}</button></div>
+    <div className="capture-primary-action repository-form__actions"><div><strong>{t("backupReadyTitle")}</strong><span>{model.items.length === 0 ? t("backupReadyEmpty") : t("backupReadyBody")}</span></div><button className="button button--primary" disabled={!model.profileId || !model.repositoryId || model.items.length === 0 || model.reviewing || model.running} type="submit">{model.reviewing ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.reviewing ? t("captureReviewing") : t("backupReview")}</button></div>
   </form>;
 }
 

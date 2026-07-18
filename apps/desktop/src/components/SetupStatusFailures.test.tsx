@@ -8,7 +8,6 @@ import { createTranslator } from "../shared/preferences";
 
 const commands = vi.hoisted(() => ({
   getSigningIdentityStatus: vi.fn(),
-  listCapturePlans: vi.fn(),
   listRepositories: vi.fn(),
   listSshProfiles: vi.fn(),
 }));
@@ -26,7 +25,6 @@ describe("SetupStatusPanel failures", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    commands.listCapturePlans.mockResolvedValue([]);
     commands.listRepositories.mockResolvedValue([]);
     commands.listSshProfiles.mockResolvedValue([]);
   });

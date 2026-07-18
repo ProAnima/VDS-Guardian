@@ -36,6 +36,9 @@ describe("Dashboard", () => {
 
     expect(container.textContent).toContain("securityBody");
     expect(container.textContent).not.toContain("lockedBody");
+    expect(container.textContent).toContain("dashboardStartTitle");
+    expect(container.textContent).toContain("dashboardStartServerBody");
+    expect(container.textContent).not.toContain("setupHeroBody");
     const setupActions = [...container.querySelectorAll("button")]
       .filter((button) => button.textContent?.includes("addServer"));
     expect(setupActions).toHaveLength(2);
