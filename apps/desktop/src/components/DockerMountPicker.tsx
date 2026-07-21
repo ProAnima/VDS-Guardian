@@ -35,7 +35,7 @@ export function DockerMountPicker({ profileId, selectedItems, onToggleItem, t }:
 function DockerHeader({ loading, loaded, onLoad, profileId, t }: {
   loading: boolean; loaded: boolean; onLoad: () => Promise<void>; profileId: string; t: Translate;
 }) {
-  return <header className="docker-picker__header"><div className="docker-picker__title"><span><Container size={18} /></span><div><strong id="docker-picker-title">{t("dockerTitle")}</strong><p>{t("dockerBody")}</p></div></div><button aria-label={loaded ? t("dockerRefresh") : t("dockerShow")} className={loaded ? "docker-picker__refresh" : "button button--secondary"} disabled={!profileId || loading} title={loaded ? t("dockerRefresh") : undefined} type="button" onClick={() => void onLoad()}>{loading ? <LoaderCircle className="spin" size={16} /> : loaded ? <RefreshCw size={15} /> : <Container size={16} />}{!loaded && (loading ? t("dockerLoading") : t("dockerShow"))}</button></header>;
+  return <header className="docker-picker__header"><div className="docker-picker__title"><span><Container size={18} /></span><strong id="docker-picker-title">{t("dockerTitle")}</strong></div><button aria-label={loaded ? t("dockerRefresh") : t("dockerShow")} className={loaded ? "docker-picker__refresh" : "button button--secondary"} disabled={!profileId || loading} title={loaded ? t("dockerRefresh") : undefined} type="button" onClick={() => void onLoad()}>{loading ? <LoaderCircle className="spin" size={16} /> : loaded ? <RefreshCw size={15} /> : <Container size={16} />}{!loaded && (loading ? t("dockerLoading") : t("dockerShow"))}</button></header>;
 }
 
 function DockerWelcome({ t }: { t: Translate }) {

@@ -7,10 +7,14 @@ import { RestorePanel } from "./RestorePanel";
 
 const commands = vi.hoisted(() => ({
   cancelJob: vi.fn(),
-  executeRestore: vi.fn(),
+  executeDeploy: vi.fn(),
+  inspectRestoreBackup: vi.fn(),
   listBackups: vi.fn(),
   listRepositories: vi.fn(),
-  previewRestore: vi.fn(),
+  listSshProfiles: vi.fn(),
+  previewDeploy: vi.fn(),
+  previewSourceReplacement: vi.fn(),
+  executeSourceReplacement: vi.fn(),
 }));
 
 vi.mock("../shared/commands", async (importOriginal) => ({
@@ -33,18 +37,27 @@ describe("restore cancellation", () => {
     commands.listBackups.mockResolvedValue([
       { backupId: "backup-1", sealedAt: "2026-07-17T00:00:00Z", verification: "verified" },
     ]);
-    commands.previewRestore.mockResolvedValue({
-      backupId: "backup-1",
-      destination: "D:/restore",
-      mode: "new_destination",
-      adds: ["D:/restore"],
-      replaces: [],
-      conflicts: [],
-      workloadLabels: ["filesystem"],
-      confirmation: "RESTORE backup-1 TO D:/restore",
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "profile-1", label: "Source", host: "vds.example", port: 22, user: "root" },
+    ]);
+    commands.inspectRestoreBackup.mockResolvedValue({
+      backupId: "backup-1", sourceProfileId: "profile-1", roots: ["/srv/app"],
+      dockerWorkloads: [], entries: [], totalEntries: 0, replacementAvailable: true,
     });
-    commands.executeRestore.mockReturnValue(new Promise(() => undefined));
+    commands.previewDeploy.mockResolvedValue({
+      backupId: "backup-1",
+      targetProfileId: "profile-1", targetProfileLabel: "Source", targetPath: "/srv/restored",
+      filesystemPayload: "payload/filesystem.tar.zst.enc",
+      confirmation: "DEPLOY backup-1 TO profile-1 AT /srv/restored",
+    });
+    commands.executeDeploy.mockReturnValue(new Promise(() => undefined));
     commands.cancelJob.mockResolvedValue(true);
+    commands.previewSourceReplacement.mockResolvedValue({
+      backupId: "backup-1", targetProfileId: "profile-1", root: "/srv/app",
+      containers: ["app"], replaces: ["/srv/app"], conflicts: ["container_image_changed:app"],
+      safetyBackupRequired: true, serviceStopRequired: true,
+      confirmation: "REPLACE backup-1 ON profile-1 AT /srv/app STATE abc123", rollbackPath: "pending",
+    });
   });
 
   afterEach(async () => {
@@ -57,43 +70,49 @@ describe("restore cancellation", () => {
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
     await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
     await act(async () => change(
-      container.querySelector<HTMLInputElement>('input[placeholder="restoreDestinationHint"]'),
-      "D:/restore",
+      container.querySelector<HTMLInputElement>('input[placeholder="deployTargetPathHint"]'),
+      "/srv/restored",
     ));
     await act(async () => container.querySelector("form")?.requestSubmit());
     await vi.waitFor(() => expect(button("restoreExecute")).toBeDefined());
     await act(async () => change(
       container.querySelector<HTMLInputElement>('input[placeholder="restoreConfirmPlaceholder"]'),
-      "RESTORE backup-1 TO D:/restore",
+      "DEPLOY backup-1 TO profile-1 AT /srv/restored",
     ));
     await act(async () => button("restoreExecute").click());
     await vi.waitFor(() => expect(button("restoreCancelRunning")).toBeDefined());
-    const request = commands.executeRestore.mock.calls[0]?.[0] as { runId?: string };
+    const request = commands.executeDeploy.mock.calls[0]?.[0] as { runId?: string };
     expect(request.runId).toMatch(/^[0-9a-f-]{36}$/);
     await act(async () => button("restoreCancelRunning").click());
     expect(commands.cancelJob).toHaveBeenCalledWith(request.runId);
   });
 
-  it("shows an existing destination as a conflict and blocks execution", async () => {
-    commands.previewRestore.mockResolvedValueOnce({
-      backupId: "backup-1", destination: "D:/restore", mode: "new_destination",
-      adds: ["D:/restore"], replaces: [], conflicts: ["D:/restore"],
-      workloadLabels: ["filesystem"], confirmation: "RESTORE backup-1 TO D:/restore",
-    });
+  it("rejects an existing remote destination before confirmation", async () => {
+    commands.previewDeploy.mockRejectedValueOnce(new Error("target exists"));
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
     await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
     await act(async () => change(
-      container.querySelector<HTMLInputElement>('input[placeholder="restoreDestinationHint"]'),
-      "D:/restore",
+      container.querySelector<HTMLInputElement>('input[placeholder="deployTargetPathHint"]'),
+      "/srv/restored",
     ));
     await act(async () => container.querySelector("form")?.requestSubmit());
-    await vi.waitFor(() => expect(container.textContent).toContain("restoreImpactConflicts"));
+    await vi.waitFor(() => expect(container.textContent).toContain("restoreErrorFallback"));
+    expect(container.textContent).not.toContain("restoreExecute");
+    expect(commands.executeDeploy).not.toHaveBeenCalled();
+  });
+
+  it("shows live replacement conflicts and keeps execution disabled", async () => {
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.textContent).toContain("restoreImpactReplaces"));
+    await act(async () => button("restoreImpactReplaces").click());
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(container.textContent).toContain("restoreFailureChanged: app"));
     await act(async () => change(
       container.querySelector<HTMLInputElement>('input[placeholder="restoreConfirmPlaceholder"]'),
-      "RESTORE backup-1 TO D:/restore",
+      "REPLACE backup-1 ON profile-1 AT /srv/app STATE abc123",
     ));
     expect(button("restoreExecute").disabled).toBe(true);
-    expect(commands.executeRestore).not.toHaveBeenCalled();
+    expect(commands.executeSourceReplacement).not.toHaveBeenCalled();
   });
 
   function button(label: string): HTMLButtonElement {

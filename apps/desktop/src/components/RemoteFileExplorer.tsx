@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronRight, CircleAlert, File, Folder, FolderCheck, HardDrive,
+  ArrowUp, ChevronRight, CircleAlert, File, Folder, FolderCheck, HardDrive,
   Link, LoaderCircle, RefreshCw, Server,
 } from "lucide-react";
 import type { Translate } from "../i18n";
@@ -32,14 +32,15 @@ function ExplorerHeader({ model, selectedPaths, onTogglePath, t }: {
   model: RemoteBrowserModel; selectedPaths: string[]; onTogglePath: (path: string) => void; t: Translate;
 }) {
   const currentSelected = selectedPaths.includes(model.directory);
+  const coveredBy = coveringAncestor(selectedPaths, model.directory);
   return (
     <header className="remote-browser__header">
       <div className="remote-browser__title">
         <span><HardDrive size={18} /></span>
-        <div><strong id="remote-browser-title">{t("browserTitle")}</strong><p>{t("browserBody")}</p></div>
+        <strong id="remote-browser-title">{t("browserTitle")}</strong>
       </div>
-      {model.page && <button className="button button--secondary remote-browser__select-current" type="button" onClick={() => onTogglePath(model.directory)}>
-        <FolderCheck size={16} />{currentSelected ? t("browserDeselectFolder") : t("browserSelectFolder")}
+      {model.page && <button className="button button--secondary remote-browser__select-current" disabled={Boolean(coveredBy)} title={coveredBy ? `${t("browserCoveredReason")} ${coveredBy}` : undefined} type="button" onClick={() => onTogglePath(model.directory)}>
+        <FolderCheck size={16} />{coveredBy ? t("browserFolderCovered") : currentSelected ? t("browserDeselectFolder") : t("browserSelectFolder")}
       </button>}
     </header>
   );
@@ -79,12 +80,13 @@ function ExplorerTable({ model, selectedPaths, onTogglePath, t }: {
     </div>
     {model.page?.entries.length === 0 && <div className="remote-browser__empty"><Folder size={24} /><span>{t("browserEmpty")}</span></div>}
     {model.page?.truncated && <button className="button button--secondary remote-browser__more" disabled={model.loading} type="button" onClick={() => void model.more()}>{model.loading && <LoaderCircle className="spin" size={16} />}{t("browserMore")}</button>}
-    {model.loading && <div className="remote-browser__loading"><LoaderCircle className="spin" size={18} />{t("browserLoading")}</div>}
+    {model.loading && !model.page && <div className="remote-browser__loading"><LoaderCircle className="spin" size={18} />{t("browserLoading")}</div>}
   </div>;
 }
 
 function BrowserToolbar({ model, t }: { model: RemoteBrowserModel; t: Translate }) {
   return <div className="remote-browser__toolbar">
+    <button aria-label={t("browserUp")} disabled={model.loading || model.directory === "/"} title={t("browserUp")} type="button" onClick={() => void model.open(parentDirectory(model.directory))}><ArrowUp size={15} /></button>
     <nav aria-label={t("browserLocation")}><Breadcrumbs directory={model.directory} onOpen={model.open} /></nav>
     <button aria-label={t("browserRefresh")} disabled={model.loading} title={t("browserRefresh")} type="button" onClick={() => void model.open(model.directory)}><RefreshCw className={model.loading ? "spin" : undefined} size={15} /></button>
   </div>;
@@ -102,16 +104,18 @@ function BrowserEntries({ entries, selectedPaths, onOpen, onTogglePath, t }: {
   entries: RemoteBrowseEntry[]; selectedPaths: string[]; onOpen: (path: string) => Promise<void>;
   onTogglePath: (path: string) => void; t: Translate;
 }) {
-  return <div className="remote-browser__entries" role="rowgroup">{entries.map((entry) => <BrowserEntry entry={entry} key={entry.absolutePath} onOpen={onOpen} onTogglePath={onTogglePath} selected={selectedPaths.includes(entry.absolutePath)} t={t} />)}</div>;
+  return <div className="remote-browser__entries" role="rowgroup">{entries.map((entry) => <BrowserEntry coveredBy={coveringAncestor(selectedPaths, entry.absolutePath)} entry={entry} key={entry.absolutePath} onOpen={onOpen} onTogglePath={onTogglePath} selected={selectedPaths.includes(entry.absolutePath)} t={t} />)}</div>;
 }
 
-function BrowserEntry({ entry, selected, onOpen, onTogglePath, t }: {
-  entry: RemoteBrowseEntry; selected: boolean; onOpen: (path: string) => Promise<void>;
+function BrowserEntry({ coveredBy, entry, selected, onOpen, onTogglePath, t }: {
+  coveredBy?: string; entry: RemoteBrowseEntry; selected: boolean; onOpen: (path: string) => Promise<void>;
   onTogglePath: (path: string) => void; t: Translate;
 }) {
-  const reason = unavailableLabel(entry, t);
-  return <div className="remote-browser__entry" data-disabled={!entry.selectable || undefined} data-selected={selected || undefined} role="row" title={reason}>
-    <input aria-label={`${t("browserSelect")} ${entry.name}`} checked={selected} disabled={!entry.selectable} type="checkbox" onChange={() => onTogglePath(entry.absolutePath)} />
+  const coveredReason = coveredBy ? `${t("browserCoveredReason")} ${coveredBy}` : undefined;
+  const reason = coveredReason ?? unavailableLabel(entry, t);
+  const unavailable = !entry.selectable || Boolean(coveredBy);
+  return <div className="remote-browser__entry" data-covered={coveredBy || undefined} data-disabled={unavailable || undefined} data-selected={selected || undefined} role="row" title={reason}>
+    <input aria-label={`${t("browserSelect")} ${entry.name}`} checked={selected || Boolean(coveredBy)} disabled={unavailable} type="checkbox" onChange={() => onTogglePath(entry.absolutePath)} />
     <div className="remote-browser__name" role="cell"><EntryIcon kind={entry.kind} />{entry.kind === "directory" ? <button type="button" onClick={() => void onOpen(entry.absolutePath)}>{entry.name}</button> : <span>{entry.name}</span>}{reason && <small>{reason}</small>}</div>
     <time role="cell">{formatModified(entry.modifiedAt, t)}</time><span role="cell">{entry.kind === "regular_file" ? formatSize(entry.size ?? 0) : "—"}</span>
   </div>;
@@ -128,20 +132,44 @@ function useRemoteBrowser(profileId: string, t: Translate) {
   const [page, setPage] = useState<RemoteBrowsePage>();
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<string>();
-  useEffect(() => { setDirectory("/"); setPage(undefined); setFailure(undefined); }, [profileId]);
-  const open = async (path: string) => {
+  const requestId = useRef(0);
+  const open = useCallback(async (path: string) => {
     if (!profileId || !hasTauriRuntime()) return;
+    const request = ++requestId.current;
     setLoading(true); setFailure(undefined);
-    try { const next = await browseRemoteDirectory(profileId, path); setDirectory(path); setPage(next); }
-    catch (error) { setFailure(safeErrorText(error, t("browserFailure"))); } finally { setLoading(false); }
-  };
+    try {
+      const next = await readDirectory(profileId, path);
+      if (request === requestId.current) { setDirectory(next.directory); setPage(next); }
+    } catch (error) {
+      if (request === requestId.current) setFailure(safeErrorText(error, t("browserFailure")));
+    } finally { if (request === requestId.current) setLoading(false); }
+  }, [profileId, t]);
+  useEffect(() => {
+    requestId.current += 1; setDirectory("/"); setPage(undefined); setFailure(undefined);
+    if (profileId && hasTauriRuntime()) void open("/");
+  }, [open, profileId]);
   const more = async () => {
     if (!page?.nextCursor || loading) return;
+    const request = ++requestId.current;
     setLoading(true); setFailure(undefined);
-    try { const next = await browseRemoteDirectory(profileId, directory, page.nextCursor); setPage({ ...next, entries: [...page.entries, ...next.entries] }); }
-    catch (error) { setFailure(safeErrorText(error, t("browserFailure"))); } finally { setLoading(false); }
+    try { const next = await browseRemoteDirectory(profileId, directory, page.nextCursor); if (request === requestId.current) setPage({ ...next, entries: [...page.entries, ...next.entries] }); }
+    catch (error) { if (request === requestId.current) setFailure(safeErrorText(error, t("browserFailure"))); }
+    finally { if (request === requestId.current) setLoading(false); }
   };
   return { directory, page, loading, failure, open, more };
+}
+
+const pendingDirectories = new Map<string, Promise<RemoteBrowsePage>>();
+
+function readDirectory(profileId: string, path: string): Promise<RemoteBrowsePage> {
+  const key = `${profileId}\n${path}`;
+  const pending = pendingDirectories.get(key);
+  if (pending) return pending;
+  const request = browseRemoteDirectory(profileId, path);
+  pendingDirectories.set(key, request);
+  const clear = () => { if (pendingDirectories.get(key) === request) pendingDirectories.delete(key); };
+  void request.then(clear, clear);
+  return request;
 }
 
 type RemoteBrowserModel = ReturnType<typeof useRemoteBrowser>;
@@ -163,4 +191,13 @@ function formatSize(bytes: number): string {
   const units = ["KB", "MB", "GB", "TB"]; let value = bytes / 1024; let unit = units[0];
   for (let index = 1; value >= 1024 && index < units.length; index += 1) { value /= 1024; unit = units[index]; }
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+}
+
+function coveringAncestor(paths: string[], path: string): string | undefined {
+  return paths.find((selected) => selected !== path && (selected === "/" || path.startsWith(`${selected}/`)));
+}
+
+function parentDirectory(path: string): string {
+  const parts = path.split("/").filter(Boolean); parts.pop();
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
 }

@@ -11,7 +11,7 @@ interface LoadFailure { label: string; detail: string; }
 export function SetupStatusPanel({ resourcesRevision, t }: { resourcesRevision: number; t: Translate }) {
   const model = useSetupStatus(resourcesRevision, t);
   return <section className="setup-status" aria-labelledby="setup-status-title">
-    <header><div><p className="eyebrow">{t("backupChecklistEyebrow")}</p><h2 id="setup-status-title">{t("backupChecklistTitle")}</h2><p>{t("backupChecklistBody")}</p></div><button className="text-button" disabled={model.loading} onClick={model.reload} type="button"><RefreshCw size={15} />{t("readinessRefresh")}</button></header>
+    <header><h2 id="setup-status-title">{t("backupChecklistTitle")}</h2><button aria-label={t("readinessRefresh")} className="text-button" disabled={model.loading} title={t("readinessRefresh")} onClick={model.reload} type="button"><RefreshCw className={model.loading ? "spin" : undefined} size={15} /></button></header>
     {model.loading && !model.resources && <p className="setup-status__loading"><LoaderCircle className="spin" size={16} />{t("readinessLoading")}</p>}
     {model.resources && <div className="setup-status__items">{evaluateSetupReadiness(model.resources, t).map((item) => <StatusItem key={item.label} item={item} />)}</div>}
     {model.failures.length > 0 && <div className="setup-status__failures" role="alert">{model.failures.map((failure) => <p key={failure.label}><CircleAlert size={16} />{t("readinessFailurePrefix")} «{failure.label}»: {failure.detail}</p>)}</div>}

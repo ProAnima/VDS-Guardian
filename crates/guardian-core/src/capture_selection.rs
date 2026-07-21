@@ -1,4 +1,6 @@
-use crate::{DockerContainerState, DockerInventory, ProfileId, RemotePath, RepositoryId};
+use crate::{
+    DockerContainerState, DockerInventory, ProfileId, RemotePath, RepositoryId, SourceLayout,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -47,6 +49,7 @@ pub struct CaptureSelectionPreview {
     pub warnings: Vec<CaptureSelectionWarning>,
     pub sqlite_path: Option<RemotePath>,
     pub confirmation: String,
+    pub source_layout: SourceLayout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +92,10 @@ pub fn preview_capture_selection(
         &mut warnings,
     );
     let confirmation = confirmation(selection, &normalized_roots)?;
+    let selected_container_ids = selected_container_ids(selection, inventory);
+    let source_layout =
+        SourceLayout::from_inventory(normalized_roots.clone(), &selected_container_ids, inventory)
+            .map_err(|_| CaptureSelectionError::DockerSelectionChanged)?;
     Ok(CaptureSelectionPreview {
         profile_id: selection.profile_id.clone(),
         repository_id: selection.repository_id.clone(),
@@ -97,7 +104,33 @@ pub fn preview_capture_selection(
         warnings,
         sqlite_path: selection.sqlite_path.clone(),
         confirmation,
+        source_layout,
     })
+}
+
+fn selected_container_ids(
+    selection: &BackupSelection,
+    inventory: Option<&DockerInventory>,
+) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for item in &selection.items {
+        match item {
+            BackupSelectionItem::DockerMount { container_id, .. } => {
+                ids.insert(container_id.clone());
+            }
+            BackupSelectionItem::DockerGroup { group_id, .. } => {
+                for container in inventory
+                    .into_iter()
+                    .flat_map(|value| &value.containers)
+                    .filter(|container| container.compose_project.as_deref() == Some(group_id))
+                {
+                    ids.insert(container.id.clone());
+                }
+            }
+            BackupSelectionItem::RemotePath { .. } => {}
+        }
+    }
+    ids
 }
 
 fn validate_selection(selection: &BackupSelection) -> Result<(), CaptureSelectionError> {

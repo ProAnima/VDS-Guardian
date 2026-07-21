@@ -4,11 +4,12 @@ import { join } from "node:path";
 import { getDirection, localeIds, messages, resolveLocale } from ".";
 
 describe("localization registry", () => {
-  it("ships complete messages for ten locales", () => {
+  it("ships ten complete locales without fallback gaps", () => {
     expect(localeIds).toHaveLength(10);
     const englishKeys = Object.keys(messages.en).sort();
     for (const locale of localeIds) {
-      expect(englishKeys.every((key) => messages[locale][key as keyof typeof messages.en] ?? messages.en[key as keyof typeof messages.en])).toBe(true);
+      expect(Object.keys(messages[locale]).sort(), locale).toEqual(englishKeys);
+      expect(Object.values(messages[locale]).every((value) => value.trim().length > 0), locale).toBe(true);
     }
   });
 
@@ -22,7 +23,18 @@ describe("localization registry", () => {
     }
   });
 
+  it("does not leak Russian or long English fallback copy into other locales", () => {
+    for (const locale of localeIds.filter((id) => id !== "en" && id !== "ru")) {
+      const localized = messages[locale];
+      expect(Object.values(localized).join(" "), locale).not.toMatch(/[А-Яа-яЁё]/u);
+      for (const key of Object.keys(messages.en) as Array<keyof typeof messages.en>) {
+        if (messages.en[key].length > 20) expect(localized[key], `${locale}.${key}`).not.toBe(messages.en[key]);
+      }
+    }
+  });
+
   it("resolves regional browser locales and RTL direction", () => {
+    expect(resolveLocale("ru-RU")).toBe("ru");
     expect(resolveLocale("pt-PT")).toBe("pt-BR");
     expect(resolveLocale("zh-TW")).toBe("zh-CN");
     expect(resolveLocale("unknown")).toBe("en");

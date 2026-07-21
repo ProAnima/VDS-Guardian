@@ -22,8 +22,8 @@ use tauri::Manager;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunCapturePlanRequest {
-    plan_id: String,
-    run_id: String,
+    pub(crate) plan_id: String,
+    pub(crate) run_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,7 +37,7 @@ pub struct RunCaptureSelectionRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureJobSummary {
-    pub backup_id: String,
+    pub(crate) backup_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,7 +108,7 @@ pub async fn run_selection(
     .map_err(|_| CaptureJobFailure::internal())?
 }
 
-fn run_blocking(
+pub(crate) fn run_blocking(
     root: PathBuf,
     request: RunCapturePlanRequest,
     run_id: RunId,
@@ -137,7 +137,7 @@ fn run_blocking(
     let backup_id =
         BackupId::parse(random_id("backup")).map_err(|_| CaptureJobFailure::internal())?;
     let created_at = now_timestamp()?;
-    let manifest = Manifest::new(
+    let mut manifest = Manifest::new(
         backup_id.clone(),
         run_id.clone(),
         created_at.clone(),
@@ -158,6 +158,7 @@ fn run_blocking(
             sha256: plan.sha256,
         },
     );
+    manifest.source_layout = plan.source_layout;
     let database_path = plan.plan.database_path;
     let request = FilesystemBackupRequest {
         capture: FilesystemCaptureRequest {

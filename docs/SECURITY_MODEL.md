@@ -271,6 +271,14 @@ application configuration. If registration fails after repository initialization
 the repository remains isolated on disk but is not treated as a configured
 backup target; cleanup/discovery is a future recovery workflow.
 
+Desktop path rebinding accepts only an existing absolute, non-symlink directory
+whose regular, non-symlink `repository.json` identifies the same repository; it
+does not create or move backup data. Removing a repository requires an explicit
+confirmation, atomically removes only the local registration, leaves the
+repository and sealed backups untouched, and fails closed while a saved capture
+plan references that repository ID. Adversarial tests cover mismatched IDs,
+missing confirmation, plan references, and preservation of on-disk metadata.
+
 ### Repository isolation
 
 - Each run writes to `<repository>/staging/<run-id>` on the same filesystem as
@@ -444,12 +452,19 @@ clears that acknowledgement.
 - The restore planner rejects unsealed manifests and relative targets, and
   requires an exact confirmation phrase before extraction.
 - The shared restore impact preview reports new writes, replacements, and
-  blocking conflicts. Release 0.1 always reports an empty replacement set;
-  an existing destination is a visible conflict that exact confirmation cannot
-  override.
+  blocking conflicts. Managed source replacement follows ADR 0016 and is
+  unavailable without signed source-layout metadata.
 - Verify backup signature/checksums immediately before mutation.
 - Re-confirm server identity and show all deletions/service impacts.
-- Create a safety point before destructive in-place restore.
+- Create and seal a fresh safety backup before destructive source replacement.
+- Stage replacement data on the target filesystem, stop only previewed active
+  workloads, preserve rollback paths, and reverse the cutover on failure.
+- Bind replacement confirmation to a fresh live-state digest and repeat the
+  root/Docker preflight after the mandatory safety backup. A changed container,
+  image, Compose mapping, mount, or source-root availability fails closed.
+- Cancellation cannot interrupt the short rename transaction after it starts;
+  a remote signal trap and bounded service-readiness loop complete or reverse
+  it, with `rolled_back` and rollback-failure outcomes kept distinct in audit.
 - Database restore targets a new database/container first where practical.
 - Hooks captured from the server are data, never automatically executable.
 - A restore with both filesystem and database payloads stages both under one

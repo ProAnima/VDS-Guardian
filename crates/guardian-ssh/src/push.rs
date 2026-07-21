@@ -24,7 +24,70 @@ pub struct StagingTarget<'a> {
     pub run_id: &'a RunId,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ReplacementTarget<'a> {
+    pub source_root: &'a str,
+    pub run_id: &'a RunId,
+    pub containers: &'a [String],
+}
+
 impl SystemOpenSsh {
+    pub fn push_replacement_staging_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        target: ReplacementTarget<'_>,
+        source: impl Read + Send + 'static,
+        expected_bytes: u64,
+    ) -> Result<PushResult, SshError> {
+        self.push_to(
+            host,
+            user,
+            identity_file,
+            replacement_staging_command(target),
+            Box::new(source),
+            expected_bytes,
+        )
+    }
+
+    pub fn commit_replacement_to(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        target: ReplacementTarget<'_>,
+    ) -> Result<(), SshError> {
+        let known_hosts = self.known_hosts_file(host)?;
+        let child = self
+            .new_command()
+            .args(self.commit_replacement_arguments(
+                host,
+                user,
+                identity_file,
+                known_hosts.as_ref(),
+                target,
+            ))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| SshError::LaunchFailed)?;
+        // Once the remote cutover starts, cancelling the local job must not
+        // kill observation halfway through a rename. The short remote
+        // transaction runs to success or its own rollback result.
+        let status =
+            process::wait_for_exit(child, self.total_timeout, &crate::CancellationHandle::new())
+                .map_err(map_wait_error)?;
+        if status.success() {
+            return Ok(());
+        }
+        match status.code() {
+            Some(42) => Err(SshError::ReplacementRolledBack),
+            Some(43) => Err(SshError::ReplacementRollbackFailed),
+            _ => Err(SshError::CaptureFailed),
+        }
+    }
     /// Pushes a decrypted, still-compressed tar.zst stream onto a remote
     /// target directory that must not already exist. The remote command
     /// extracts into a freshly created, uniquely named sibling temp
@@ -168,6 +231,33 @@ impl SystemOpenSsh {
         Ok(status.success())
     }
 
+    pub fn probe_replacement_ready(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        source_root: &str,
+    ) -> Result<bool, SshError> {
+        let known_hosts = self.known_hosts_file(host)?;
+        let child = self
+            .new_command()
+            .args(self.replacement_ready_probe_arguments(
+                host,
+                user,
+                identity_file,
+                known_hosts.as_ref(),
+                source_root,
+            ))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| SshError::LaunchFailed)?;
+        let status = process::wait_for_exit(child, self.total_timeout, &self.cancellation)
+            .map_err(map_wait_error)?;
+        Ok(status.success())
+    }
+
     #[must_use]
     pub fn target_absence_probe_arguments(
         &self,
@@ -183,6 +273,60 @@ impl SystemOpenSsh {
             identity_file,
             known_hosts,
             target_absence_probe_command(target_path).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn replacement_staging_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        target: ReplacementTarget<'_>,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            replacement_staging_command(target).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn replacement_ready_probe_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        source_root: &str,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            replacement_ready_probe_command(source_root).into(),
+        )
+    }
+
+    #[must_use]
+    pub fn commit_replacement_arguments(
+        &self,
+        host: &PinnedHost,
+        user: &SshUser,
+        identity_file: &Path,
+        known_hosts: &Path,
+        target: ReplacementTarget<'_>,
+    ) -> Vec<OsString> {
+        self.arguments_for_command(
+            host,
+            user,
+            identity_file,
+            known_hosts,
+            commit_replacement_command(target).into(),
         )
     }
 
@@ -334,6 +478,77 @@ fn push_finish_error(result: Result<(), stream::PushCopyError>) -> SshError {
 
 fn target_absence_probe_command(target_path: &str) -> String {
     format!("[ ! -e {} ]", shell_quote(target_path))
+}
+
+fn replacement_assignments(target: ReplacementTarget<'_>) -> String {
+    format!(
+        "root={}; parent=$(dirname -- \"$root\"); staging=\"$parent/.guardian-replace-staging.{}\"; rollback=\"$parent/.guardian-rollback.{}\"",
+        shell_quote(target.source_root),
+        target.run_id.as_str(),
+        target.run_id.as_str(),
+    )
+}
+
+fn replacement_staging_command(target: ReplacementTarget<'_>) -> String {
+    let assignments = replacement_assignments(target);
+    format!(
+        "{assignments}; [ -e \"$root\" ] || exit 1; [ ! -e \"$staging\" ] || exit 1; [ ! -e \"$rollback\" ] || exit 1; mkdir -- \"$staging\" || exit 1; chmod 755 -- \"$staging\" || exit 1; tar --extract --file=- --zstd --no-same-owner --no-same-permissions --one-file-system -C \"$staging\" --; status=$?; source=\"$staging/${{root#/}}\"; [ \"$status\" -eq 0 ] && [ -e \"$source\" ] || status=1; [ \"$status\" -eq 0 ] || rm -rf -- \"$staging\"; exit \"$status\""
+    )
+}
+
+fn replacement_ready_probe_command(source_root: &str) -> String {
+    format!(
+        "root={}; parent=$(dirname -- \"$root\"); [ -d \"$root\" ] && [ -w \"$parent\" ]",
+        shell_quote(source_root)
+    )
+}
+
+fn commit_replacement_command(target: ReplacementTarget<'_>) -> String {
+    let assignments = replacement_assignments(target);
+    let containers = target
+        .containers
+        .iter()
+        .map(|name| shell_quote(name))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let stop = if containers.is_empty() {
+        ":".to_owned()
+    } else {
+        format!("docker stop -- {containers} >/dev/null")
+    };
+    let start = if containers.is_empty() {
+        ":".to_owned()
+    } else {
+        format!("docker start -- {containers} >/dev/null")
+    };
+    let health = if containers.is_empty() {
+        ":".to_owned()
+    } else {
+        target
+            .containers
+            .iter()
+            .map(|name| {
+                format!(
+                    "[ \"$(docker inspect -f '{{{{.State.Running}}}}' -- {})\" = true ]",
+                    shell_quote(name)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" && ")
+    };
+    let wait_healthy = if containers.is_empty() {
+        ":".to_owned()
+    } else {
+        format!(
+            "healthy=0; attempts=0; while [ \"$attempts\" -lt 12 ]; do if {health}; then healthy=1; break; fi; attempts=$((attempts + 1)); sleep 5; done; [ \"$healthy\" -eq 1 ]"
+        )
+    };
+    let rollback = format!(
+        "rollback_cutover() {{ {stop} >/dev/null 2>&1 || true; if [ -e \"$root\" ] && [ -e \"$rollback\" ]; then mv -- \"$root\" \"$failed\" || return 1; mv -- \"$rollback\" \"$root\" || return 1; fi; {start} >/dev/null 2>&1 || true; }}"
+    );
+    format!(
+        "{assignments}; source=\"$staging/${{root#/}}\"; failed=\"$staging/.failed\"; {rollback}; trap 'rollback_cutover' HUP INT TERM; [ -e \"$root\" ] || exit 1; [ -e \"$source\" ] || exit 1; [ ! -e \"$rollback\" ] || exit 1; {stop} || exit 1; mv -- \"$root\" \"$rollback\" || {{ {start}; exit 1; }}; mv -- \"$source\" \"$root\" || {{ mv -- \"$rollback\" \"$root\"; {start}; exit 1; }}; if ! {start} || ! {wait_healthy}; then if rollback_cutover; then exit 42; else exit 43; fi; fi; trap - HUP INT TERM; rm -rf -- \"$staging\"; exit 0"
+    )
 }
 
 /// Extracts a tar.zst stream (read from stdin) into `<target_path>`, which

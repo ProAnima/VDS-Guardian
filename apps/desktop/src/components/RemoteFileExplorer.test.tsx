@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +20,6 @@ describe("remote file explorer", () => {
     commands.browseRemoteDirectory.mockImplementation(async (_profile: string, path: string) => path === "/" ? rootPage : srvPage);
     const toggle = vi.fn();
     await act(async () => root.render(<RemoteFileExplorer profileId="server-1" selectedPaths={[]} onTogglePath={toggle} t={(key) => key} />));
-    await act(async () => button("browserOpen").click());
     await vi.waitFor(() => expect(button("srv")).toBeDefined());
     await act(async () => button("srv").click());
     await vi.waitFor(() => expect(container.textContent).toContain("app.sqlite"));
@@ -36,12 +36,43 @@ describe("remote file explorer", () => {
   it("keeps the current page visible when refresh fails and offers retry", async () => {
     commands.browseRemoteDirectory.mockResolvedValueOnce(rootPage).mockRejectedValueOnce(new Error("offline"));
     await act(async () => root.render(<RemoteFileExplorer profileId="server-1" selectedPaths={[]} onTogglePath={vi.fn()} t={(key) => key} />));
-    await act(async () => button("browserOpen").click());
     await vi.waitFor(() => expect(button("srv")).toBeDefined());
     const refresh = container.querySelector<HTMLButtonElement>('button[aria-label="browserRefresh"]');
     await act(async () => refresh?.click());
     await vi.waitFor(() => expect(container.textContent).toContain("browserFailureTitle"));
     expect(button("srv")).toBeDefined(); expect(button("browserRetry")).toBeDefined();
+  });
+
+  it("marks descendants as included when their parent folder is selected", async () => {
+    commands.browseRemoteDirectory.mockImplementation(async (_profile: string, path: string) => path === "/" ? rootPage : srvPage);
+    await act(async () => root.render(<RemoteFileExplorer profileId="server-1" selectedPaths={["/srv"]} onTogglePath={vi.fn()} t={(key) => key} />));
+    await vi.waitFor(() => expect(button("srv")).toBeDefined());
+    await act(async () => button("srv").click());
+    await vi.waitFor(() => expect(input("browserSelect app.sqlite").disabled).toBe(true));
+    expect(input("browserSelect app.sqlite").checked).toBe(true);
+    expect(container.textContent).toContain("browserCoveredReason /srv");
+  });
+
+  it("ignores a late directory result from the previously selected server", async () => {
+    let resolveOld: ((page: typeof rootPage) => void) | undefined;
+    commands.browseRemoteDirectory.mockImplementation((profile: string) => profile === "old"
+      ? new Promise((resolve) => { resolveOld = resolve; })
+      : Promise.resolve(newServerPage));
+    await act(async () => root.render(<RemoteFileExplorer profileId="old" selectedPaths={[]} onTogglePath={vi.fn()} t={(key) => key} />));
+    await act(async () => root.render(<RemoteFileExplorer profileId="new" selectedPaths={[]} onTogglePath={vi.fn()} t={(key) => key} />));
+    await vi.waitFor(() => expect(button("home")).toBeDefined());
+    await act(async () => resolveOld?.(rootPage));
+    expect(container.textContent).toContain("home");
+    expect(container.textContent).not.toContain("srv");
+  });
+
+  it("deduplicates the initial directory request in StrictMode", async () => {
+    let resolveRequest: ((page: typeof rootPage) => void) | undefined;
+    commands.browseRemoteDirectory.mockImplementation(() => new Promise((resolve) => { resolveRequest = resolve; }));
+    await act(async () => root.render(<StrictMode><RemoteFileExplorer profileId="strict-server" selectedPaths={[]} onTogglePath={vi.fn()} t={(key) => key} /></StrictMode>));
+    expect(commands.browseRemoteDirectory).toHaveBeenCalledTimes(1);
+    await act(async () => resolveRequest?.(rootPage));
+    await vi.waitFor(() => expect(button("srv")).toBeDefined());
   });
 
   function button(label: string): HTMLButtonElement {
@@ -55,6 +86,7 @@ describe("remote file explorer", () => {
 });
 
 const rootPage = { directory: "/", entries: [{ name: "srv", absolutePath: "/srv", kind: "directory", selectable: true }], truncated: false };
+const newServerPage = { directory: "/", entries: [{ name: "home", absolutePath: "/home", kind: "directory", selectable: true }], truncated: false };
 const srvPage = { directory: "/srv", entries: [
   { name: "app.sqlite", absolutePath: "/srv/app.sqlite", kind: "regular_file", size: 2048, modifiedAt: "2026-07-17T10:00:00Z", selectable: true },
   { name: "current", absolutePath: "/srv/current", kind: "symlink", selectable: false, unavailableReason: "symlink" },

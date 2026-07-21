@@ -31,6 +31,19 @@ fn preview_normalizes_nested_paths_and_warns_about_live_docker_data()
             .confirmation
             .starts_with("CREATE BACKUP FOR profile-main IN repository-main ")
     );
+    assert_eq!(
+        preview.source_layout.roots,
+        vec![RemotePath::parse("/srv")?]
+    );
+    assert_eq!(preview.source_layout.docker_workloads.len(), 1);
+    assert_eq!(
+        preview.source_layout.docker_workloads[0].container_name,
+        "demo-web"
+    );
+    assert_eq!(
+        preview.source_layout.docker_workloads[0].mounts[0].source_path,
+        RemotePath::parse("/srv/app/data")?
+    );
     Ok(())
 }
 

@@ -16,6 +16,10 @@ internals, or other architecture terms.
 The supported storage model is deliberately small:
 
 - backups live in one local or removable filesystem repository;
+- the desktop operator can rebind a registered repository to its existing
+  folder after a drive-letter or mount-path change; removing a registration
+  requires confirmation, never deletes backup files, and is blocked while a
+  saved backup plan still references it;
 - application metadata uses local JSON documents and SQLite where relational
   state is useful; no PostgreSQL/MySQL service is required by VDS Guardian;
 - backup and restore are operator-triggered from desktop or through the typed
@@ -83,10 +87,12 @@ has three separate collections:
 - `replaces`: existing data that an approved future in-place mode would replace;
 - `conflicts`: paths or workloads that prevent safe execution.
 
-Release 0.1 supports only a new destination, so `replaces` must be empty and
-the UI must say that nothing existing will be overwritten. In-place restore is
-not implied by the visual preview; it remains a later destructive workflow
-requiring a fresh safety backup, service plan, typed confirmation, and rollback.
+Restore is remote-first and offers a new destination or the managed source
+replacement defined by ADR 0016. Replacement is available only for a backup
+with signed source-layout metadata and requires a fresh safety backup, service
+plan, typed confirmation, same-filesystem staging, health checks, and rollback.
+The UI must describe the short service stop and never imply direct writes over
+live data or zero downtime.
 Docker labels in a backup are presentation metadata for impact explanation;
 filesystem and SQLite payloads remain the recovery truth.
 
@@ -132,8 +138,9 @@ CaptureSelectionPreview {
 }
 
 RestoreImpactPreview {
-  backupId, destination, mode: "new_destination",
-  adds[], replaces[], conflicts[], workloadLabels[], confirmation
+  backupId, targetProfileId, mode: "separate_path" | "replace_original",
+  destination?, roots[], archiveEntries[], dockerWorkloads[],
+  adds[], replaces[], conflicts[], confirmation, safetyBackupRequired
 }
 ```
 
@@ -160,7 +167,7 @@ The target usability drill is successful only when a fresh operator can:
 2. open Backups, browse `/srv` and Docker mounts, and select data visually;
 3. create and verify one filesystem-plus-optional-SQLite backup;
 4. preview a restore and correctly identify what will and will not change;
-5. restore to a new destination;
+5. restore to a new destination and preview a managed source replacement;
 6. delete an unused server from its card;
 7. perform the equivalent browse/preview/capture/restore path through MCP using
    explicit confirmations, without exposing a secret or arbitrary shell.

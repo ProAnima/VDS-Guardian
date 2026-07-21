@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use guardian_core::RunId;
-use guardian_ssh::{PinnedHost, SshUser, StagingTarget, SystemOpenSsh};
+use guardian_ssh::{PinnedHost, ReplacementTarget, SshUser, StagingTarget, SystemOpenSsh};
 use std::path::Path;
 
 #[test]
@@ -269,6 +269,65 @@ fn zstd_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Error>
     assert!(rendered.contains("StrictHostKeyChecking=yes"));
     assert!(rendered.contains("command -v zstd >/dev/null 2>&1"));
     assert!(!rendered.contains("accept-new"));
+    Ok(())
+}
+
+#[test]
+fn replacement_stages_then_swaps_with_a_preserved_rollback()
+-> Result<(), Box<dyn std::error::Error>> {
+    let run_id = RunId::parse("replace-001")?;
+    let containers = vec!["web".to_owned(), "worker".to_owned()];
+    let target = ReplacementTarget {
+        source_root: "/srv/app/data",
+        run_id: &run_id,
+        containers: &containers,
+    };
+    let ssh = SystemOpenSsh::default();
+    let stage = render(&ssh.replacement_staging_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        target,
+    ));
+    assert!(stage.contains("root='/srv/app/data'"));
+    assert!(stage.contains(".guardian-replace-staging.replace-001"));
+    assert!(stage.contains("source=\"$staging/${root#/}\""));
+    assert!(!stage.contains("rm -rf -- \"$root\""));
+
+    let commit = render(&ssh.commit_replacement_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        target,
+    ));
+    assert!(commit.contains("docker stop -- 'web' 'worker'"));
+    assert!(commit.contains("mv -- \"$root\" \"$rollback\""));
+    assert!(commit.contains("mv -- \"$rollback\" \"$root\""));
+    assert!(commit.contains("trap 'rollback_cutover' HUP INT TERM"));
+    assert!(commit.contains("attempts=0"));
+    assert!(commit.contains("exit 42"));
+    assert!(commit.contains("exit 43"));
+    assert!(!commit.contains("rm -rf -- \"$rollback\""));
+    Ok(())
+}
+
+#[test]
+fn replacement_preflight_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = SystemOpenSsh::default().replacement_ready_probe_arguments(
+        &pinned_host()?,
+        &SshUser::parse("backup")?,
+        Path::new("C:/keys/backup.key"),
+        Path::new("C:/known_hosts"),
+        "/srv/app/data",
+    );
+    let rendered = render(&arguments);
+    assert!(rendered.contains("StrictHostKeyChecking=yes"));
+    assert!(rendered.contains("[ -d \"$root\" ]"));
+    assert!(rendered.contains("[ -w \"$parent\" ]"));
+    assert!(!rendered.contains("mkdir"));
+    assert!(!rendered.contains("mv --"));
     Ok(())
 }
 

@@ -35,20 +35,16 @@ fn deploy_plan_confirmation_embeds_identifiers_not_the_label()
 }
 
 #[test]
-fn deploy_plan_rejects_a_target_profile_matching_the_source_profile_id()
--> Result<(), Box<dyn std::error::Error>> {
+fn deploy_plan_allows_a_new_path_on_the_source_profile() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = sealed_manifest_with_filesystem_payload()?;
     let target = profile("profile-source", "target-002")?;
     let target_path = RemoteTargetPath::parse("/srv/app")?;
-    assert!(matches!(
-        DeploymentPlan::build(&manifest, &target, target_path),
-        Err(DeploymentPlanError::SameAsSourceProfile)
-    ));
+    assert!(DeploymentPlan::build(&manifest, &target, target_path).is_ok());
     Ok(())
 }
 
 #[test]
-fn deploy_plan_rejects_a_target_profile_matching_the_source_host_fingerprint()
+fn deploy_plan_allows_a_new_path_on_a_reenrolled_source_host()
 -> Result<(), Box<dyn std::error::Error>> {
     let manifest = sealed_manifest_with_filesystem_payload()?;
     // A differently-named profile, but pinned to the exact same host key as
@@ -66,10 +62,7 @@ fn deploy_plan_rejects_a_target_profile_matching_the_source_host_fingerprint()
         },
     };
     let target_path = RemoteTargetPath::parse("/srv/app")?;
-    assert!(matches!(
-        DeploymentPlan::build(&manifest, &target, target_path),
-        Err(DeploymentPlanError::SameAsSourceHost)
-    ));
+    assert!(DeploymentPlan::build(&manifest, &target, target_path).is_ok());
     Ok(())
 }
 

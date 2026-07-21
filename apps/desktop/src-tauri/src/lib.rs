@@ -5,6 +5,7 @@ mod plan_commands;
 mod profile_commands;
 mod profile_delete;
 mod remote_browser_commands;
+mod replacement_commands;
 mod repository_commands;
 mod restore_commands;
 mod signing_commands;
@@ -90,6 +91,22 @@ async fn list_repositories(
 }
 
 #[tauri::command]
+async fn update_repository_path(
+    app: tauri::AppHandle,
+    request: repository_commands::UpdateRepositoryPathRequest,
+) -> Result<repository_commands::RepositorySummary, repository_commands::RepositoryCommandFailure> {
+    repository_commands::update_path(app, request).await
+}
+
+#[tauri::command]
+async fn delete_repository(
+    app: tauri::AppHandle,
+    request: repository_commands::DeleteRepositoryRequest,
+) -> Result<(), repository_commands::RepositoryCommandFailure> {
+    repository_commands::delete(app, request).await
+}
+
+#[tauri::command]
 async fn initialize_repository_recovery(
     app: tauri::AppHandle,
     repository_id: String,
@@ -161,6 +178,14 @@ async fn list_backups(
 }
 
 #[tauri::command]
+async fn inspect_restore_backup(
+    app: tauri::AppHandle,
+    request: restore_commands::InspectBackupRequest,
+) -> Result<restore_commands::BackupRestoreDescription, restore_commands::RestoreFailure> {
+    restore_commands::inspect_backup(app, request).await
+}
+
+#[tauri::command]
 async fn preview_restore(
     app: tauri::AppHandle,
     request: restore_commands::RestoreRequest,
@@ -208,6 +233,22 @@ async fn execute_deploy(
     deploy_commands::execute(app, request).await
 }
 
+#[tauri::command]
+async fn preview_source_replacement(
+    app: tauri::AppHandle,
+    request: replacement_commands::ReplacementRequest,
+) -> Result<replacement_commands::ReplacementResult, replacement_commands::ReplacementFailure> {
+    replacement_commands::preview(app, request).await
+}
+
+#[tauri::command]
+async fn execute_source_replacement(
+    app: tauri::AppHandle,
+    request: replacement_commands::ReplacementRequest,
+) -> Result<replacement_commands::ReplacementResult, replacement_commands::ReplacementFailure> {
+    replacement_commands::execute(app, request).await
+}
+
 /// Signals cancellation for a still-running capture, restore, or deploy job, if one is
 /// registered under this run id. Synchronous and near-instant (a lock plus a
 /// flag store) — no `spawn_blocking` needed, unlike the long-running jobs it
@@ -237,6 +278,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             preflight_ssh_profile,
             register_repository,
             list_repositories,
+            update_repository_path,
+            delete_repository,
             initialize_repository_recovery,
             export_recovery_bundle,
             import_recovery_bundle,
@@ -246,10 +289,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             run_capture_plan,
             run_capture_selection,
             list_backups,
+            inspect_restore_backup,
             preview_restore,
             execute_restore,
             preview_deploy,
             execute_deploy,
+            preview_source_replacement,
+            execute_source_replacement,
             cancel_job,
             list_docker_containers,
             browse_remote_directory

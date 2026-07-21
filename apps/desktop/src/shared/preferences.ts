@@ -25,7 +25,7 @@ export function applyDocumentPreferences(locale: LocaleId, theme: ResolvedTheme)
 }
 
 export function createTranslator(locale: LocaleId): Translate {
-  return (key) => messages[locale][key] ?? messages.en[key] ?? key;
+  return (key) => messages[locale][key];
 }
 
 export function getInitialLocale(): LocaleId {

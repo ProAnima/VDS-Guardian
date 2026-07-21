@@ -13,6 +13,9 @@ use guardian_ssh::{PinnedHost, SshIdentity, SshUser, StagingTarget, SystemOpenSs
 use std::io::{Seek, SeekFrom};
 use thiserror::Error;
 
+mod replacement;
+pub use replacement::{ReplacementComposition, ReplacementError};
+
 pub struct DeploymentComposition<'a> {
     pub repository: &'a LocalRepository,
     pub ssh: &'a SystemOpenSsh,

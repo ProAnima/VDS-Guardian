@@ -49,6 +49,26 @@ pub struct ArchiveInspection {
     pub expanded_bytes: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveEntryKind {
+    Directory,
+    RegularFile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveEntrySummary {
+    pub path: String,
+    pub kind: ArchiveEntryKind,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveEntryPage {
+    pub entries: Vec<ArchiveEntrySummary>,
+    pub total_entries: u64,
+    pub next_offset: Option<u64>,
+}
+
 #[derive(Debug, Error)]
 pub enum ArchiveError {
     #[error("archive operation was cancelled")]
@@ -89,6 +109,19 @@ pub fn inspect_tar_zstd(
         bounded_zstd_reader(source, limits.max_expanded_bytes)?,
         limits,
     )
+}
+
+pub fn list_tar_zstd_entries(
+    source: impl Read,
+    limits: ArchiveLimits,
+    offset: u64,
+    limit: u64,
+) -> Result<ArchiveEntryPage, ArchiveError> {
+    if limit == 0 || limit > 500 || offset > limits.max_entries {
+        return Err(ArchiveError::Invalid);
+    }
+    let reader = bounded_zstd_reader(source, limits.max_expanded_bytes)?;
+    list_tar_entries(reader, limits, offset, limit)
 }
 
 /// Extracts a validated archive into a newly created empty directory.
@@ -284,6 +317,65 @@ fn inspect_tar<R: Read>(
     Ok(inspection)
 }
 
+fn list_tar_entries<R: Read>(
+    source: R,
+    limits: ArchiveLimits,
+    offset: u64,
+    limit: u64,
+) -> Result<ArchiveEntryPage, ArchiveError> {
+    let mut source = ReadBudget::new(source, limits.max_expanded_bytes);
+    let mut inspection = ArchiveInspection {
+        entries: 0,
+        regular_files: 0,
+        directories: 0,
+        expanded_bytes: 0,
+    };
+    let mut selected = Vec::new();
+    {
+        let mut archive = Archive::new(&mut source);
+        for entry in archive.entries().map_err(|_| ArchiveError::Invalid)? {
+            let entry = entry.map_err(|_| ArchiveError::Invalid)?;
+            let summary = summarize_entry(&entry, limits, &mut inspection)?;
+            if inspection.entries > offset && selected.len() < limit as usize {
+                selected.push(summary);
+            }
+        }
+    }
+    drain_expanded_stream(&mut source, None)?;
+    let returned_through = offset.saturating_add(selected.len() as u64);
+    Ok(ArchiveEntryPage {
+        entries: selected,
+        total_entries: inspection.entries,
+        next_offset: (returned_through < inspection.entries).then_some(returned_through),
+    })
+}
+
+fn summarize_entry<R: Read>(
+    entry: &tar::Entry<'_, R>,
+    limits: ArchiveLimits,
+    inspection: &mut ArchiveInspection,
+) -> Result<ArchiveEntrySummary, ArchiveError> {
+    let header = entry.header();
+    let path = parse_entry_path(
+        &entry.path().map_err(|_| ArchiveError::UnsafePath)?,
+        header.entry_type().is_dir(),
+    )?;
+    inspect_entry_header(header, limits, inspection)?;
+    let (kind, size) = if header.entry_type().is_dir() {
+        (ArchiveEntryKind::Directory, 0)
+    } else {
+        (
+            ArchiveEntryKind::RegularFile,
+            header.size().map_err(|_| ArchiveError::Invalid)?,
+        )
+    };
+    Ok(ArchiveEntrySummary {
+        path: path.as_str().to_owned(),
+        kind,
+        size,
+    })
+}
+
 pub(crate) fn drain_expanded_stream(
     source: &mut impl Read,
     cancellation: Option<&CancellationHandle>,
@@ -329,6 +421,14 @@ fn inspect_entry<R: Read>(
     let header = entry.header();
     let raw_path = entry.path().map_err(|_| ArchiveError::UnsafePath)?;
     parse_entry_path(&raw_path, header.entry_type().is_dir())?;
+    inspect_entry_header(header, limits, inspection)
+}
+
+fn inspect_entry_header(
+    header: &tar::Header,
+    limits: ArchiveLimits,
+    inspection: &mut ArchiveInspection,
+) -> Result<(), ArchiveError> {
     inspection.entries = inspection
         .entries
         .checked_add(1)

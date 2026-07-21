@@ -24,7 +24,7 @@ use tempfile::{NamedTempFile, TempPath};
 use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
-pub use push::{PushResult, StagingTarget};
+pub use push::{PushResult, ReplacementTarget, StagingTarget};
 pub use remote_browser::SshRemoteBrowserAdapter;
 pub use secret_identity::SshIdentity;
 
@@ -816,7 +816,8 @@ impl SystemOpenSsh {
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-            command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
         }
         #[cfg(unix)]
         {
@@ -871,6 +872,10 @@ pub enum SshError {
     UnsupportedDatabaseAuthentication,
     #[error("pushed byte count did not match the payload's verified length")]
     ByteCountMismatch,
+    #[error("replacement failed and the original data was restored")]
+    ReplacementRolledBack,
+    #[error("replacement rollback could not be completed safely")]
+    ReplacementRollbackFailed,
 }
 
 fn fail_capture(destination: &Path, error: SshError) -> Result<CaptureResult, SshError> {

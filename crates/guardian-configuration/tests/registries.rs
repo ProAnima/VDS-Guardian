@@ -61,6 +61,74 @@ fn repository_store_rejects_a_map_key_that_differs_from_the_registration_id()
     Ok(())
 }
 
+#[test]
+fn repository_store_removes_only_the_requested_registration()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let first = tempfile::tempdir()?;
+    let second = tempfile::tempdir()?;
+    let store = RepositoryStore::at(root.path());
+    let first_id = RepositoryId::parse("repository-001")?;
+    let second_id = RepositoryId::parse("repository-002")?;
+    store.upsert(RepositoryRegistration::new(
+        first_id.clone(),
+        "First".to_owned(),
+        std::fs::canonicalize(first.path())?,
+    )?)?;
+    store.upsert(RepositoryRegistration::new(
+        second_id.clone(),
+        "Second".to_owned(),
+        std::fs::canonicalize(second.path())?,
+    )?)?;
+
+    assert_eq!(
+        store.remove(&first_id)?.map(|entry| entry.repository_id),
+        Some(first_id)
+    );
+    assert!(
+        store
+            .get(&RepositoryId::parse("repository-001")?)?
+            .is_none()
+    );
+    assert!(store.get(&second_id)?.is_some());
+    assert!(
+        store
+            .remove(&RepositoryId::parse("repository-missing")?)?
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
+fn repository_store_updates_only_an_existing_registration_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let original = tempfile::tempdir()?;
+    let replacement = tempfile::tempdir()?;
+    let store = RepositoryStore::at(root.path());
+    let id = RepositoryId::parse("repository-001")?;
+    store.upsert(RepositoryRegistration::new(
+        id.clone(),
+        "Archive".to_owned(),
+        std::fs::canonicalize(original.path())?,
+    )?)?;
+
+    let updated = store
+        .update_path(&id, std::fs::canonicalize(replacement.path())?)?
+        .ok_or("registration disappeared")?;
+    assert_eq!(updated.label, "Archive");
+    assert_eq!(updated.path, std::fs::canonicalize(replacement.path())?);
+    assert!(
+        store
+            .update_path(
+                &RepositoryId::parse("repository-missing")?,
+                std::fs::canonicalize(original.path())?,
+            )?
+            .is_none()
+    );
+    Ok(())
+}
+
 fn plan() -> Result<FilesystemCapturePlan, Box<dyn std::error::Error>> {
     Ok(FilesystemCapturePlan {
         plan_id: PlanId::parse("plan-001")?,

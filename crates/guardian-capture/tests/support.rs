@@ -169,6 +169,24 @@ impl Container {
         )?;
         Ok(())
     }
+
+    pub fn install_fail_once_docker(&self, directory: &Path) -> Result<(), Box<dyn Error>> {
+        let script = directory.join("docker-fixture");
+        std::fs::write(&script, b"#!/bin/sh\ncase \"$1\" in\nstop) exit 0;;\nstart) if [ ! -e /tmp/guardian-start-failed ]; then touch /tmp/guardian-start-failed; exit 1; fi; exit 0;;\ninspect) printf 'true\\n'; exit 0;;\n*) exit 1;;\nesac\n")?;
+        run(
+            "docker",
+            &[
+                "cp",
+                &script.to_string_lossy(),
+                &format!("{}:/usr/local/bin/docker", self.id),
+            ],
+        )?;
+        run(
+            "docker",
+            &["exec", &self.id, "chmod", "755", "/usr/local/bin/docker"],
+        )?;
+        Ok(())
+    }
 }
 
 impl Drop for Container {
@@ -400,7 +418,11 @@ pub fn capture_drill_backup(
         database_path: "/srv/app/app.sqlite".to_owned(),
         payload_path: PayloadPath::parse("payload/database-000.sqlite.zst.enc")?,
     };
-    let manifest = drill_manifest(backup_id, run_id, profile)?;
+    let mut manifest = drill_manifest(backup_id, run_id.clone(), profile)?;
+    manifest.source_layout = Some(guardian_core::SourceLayout {
+        roots: vec![guardian_core::RemotePath::parse("/srv/app")?],
+        docker_workloads: Vec::new(),
+    });
     let request = FilesystemBackupRequest {
         capture,
         manifest,
@@ -434,6 +456,11 @@ pub fn capture_filesystem_only_drill_backup(
         archive_limits: ArchiveLimits::conservative(),
     };
     let run_id = RunId::parse(run_id)?;
+    let mut manifest = drill_manifest(backup_id, run_id.clone(), profile)?;
+    manifest.source_layout = Some(guardian_core::SourceLayout {
+        roots: vec![guardian_core::RemotePath::parse("/srv/app")?],
+        docker_workloads: Vec::new(),
+    });
     let request = FilesystemBackupRequest {
         capture: FilesystemCaptureRequest {
             run_id: run_id.clone(),
@@ -441,7 +468,63 @@ pub fn capture_filesystem_only_drill_backup(
             roots: vec!["/srv/app".to_owned()],
             payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst.enc")?,
         },
-        manifest: drill_manifest(backup_id, run_id, profile)?,
+        manifest,
+        sealed_at: Timestamp::parse("2026-07-15T12:00:01Z")?,
+    };
+    let start = Instant::now();
+    let sealed = composition.execute(request, None, signer)?;
+    Ok(CaptureOutcome {
+        sealed,
+        duration: start.elapsed(),
+    })
+}
+
+pub fn capture_replacement_workload_drill_backup(
+    repository: &LocalRepository,
+    ssh: &SystemOpenSsh,
+    profile: &VdsProfile,
+    credentials: &dyn SecretStore,
+    signer: &dyn ManifestSigner,
+    backup_id: &str,
+    run_id: &str,
+) -> Result<CaptureOutcome, Box<dyn Error>> {
+    let audit = NoopAudit;
+    let composition = FilesystemCaptureComposition {
+        repository,
+        ssh,
+        profile,
+        credentials,
+        audit: &audit,
+        disk_space: &SYSTEM_DISK_SPACE,
+        archive_limits: ArchiveLimits::conservative(),
+    };
+    let run_id = RunId::parse(run_id)?;
+    let source = guardian_core::RemotePath::parse("/srv/app")?;
+    let mut manifest = drill_manifest(backup_id, run_id.clone(), profile)?;
+    manifest.source_layout = Some(guardian_core::SourceLayout {
+        roots: vec![source.clone()],
+        docker_workloads: vec![guardian_core::DockerWorkloadSnapshot {
+            container_id: "a".repeat(64),
+            container_name: "fixture".to_owned(),
+            image: "fixture:1".to_owned(),
+            image_digest: None,
+            compose_project: None,
+            state: guardian_core::DockerContainerState::Running,
+            mounts: vec![guardian_core::DockerMountSnapshot {
+                source_path: source,
+                destination: guardian_core::RemotePath::parse("/data")?,
+                read_only: false,
+            }],
+        }],
+    });
+    let request = FilesystemBackupRequest {
+        capture: FilesystemCaptureRequest {
+            run_id: run_id.clone(),
+            profile_id: profile.profile_id.clone(),
+            roots: vec!["/srv/app".to_owned()],
+            payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst.enc")?,
+        },
+        manifest,
         sealed_at: Timestamp::parse("2026-07-15T12:00:01Z")?,
     };
     let start = Instant::now();

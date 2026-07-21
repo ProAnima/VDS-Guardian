@@ -41,7 +41,8 @@ Not required for the first release:
 - automatic Docker/Compose backup, recreation, image export, or quiescing;
 - PostgreSQL or MySQL dump/restore adapters;
 - arbitrary quiesce hooks;
-- in-place restore of an existing live server;
+- unplanned overwrite of an existing live server; the bounded, safety-backup-
+  first managed cutover in ADR 0016 is now part of the active restore path;
 - automatic retention, replication, cloud/object storage, or deduplication;
 - native scheduling, background services, notifications, or auto-update;
 - organization policies, approval workflows, Kubernetes, or malware scanning.
@@ -257,8 +258,12 @@ independently.
   `adds`/`replaces`/`conflicts` impact DTO serialized by desktop and MCP.
   Existing destinations are returned as blocking conflicts instead of an
   opaque preview failure, while exact-confirmation execution still rejects
-  every conflict. `replaces` remains empty because Release 0.1 permits only a
-  new destination.
+  every conflict. ADR 0016's managed replacement now fills `replaces` from the
+  signed source layout, rechecks the live root and Docker identity/mount state,
+  binds confirmation to that inspection, takes a safety backup, and preserves
+  the prior tree under a run-specific rollback path. The Docker/SSH drill proves
+  successful cutover plus automatic rollback after a simulated restart failure.
+  Multi-root and database-aware managed cutover remain gated follow-up work.
 - A running desktop restore can be cancelled by the operator. Closed: the
   desktop supplies a UUIDv7 run id to the shared `JobRegistry`; decryption,
   tar extraction, and SQLite decompression poll its cancellation handle, remove

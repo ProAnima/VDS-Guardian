@@ -62,9 +62,11 @@ an explicit compatibility case) omit it. The database payload shown is the
 real embedded-SQLite snapshot (ADR 0005) — today's only implemented second
 payload kind; PostgreSQL/MySQL dump/restore remains out of scope for the
 first release (Milestone 3), so no such payload is ever produced. No
-Docker-metadata payload is ever written either — Docker inventory is
-discovered live for display and mount selection, never persisted into a
-backup. `reports/` only ever contains `verification.json`; there is no
+Docker-metadata payload is written. New captures may instead carry the bounded
+signed `sourceLayout` manifest field defined by ADR 0016: normalized roots and
+non-secret presentation/control metadata for selected Docker workloads.
+Payload paths and hashes remain recovery truth. `reports/` only ever contains
+`verification.json`; there is no
 `capture.json`. `quarantine/` also receives run-ID-keyed entries for
 abandoned or failed captures, alongside plan-ID-keyed retention entries;
 `audit/` also receives per-run capture and deploy attempt records
@@ -89,6 +91,8 @@ independence and complicates deletion and recovery.
 - optional signed logical-selection metadata mapping operator-visible filesystem
   or Docker labels to the normalized capture roots; labels are explanatory only
   and never override payload paths, hashes, or restore validation
+- optional signed `sourceLayout` containing normalized source roots and bounded,
+  non-secret selected Docker workload/mount state for guided restore (ADR 0016)
 - consistency level and quiesce results
 - payload entries: logical role, relative path, byte length, SHA-256, media type
 - required/optional item results

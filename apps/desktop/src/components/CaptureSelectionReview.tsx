@@ -15,7 +15,6 @@ export function CaptureSelectionReview({ preview, saving, onSave, t }: CaptureSe
     <div className="capture-review__roots"><span>{t("captureReviewPaths")}</span>{preview.normalizedRoots.map((root) => <code key={root}>{root}</code>)}</div>
     {preview.sqlitePath && <p><strong>{t("captureReviewSqlite")}</strong> <code>{preview.sqlitePath}</code></p>}
     {preview.warnings.length > 0 && <div className="capture-review__warnings"><strong><CircleAlert size={15} />{t("captureReviewWarnings")}</strong>{preview.warnings.map((warning, index) => <p key={`${warning.kind}-${index}`}>{warningText(warning, t)}</p>)}</div>}
-    <p className="capture-review__phrase"><span>{t("captureReviewConfirmation")}</span><code>{preview.confirmation}</code></p>
     <button className="button button--primary" disabled={saving} type="button" onClick={onSave}>{saving ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{saving ? t("backupCreating") : t("backupCreate")}</button>
   </section>;
 }

@@ -1,4 +1,4 @@
-import { Settings2, ShieldCheck } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useState } from "react";
 import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
@@ -17,9 +17,8 @@ export function SetupPanel({ t }: SetupPanelProps) {
   const resourcesChanged = () => setResourcesRevision((current) => current + 1);
   return (
     <main className="dashboard">
-      <section className="hero-panel">
+      <section className="hero-panel backup-hero">
         <div className="hero-panel__content">
-          <p className="eyebrow"><ShieldCheck size={15} aria-hidden="true" />{t("backupHeroEyebrow")}</p>
           <h1>{t("backupHeroTitle")}</h1>
           <p>{t("backupHeroBody")}</p>
         </div>

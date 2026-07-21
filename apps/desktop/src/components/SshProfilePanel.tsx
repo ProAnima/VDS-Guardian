@@ -12,7 +12,7 @@ const initialForm: SshProfileRequest = { label: "", host: "", port: 22, user: ""
 export function SshProfilePanel({ onProfilesChanged, t }: { onProfilesChanged: () => void; t: Translate }) {
   const model = useSshProfile(onProfilesChanged, t);
   return <section className="ssh-profile-panel" aria-labelledby="ssh-profile-title">
-    <header className="ssh-profile-panel__header"><div><p className="eyebrow"><Server size={15} aria-hidden="true" />{t("setupServerEyebrow")}</p><h2 id="ssh-profile-title">{t("serverManagerTitle")}</h2><p>{t("serversBody")}</p></div><span className="signing-state"><Wifi size={16} />SSH</span></header>
+    <header className="ssh-profile-panel__header"><div><p className="eyebrow"><Server size={15} aria-hidden="true" />{t("setupServerEyebrow")}</p><h1 id="ssh-profile-title">{t("serverManagerTitle")}</h1><p>{t("serversBody")}</p></div><span className="signing-state"><Wifi size={16} />SSH</span></header>
     <ServerCards model={model} t={t} />
     {!model.formOpen && <button className="button button--secondary ssh-profile-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("serversAdd")}</button>}
     {model.formOpen && <ServerForm model={model} t={t} />}

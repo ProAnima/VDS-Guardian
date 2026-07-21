@@ -1,5 +1,5 @@
 use crate::{ConfigurationStoreError, storage};
-use guardian_core::{FilesystemCapturePlan, PlanId};
+use guardian_core::{FilesystemCapturePlan, PlanId, SourceLayout};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -13,6 +13,8 @@ const FORMAT_VERSION: u32 = 1;
 pub struct StoredCapturePlan {
     pub plan: FilesystemCapturePlan,
     pub sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_layout: Option<SourceLayout>,
 }
 
 impl StoredCapturePlan {
@@ -20,7 +22,21 @@ impl StoredCapturePlan {
         let sha256 = plan
             .canonical_sha256()
             .map_err(|_| ConfigurationStoreError::Invalid)?;
-        Ok(Self { plan, sha256 })
+        Ok(Self {
+            plan,
+            sha256,
+            source_layout: None,
+        })
+    }
+    pub fn with_source_layout(
+        mut self,
+        source_layout: SourceLayout,
+    ) -> Result<Self, ConfigurationStoreError> {
+        source_layout
+            .validate()
+            .map_err(|_| ConfigurationStoreError::Invalid)?;
+        self.source_layout = Some(source_layout);
+        Ok(self)
     }
     pub fn validate(&self) -> Result<(), ConfigurationStoreError> {
         let sha256 = self
@@ -29,7 +45,13 @@ impl StoredCapturePlan {
             .map_err(|_| ConfigurationStoreError::Invalid)?;
         (sha256 == self.sha256)
             .then_some(())
-            .ok_or(ConfigurationStoreError::Invalid)
+            .ok_or(ConfigurationStoreError::Invalid)?;
+        if let Some(layout) = &self.source_layout {
+            layout
+                .validate()
+                .map_err(|_| ConfigurationStoreError::Invalid)?;
+        }
+        Ok(())
     }
 }
 

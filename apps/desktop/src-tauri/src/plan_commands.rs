@@ -86,7 +86,8 @@ pub(crate) fn save_confirmed_selection_blocking(
     if preview.confirmation != confirmation {
         return Err(PlanFailure::confirmation());
     }
-    save_blocking(
+    let source_layout = preview.source_layout.clone();
+    save_plan_blocking(
         root,
         SavePlanRequest {
             profile_id: preview.profile_id.as_str().to_owned(),
@@ -98,6 +99,7 @@ pub(crate) fn save_confirmed_selection_blocking(
                 .collect(),
             database_path: preview.sqlite_path.map(|path| path.as_str().to_owned()),
         },
+        Some(source_layout),
     )
 }
 
@@ -143,6 +145,14 @@ fn docker_inventory(
 }
 
 fn save_blocking(root: PathBuf, request: SavePlanRequest) -> Result<PlanSummary, PlanFailure> {
+    save_plan_blocking(root, request, None)
+}
+
+fn save_plan_blocking(
+    root: PathBuf,
+    request: SavePlanRequest,
+    source_layout: Option<guardian_core::SourceLayout>,
+) -> Result<PlanSummary, PlanFailure> {
     let profile_id = ProfileId::parse(request.profile_id).map_err(|_| PlanFailure::invalid())?;
     let repository_id =
         RepositoryId::parse(request.repository_id).map_err(|_| PlanFailure::invalid())?;
@@ -162,7 +172,12 @@ fn save_blocking(root: PathBuf, request: SavePlanRequest) -> Result<PlanSummary,
         roots: request.roots,
         database_path: request.database_path,
     };
-    let stored = StoredCapturePlan::new(plan).map_err(|_| PlanFailure::invalid())?;
+    let mut stored = StoredCapturePlan::new(plan).map_err(|_| PlanFailure::invalid())?;
+    if let Some(layout) = source_layout {
+        stored = stored
+            .with_source_layout(layout)
+            .map_err(|_| PlanFailure::invalid())?;
+    }
     CapturePlanStore::at(root.join("plans"))
         .upsert(stored.clone())
         .map_err(|_| PlanFailure::storage())?;

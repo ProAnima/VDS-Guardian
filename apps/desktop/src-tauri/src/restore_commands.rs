@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+mod inspection;
+
+pub use inspection::{BackupRestoreDescription, InspectBackupRequest, inspect_backup};
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreRequest {
@@ -145,7 +149,7 @@ fn resolve(
     Ok((repository, backup_id, identity))
 }
 
-fn resolve_repository(
+pub(crate) fn resolve_repository(
     root: &Path,
     repository_id: &str,
 ) -> Result<(LocalRepository, VerificationIdentity), RestoreFailure> {

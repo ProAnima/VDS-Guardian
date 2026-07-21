@@ -165,7 +165,7 @@ pub(crate) fn run_capture(
         .map_err(|_| CaptureFailure::signing())?;
     let backup_id = BackupId::parse(random_id("backup")).map_err(|_| CaptureFailure::internal())?;
     let created_at = now_timestamp()?;
-    let manifest = Manifest::new(
+    let mut manifest = Manifest::new(
         backup_id.clone(),
         run_id.clone(),
         created_at.clone(),
@@ -186,6 +186,7 @@ pub(crate) fn run_capture(
             sha256: stored.sha256,
         },
     );
+    manifest.source_layout = stored.source_layout;
     let database_path = stored.plan.database_path;
     let request = FilesystemBackupRequest {
         capture: FilesystemCaptureRequest {
@@ -311,6 +312,7 @@ fn save_selection_plan(
             .map(|path| path.as_str().to_owned()),
     };
     let stored = guardian_configuration::StoredCapturePlan::new(plan)
+        .and_then(|stored| stored.with_source_layout(preview.source_layout.clone()))
         .map_err(|_| CaptureFailure::selection())?;
     CapturePlanStore::at(&config.plans_dir)
         .upsert(stored)

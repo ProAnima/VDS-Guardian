@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod management;
 mod recovery;
 
+pub use management::{DeleteRepositoryRequest, UpdateRepositoryPathRequest, delete, update_path};
 pub use recovery::{
     ExportRecoveryBundleRequest, ImportRecoveryBundleRequest, export_recovery_bundle_file,
     import_recovery_bundle_file,
@@ -200,6 +202,34 @@ impl RepositoryCommandFailure {
             code: "recovery_setup_failed",
             message: "Recovery protection could not be prepared.",
             remediation: "Check credential-store access and retry before starting a backup.",
+        }
+    }
+    fn not_found() -> Self {
+        Self {
+            code: "repository_not_found",
+            message: "The backup repository is no longer registered.",
+            remediation: "Refresh the repository list and try again.",
+        }
+    }
+    fn existing_repository_required() -> Self {
+        Self {
+            code: "existing_repository_required",
+            message: "The selected folder is not this backup repository.",
+            remediation: "Choose an existing repository folder with the same repository ID. Files are not moved automatically.",
+        }
+    }
+    fn removal_not_confirmed() -> Self {
+        Self {
+            code: "repository_removal_not_confirmed",
+            message: "Repository removal was not confirmed.",
+            remediation: "Review the warning and confirm removal from the application.",
+        }
+    }
+    fn in_use() -> Self {
+        Self {
+            code: "repository_in_use",
+            message: "A saved backup plan still uses this repository.",
+            remediation: "Remove or update the saved plan before removing the repository.",
         }
     }
     pub(super) fn passphrase() -> Self {

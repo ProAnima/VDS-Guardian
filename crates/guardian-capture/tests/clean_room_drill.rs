@@ -11,9 +11,9 @@
 //! and Docker-free. Run explicitly via `npm run test:integration:drill`,
 //! wired into CI on the Linux leg only, after the existing SSH gate.
 //!
-//! Does not prove restore/deploy rollback — that feature does not exist
-//! yet. Each report records `rollback.proven: false` rather than silently
-//! omitting or overclaiming that clause.
+//! The managed replacement case additionally proves preservation of the
+//! previous tree and automatic rollback after a simulated service restart
+//! failure. New-destination deploy still has no rollback mode by design.
 
 #[path = "clean_room_drill/cancellation.rs"]
 mod cancellation;
@@ -30,7 +30,7 @@ mod support;
 use guardian_core::{
     CredentialId, ProfileId, RemoteTargetPath, RepositoryId, RunId, SecretStore, SecretValue,
 };
-use guardian_deploy::DeploymentComposition;
+use guardian_deploy::{DeploymentComposition, ReplacementComposition};
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshUser, SystemOpenSsh};
 use std::time::{Duration, Instant};
@@ -249,6 +249,227 @@ fn filesystem_only_restore_drill() -> TestResult {
             Check::new("no_database_payload", true),
         ],
         rto_seconds,
+    )?;
+    Ok(())
+}
+
+struct NoDockerInventory;
+impl guardian_core::DockerInventoryPort for NoDockerInventory {
+    fn inspect(
+        &self,
+        _: &guardian_core::VdsProfile,
+    ) -> Result<guardian_core::DockerInventory, guardian_core::DockerInventoryPortError> {
+        Ok(guardian_core::DockerInventory {
+            containers: Vec::new(),
+        })
+    }
+}
+
+struct FixtureDockerInventory;
+impl guardian_core::DockerInventoryPort for FixtureDockerInventory {
+    fn inspect(
+        &self,
+        _: &guardian_core::VdsProfile,
+    ) -> Result<guardian_core::DockerInventory, guardian_core::DockerInventoryPortError> {
+        Ok(guardian_core::DockerInventory {
+            containers: vec![guardian_core::DockerContainer {
+                id: "a".repeat(64),
+                name: "fixture".to_owned(),
+                image: "fixture:1".to_owned(),
+                image_digest: None,
+                compose_project: None,
+                state: guardian_core::DockerContainerState::Running,
+                health: Some(guardian_core::DockerHealth::Healthy),
+                mounts: vec![guardian_core::DockerMount {
+                    kind: guardian_core::DockerMountKind::Bind,
+                    source_reference: "/srv/app".to_owned(),
+                    host_path: None,
+                    destination: "/data".to_owned(),
+                    read_only: false,
+                }],
+                networks: Vec::new(),
+                secret_references: Vec::new(),
+            }],
+        })
+    }
+}
+
+#[test]
+#[ignore = "requires Docker and a real SSH round trip; run via `npm run test:integration:drill`"]
+fn replacement_cutover_and_rollback_preservation_drill() -> TestResult {
+    let image = support::fixture_image()?;
+    let source = support::Container::start(image)?;
+    let workdir = tempfile::tempdir()?;
+    let (private_key, public_key) = support::generate_keypair(workdir.path())?;
+    source.install_public_key(&public_key)?;
+    let host_key = source.host_key_base64(HOST_KEY_DEADLINE)?;
+    let ssh = SystemOpenSsh::default();
+    let host = PinnedHost::parse("127.0.0.1", source.port(), "ssh-ed25519", host_key.clone())?;
+    let user = SshUser::parse("backup")?;
+    support::wait_until_ssh_ready(&ssh, &host, &user, &private_key, READY_DEADLINE)?;
+    let vault_dir = workdir.path().join("vault");
+    std::fs::create_dir(&vault_dir)?;
+    let vault = support::open_vault(&vault_dir)?;
+    let credential = CredentialId::parse("replacement-drill-credential")?;
+    vault.store(&credential, &SecretValue::new(std::fs::read(&private_key)?))?;
+    let profile_id = ProfileId::parse("replacement-drill-source")?;
+    let profile = support::drill_profile(profile_id.clone(), credential, source.port(), &host_key)?;
+    let repository = LocalRepository::open(
+        workdir.path().join("repository"),
+        RepositoryId::parse("replacement-drill-repo")?,
+    )?;
+    repository.configure_recovery_key(&vault)?;
+    let signer = support::TestSigner::new();
+    let original = support::capture_filesystem_only_drill_backup(
+        &repository,
+        &ssh,
+        &profile,
+        &vault,
+        &signer,
+        "replacement-original",
+        "replacement-original-run",
+    )?;
+    let known_hosts = support::write_known_hosts(workdir.path(), &host)?;
+    support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "rm -- /srv/app/config.yaml && printf '%s\\n' 'mode: mutated' 'service: vds-guardian-drill' > /srv/app/config.yaml",
+    )?;
+    let safety = support::capture_filesystem_only_drill_backup(
+        &repository,
+        &ssh,
+        &profile,
+        &vault,
+        &signer,
+        "replacement-safety",
+        "replacement-safety-run",
+    )?;
+    let composition = ReplacementComposition {
+        repository: &repository,
+        ssh: &ssh,
+        target_profile: &profile,
+        credentials: &vault,
+        verifier: &signer,
+        docker_inventory: &NoDockerInventory,
+    };
+    let plan = composition.plan(&original.sealed.backup_id)?;
+    let run_id = RunId::parse("replacement-cutover")?;
+    composition.execute(
+        &run_id,
+        &profile_id,
+        &original.sealed.backup_id,
+        &safety.sealed.backup_id,
+        &plan.impact.confirmation,
+    )?;
+    let restored = support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "cat /srv/app/config.yaml",
+    )?;
+    let rollback = support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "cat /srv/.guardian-rollback.replacement-cutover/config.yaml",
+    )?;
+    let restored_ok = restored == "mode: drill-fixture\nservice: vds-guardian-drill";
+    let rollback_ok = rollback == "mode: mutated\nservice: vds-guardian-drill";
+    assert!(
+        restored_ok,
+        "replacement did not publish the selected sealed backup"
+    );
+    assert!(
+        rollback_ok,
+        "replacement did not preserve the immediately previous tree"
+    );
+    support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "rm -- /srv/app/config.yaml && printf '%s\\n' 'mode: rollback-payload' 'service: vds-guardian-drill' > /srv/app/config.yaml",
+    )?;
+    let rollback_payload = support::capture_replacement_workload_drill_backup(
+        &repository,
+        &ssh,
+        &profile,
+        &vault,
+        &signer,
+        "replacement-rollback-payload",
+        "replacement-rollback-payload-run",
+    )?;
+    support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "rm -- /srv/app/config.yaml && printf '%s\\n' 'mode: live-before-failure' 'service: vds-guardian-drill' > /srv/app/config.yaml",
+    )?;
+    let rollback_safety = support::capture_filesystem_only_drill_backup(
+        &repository,
+        &ssh,
+        &profile,
+        &vault,
+        &signer,
+        "replacement-rollback-safety",
+        "replacement-rollback-safety-run",
+    )?;
+    source.install_fail_once_docker(workdir.path())?;
+    let rollback_composition = ReplacementComposition {
+        repository: &repository,
+        ssh: &ssh,
+        target_profile: &profile,
+        credentials: &vault,
+        verifier: &signer,
+        docker_inventory: &FixtureDockerInventory,
+    };
+    let rollback_plan = rollback_composition.plan(&rollback_payload.sealed.backup_id)?;
+    let rollback_run = RunId::parse("replacement-auto-rollback")?;
+    let failure = rollback_composition.execute(
+        &rollback_run,
+        &profile_id,
+        &rollback_payload.sealed.backup_id,
+        &rollback_safety.sealed.backup_id,
+        &rollback_plan.impact.confirmation,
+    );
+    assert!(matches!(
+        failure,
+        Err(guardian_deploy::ReplacementError::RolledBack)
+    ));
+    let live_after_failure = support::run_verification_command(
+        source.port(),
+        &private_key,
+        &known_hosts,
+        "cat /srv/app/config.yaml",
+    )?;
+    let automatic_rollback_ok =
+        live_after_failure == "mode: live-before-failure\nservice: vds-guardian-drill";
+    assert!(
+        automatic_rollback_ok,
+        "failed service restart did not restore the live tree"
+    );
+    let rolled_back_audit = workdir
+        .path()
+        .join("repository/audit/replacement-replacement-auto-rollback-rolled_back.json")
+        .is_file();
+    assert!(rolled_back_audit, "rolled-back cutover was not audited");
+    support::write_report(
+        "replacement",
+        original.sealed.backup_id.as_str(),
+        &[
+            Phase::new("capture", original.duration),
+            Phase::new("safety_backup", safety.duration),
+        ],
+        &[
+            Check::new("replacement_content", restored_ok),
+            Check::new("rollback_tree_preserved", rollback_ok),
+            Check::new(
+                "automatic_rollback_after_restart_failure",
+                automatic_rollback_ok,
+            ),
+            Check::new("rolled_back_audit", rolled_back_audit),
+        ],
+        original.duration.as_secs_f64() + safety.duration.as_secs_f64(),
     )?;
     Ok(())
 }

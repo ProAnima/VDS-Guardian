@@ -1,4 +1,6 @@
-use crate::{BackupId, CredentialId, PayloadPath, PlanId, ProfileId, RunId, Timestamp};
+use crate::{
+    BackupId, CredentialId, PayloadPath, PlanId, ProfileId, RunId, SourceLayout, Timestamp,
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -23,6 +25,8 @@ pub struct Manifest {
     pub verification_state: VerificationState,
     pub signature: Option<SignatureMetadata>,
     pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_layout: Option<SourceLayout>,
 }
 
 impl Manifest {
@@ -49,6 +53,7 @@ impl Manifest {
             verification_state: VerificationState::Pending,
             signature: None,
             warnings: Vec::new(),
+            source_layout: None,
         }
     }
 
@@ -132,6 +137,11 @@ impl Manifest {
         }
         for warning in &self.warnings {
             validate_label(warning)?;
+        }
+        if let Some(layout) = &self.source_layout {
+            layout
+                .validate()
+                .map_err(|_| ManifestError::InvalidSourceLayout)?;
         }
         let unique = self
             .payloads
@@ -415,6 +425,8 @@ pub enum ManifestError {
     Serialization,
     #[error("manifest encryption metadata or version policy is invalid")]
     EncryptionPolicy,
+    #[error("manifest source layout is invalid")]
+    InvalidSourceLayout,
 }
 
 #[cfg(test)]

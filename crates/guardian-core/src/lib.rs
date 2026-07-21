@@ -20,10 +20,12 @@ mod preflight;
 mod profile;
 mod profile_port;
 mod remote_browser;
+mod replace;
 mod restore;
 mod retention;
 mod secret;
 mod signature;
+mod source_layout;
 mod state;
 mod status;
 mod storage;
@@ -87,6 +89,7 @@ pub use remote_browser::{
     RemoteBrowseEntry, RemoteBrowseError, RemoteBrowsePage, RemoteBrowseRequest, RemoteBrowserPort,
     RemoteBrowserPortError, RemoteEntryKind, RemoteEntryUnavailableReason,
 };
+pub use replace::{SourceReplacementImpact, SourceReplacementPlan, SourceReplacementPlanError};
 pub use restore::{RestoreImpactPreview, RestoreMode, RestorePlan, RestorePlanError};
 pub use retention::{
     RetentionOutcome, RetentionPlan, RetentionPlanError, RetentionPolicy, RetentionPolicyError,
@@ -94,6 +97,9 @@ pub use retention::{
 };
 pub use secret::{SecretStore, SecretStoreError, SecretValue};
 pub use signature::{ManifestSigner, ManifestVerifier, SignatureEnvelope, SigningError};
+pub use source_layout::{
+    DockerMountSnapshot, DockerWorkloadSnapshot, SourceLayout, SourceLayoutError,
+};
 pub use state::BackupState;
 pub use status::FoundationStatus;
 pub use storage::{BackupStoragePort, SealedBackup, StoragePortError};

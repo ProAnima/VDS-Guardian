@@ -41,7 +41,6 @@ function Hero({ status, t, onAddServer, onRunBackup }: DashboardProps) {
           <strong>{t(status.liveOperationsEnabled ? "statusReady" : "lockedTitle")}</strong>
           <p>{t(status.liveOperationsEnabled ? "securityBody" : "lockedBody")}</p>
         </div>
-        <code>{status.iteration}</code>
       </div>
     </section>
   );

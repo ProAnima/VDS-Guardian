@@ -79,8 +79,6 @@ describe("setup resource refresh", () => {
     await act(async () => root.render(
       <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
     ));
-    await vi.waitFor(() => expect(button("browserOpen").disabled).toBe(false));
-    await act(async () => button("browserOpen").click());
     const selection = await vi.waitFor(() => {
       const candidate = container.querySelector<HTMLInputElement>('input[aria-label="browserSelect srv"]');
       if (!candidate) throw new Error("Remote path selection was not rendered");

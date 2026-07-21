@@ -92,6 +92,37 @@ impl RepositoryStore {
         storage::write_json(&self.path, &document)
     }
 
+    pub fn remove(
+        &self,
+        id: &RepositoryId,
+    ) -> Result<Option<RepositoryRegistration>, ConfigurationStoreError> {
+        let _lock = storage::lock(&self.path)?;
+        let mut document = self.read()?;
+        let removed = document.repositories.remove(id.as_str());
+        if removed.is_some() {
+            storage::write_json(&self.path, &document)?;
+        }
+        Ok(removed)
+    }
+
+    pub fn update_path(
+        &self,
+        id: &RepositoryId,
+        path: PathBuf,
+    ) -> Result<Option<RepositoryRegistration>, ConfigurationStoreError> {
+        let _lock = storage::lock(&self.path)?;
+        let mut document = self.read()?;
+        let Some(current) = document.repositories.get(id.as_str()) else {
+            return Ok(None);
+        };
+        let updated = RepositoryRegistration::new(id.clone(), current.label.clone(), path)?;
+        document
+            .repositories
+            .insert(id.as_str().to_owned(), updated.clone());
+        storage::write_json(&self.path, &document)?;
+        Ok(Some(updated))
+    }
+
     fn read(&self) -> Result<Document, ConfigurationStoreError> {
         let document = storage::read_json(&self.path)?.unwrap_or_else(Document::empty);
         if document.format_version != FORMAT_VERSION {

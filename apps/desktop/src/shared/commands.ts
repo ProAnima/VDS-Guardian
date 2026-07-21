@@ -77,6 +77,11 @@ export interface RepositorySummary {
   recoveryReady: boolean;
 }
 
+export interface UpdateRepositoryPathRequest {
+  repositoryId: string;
+  path: string;
+}
+
 export interface RepositoryFailure {
   code: string;
   message: string;
@@ -113,6 +118,17 @@ export interface CaptureSelectionExecutionRequest { selection: BackupSelection; 
 export interface CaptureFailure { code: string; message: string; remediation: string; }
 
 export interface BackupSummary { backupId: string; sealedAt: string; verification: "verified"; }
+export interface BackupArchiveEntry { path: string; kind: "directory" | "regular_file"; size: number; }
+export interface BackupDockerMount { sourcePath: string; destination: string; readOnly: boolean; }
+export interface BackupDockerWorkload {
+  containerId: string; containerName: string; image: string; imageDigest?: string;
+  composeProject?: string; state: "created" | "running" | "paused" | "restarting" | "exited" | "dead";
+  mounts: BackupDockerMount[];
+}
+export interface BackupRestoreDescription {
+  backupId: string; sourceProfileId: string; roots: string[]; dockerWorkloads: BackupDockerWorkload[];
+  entries: BackupArchiveEntry[]; totalEntries: number; nextOffset?: number; replacementAvailable: boolean;
+}
 export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; runId?: string; }
 export interface RestoreImpactPreview { backupId: string; destination: string; mode: "new_destination"; adds: string[]; replaces: string[]; conflicts: string[]; workloadLabels: string[]; confirmation: string; }
 export interface RestoreFailure { code: string; message: string; remediation: string; }
@@ -120,6 +136,12 @@ export interface RestoreFailure { code: string; message: string; remediation: st
 export interface DeployRequest { repositoryId: string; backupId: string; targetProfileId: string; targetPath: string; confirmation?: string; runId?: string; }
 export interface DeploymentPreview { backupId: string; targetProfileId: string; targetProfileLabel: string; targetPath: string; confirmation: string; filesystemPayload: string; databasePayload?: string; }
 export interface DeployFailure { code: string; message: string; remediation: string; }
+export interface ReplacementRequest { repositoryId: string; backupId: string; targetProfileId: string; confirmation?: string; runId?: string; }
+export interface ReplacementResult {
+  backupId: string; targetProfileId: string; root: string; containers: string[]; replaces: string[];
+  conflicts: string[]; safetyBackupRequired: boolean; serviceStopRequired: boolean; confirmation: string;
+  safetyBackupId?: string; rollbackPath: string;
+}
 
 export interface DockerMountSummary { kind: "bind" | "volume" | "tmpfs"; destination: string; capturablePath?: string; }
 export interface DockerContainerSummary { id: string; name: string; composeProject?: string; state: "created" | "running" | "paused" | "restarting" | "exited" | "dead"; mounts: DockerMountSummary[]; }
@@ -193,6 +215,14 @@ export async function listRepositories(): Promise<RepositorySummary[]> {
   if (!hasTauriRuntime()) return [];
   return invoke<RepositorySummary[]>("list_repositories");
 }
+export async function updateRepositoryPath(request: UpdateRepositoryPathRequest): Promise<RepositorySummary> {
+  requireTauriRuntime();
+  return invoke<RepositorySummary>("update_repository_path", { request });
+}
+export async function deleteRepository(repositoryId: string): Promise<void> {
+  requireTauriRuntime();
+  return invoke<void>("delete_repository", { request: { repositoryId, confirmed: true } });
+}
 export async function initializeRepositoryRecovery(repositoryId: string): Promise<void> {
   requireTauriRuntime();
   return invoke<void>("initialize_repository_recovery", { repositoryId });
@@ -212,10 +242,16 @@ export async function runCapturePlan(planId: string, runId: string): Promise<Cap
 export async function runCaptureSelection(request: CaptureSelectionExecutionRequest): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_selection", { request }); }
 export async function cancelJob(runId: string): Promise<boolean> { if (!hasTauriRuntime()) return false; return invoke<boolean>("cancel_job", { runId }); }
 export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
+export async function inspectRestoreBackup(repositoryId: string, backupId: string, offset = 0): Promise<BackupRestoreDescription> {
+  requireTauriRuntime();
+  return invoke<BackupRestoreDescription>("inspect_restore_backup", { request: { repositoryId, backupId, offset } });
+}
 export async function previewRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("preview_restore", { request }); }
 export async function executeRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("execute_restore", { request }); }
 export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
 export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
+export async function previewSourceReplacement(request: ReplacementRequest): Promise<ReplacementResult> { requireTauriRuntime(); return invoke<ReplacementResult>("preview_source_replacement", { request }); }
+export async function executeSourceReplacement(request: ReplacementRequest): Promise<ReplacementResult> { requireTauriRuntime(); return invoke<ReplacementResult>("execute_source_replacement", { request }); }
 export async function listDockerContainers(profileId: string): Promise<DockerContainerSummary[]> { requireTauriRuntime(); return invoke<DockerContainerSummary[]>("list_docker_containers", { profileId }); }
 export async function browseRemoteDirectory(profileId: string, directory: string, cursor?: string): Promise<RemoteBrowsePage> { requireTauriRuntime(); return invoke<RemoteBrowsePage>("browse_remote_directory", { request: { profileId, directory, cursor, limit: 100 } }); }
 // OpenSSH commonly stores private identities without a conventional extension

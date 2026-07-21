@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, ClipboardList, Database, LoaderCircle } from "lucide-react";
+import { Check, Database, LoaderCircle } from "lucide-react";
 import type { Translate } from "../i18n";
 import { captureErrorText } from "../shared/capture-error";
+import { togglePathSelection } from "../shared/backup-selection";
 import {
   cancelJob, hasTauriRuntime, listRepositories, listSshProfiles, previewCaptureSelection,
   runCaptureSelection, type BackupSelectionItem, type CaptureSelectionPreview,
@@ -10,16 +11,15 @@ import {
 import { newRunId } from "../shared/run-id";
 import { CaptureSelectionReview } from "./CaptureSelectionReview";
 import { BackupSelectionSummary } from "./BackupSelectionSummary";
-import { DockerMountPicker } from "./DockerMountPicker";
 import { OperationFailureNotice } from "./OperationFailureNotice";
-import { RemoteFileExplorer } from "./RemoteFileExplorer";
+import { CaptureSourcePicker } from "./CaptureSourcePicker";
 
 interface CapturePlanPanelProps { onPlansChanged: () => void; resourcesRevision: number; t: Translate; }
 
 export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: CapturePlanPanelProps) {
   const model = useCaptureSelection(onPlansChanged, resourcesRevision, t);
   return <section className="repository-panel" aria-labelledby="plan-title">
-    <header className="repository-panel__header"><div><p className="eyebrow"><ClipboardList size={15} />{t("backupHeroEyebrow")}</p><h2 id="plan-title">{t("backupChooseDataTitle")}</h2><p>{t("backupChooseDataBody")}</p></div></header>
+    <header className="repository-panel__header"><h2 id="plan-title">{t("backupChooseDataTitle")}</h2></header>
     <SelectionForm model={model} t={t} />
     {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.run()} t={t} />}
     {model.running && <RunPlanControls model={model} t={t} />}
@@ -32,10 +32,10 @@ function SelectionForm({ model, t }: { model: CaptureSelectionModel; t: Translat
   return <form className="repository-form" onSubmit={(event) => void model.review(event)}>
     <label><span>{t("setupServer")}</span><select value={model.profileId} onChange={(event) => model.changeProfile(event.target.value)} required>{model.profiles.map((profile) => <option key={profile.profileId} value={profile.profileId}>{profile.label}</option>)}</select></label>
     <label><span>{t("setupStorage")}</span><select value={model.repositoryId} onChange={(event) => model.changeRepository(event.target.value)} required>{model.repositories.map((repository) => <option key={repository.repositoryId} value={repository.repositoryId}>{repository.label}</option>)}</select></label>
-    <div className="capture-workspace repository-form__actions"><div className="capture-workspace__sources">
-      <RemoteFileExplorer profileId={model.profileId} selectedPaths={itemPaths(model.items)} onTogglePath={model.toggleRemotePath} t={t} />
-      <DockerMountPicker profileId={model.profileId} selectedItems={model.items} onToggleItem={model.toggleDockerItem} t={t} />
-    </div><BackupSelectionSummary items={model.items} onClear={model.clearItems} onRemove={model.removeItem} t={t} /></div>
+    <div className="capture-workspace repository-form__actions">
+      <CaptureSourcePicker profileId={model.profileId} items={model.items} selectedPaths={itemPaths(model.items)} onTogglePath={model.toggleRemotePath} onToggleDocker={model.toggleDockerItem} t={t} />
+      <BackupSelectionSummary items={model.items} onClear={model.clearItems} onRemove={model.removeItem} t={t} />
+    </div>
     <label className="capture-sqlite repository-form__actions"><span className="capture-sqlite__icon"><Database size={16} /></span><span><strong>{t("captureDatabasePath")}</strong><small>{t("captureDatabaseHint")}</small></span><input value={model.databasePath} onChange={(event) => model.changeDatabase(event.target.value)} placeholder="/srv/app/app.sqlite" /></label>
     <div className="capture-primary-action repository-form__actions"><div><strong>{t("backupReadyTitle")}</strong><span>{model.items.length === 0 ? t("backupReadyEmpty") : t("backupReadyBody")}</span></div><button className="button button--primary" disabled={!model.profileId || !model.repositoryId || model.items.length === 0 || model.reviewing || model.running} type="submit">{model.reviewing ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{model.reviewing ? t("captureReviewing") : t("backupReview")}</button></div>
   </form>;
@@ -53,7 +53,9 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
   const changeProfile = (value: string) => { setProfileId(value); setItems([]); invalidate(); };
   const changeRepository = (value: string) => { setRepositoryId(value); invalidate(); };
   const changeDatabase = (value: string) => { setDatabasePath(value); invalidate(); };
-  const toggleRemotePath = (path: string) => { setItems((current) => current.some((item) => item.kind === "remote_path" && item.absolutePath === path) ? current.filter((item) => item.kind !== "remote_path" || item.absolutePath !== path) : [...current, { kind: "remote_path", absolutePath: path }]); invalidate(); };
+  const toggleRemotePath = (path: string) => {
+    setItems((current) => togglePathSelection(current, path)); invalidate();
+  };
   const toggleDockerItem = (item: BackupSelectionItem) => { setItems((current) => current.some((candidate) => selectionKey(candidate) === selectionKey(item)) ? current.filter((candidate) => selectionKey(candidate) !== selectionKey(item)) : [...current, item]); invalidate(); };
   const removeItem = (item: BackupSelectionItem) => { setItems((current) => current.filter((candidate) => selectionKey(candidate) !== selectionKey(item))); invalidate(); };
   const clearItems = () => { setItems([]); invalidate(); };
