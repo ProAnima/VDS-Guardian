@@ -134,6 +134,20 @@ describe("setup resource refresh", () => {
     expect(container.querySelector(".capture-workspace")).toBeNull();
   });
 
+  it("offers a retry without showing setup-empty copy when backup resources fail", async () => {
+    commands.listRepositories.mockRejectedValueOnce(new Error("registry unavailable"));
+    await act(async () => root.render(
+      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+    ));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("backupSetupRequired");
+    expect(container.querySelector(".capture-workspace")).toBeNull();
+    await act(async () => button("readinessRefresh").click());
+    await vi.waitFor(() => expect(container.querySelector(".capture-workspace")).not.toBeNull());
+    expect(commands.listRepositories).toHaveBeenCalledTimes(2);
+  });
+
   it("preserves valid server and storage choices while resources refresh", async () => {
     commands.listSshProfiles.mockResolvedValue([
       { profileId: "server-1", label: "VDS 1", host: "one.example", port: 22, user: "backup" },

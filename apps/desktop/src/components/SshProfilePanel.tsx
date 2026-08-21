@@ -6,6 +6,7 @@ import {
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import type { Translate } from "../i18n";
+import { ResourceLoadFailure } from "./ResourceLoadFailure";
 
 const initialForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", keyPath: "" };
 
@@ -13,9 +14,11 @@ export function SshProfilePanel({ onProfilesChanged, t }: { onProfilesChanged: (
   const model = useSshProfile(onProfilesChanged, t);
   return <section className="ssh-profile-panel" aria-labelledby="ssh-profile-title">
     <header className="ssh-profile-panel__header"><div><p className="eyebrow"><Server size={15} aria-hidden="true" />{t("setupServerEyebrow")}</p><h1 id="ssh-profile-title">{t("serverManagerTitle")}</h1><p>{t("serversBody")}</p></div><span className="signing-state"><Wifi size={16} />SSH</span></header>
-    <ServerCards model={model} t={t} />
-    {!model.loading && !model.formOpen && <button className="button button--secondary ssh-profile-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("serversAdd")}</button>}
-    {!model.loading && model.formOpen && <ServerForm model={model} t={t} />}
+    {model.loadFailure
+      ? <ResourceLoadFailure message={model.loadFailure} onRetry={() => void model.refresh()} retryLabel={t("readinessRefresh")} retrying={model.loading} />
+      : <><ServerCards model={model} t={t} />
+        {!model.loading && !model.formOpen && <button className="button button--secondary ssh-profile-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("serversAdd")}</button>}
+        {!model.loading && model.formOpen && <ServerForm model={model} t={t} />}</>}
     {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
     {model.result && <p className="ssh-profile-panel__success"><CircleCheck size={16} />{model.result}</p>}
   </section>;
@@ -58,9 +61,11 @@ function useSshProfile(onProfilesChanged: () => void, t: Translate) {
   const [confirmingId, setConfirmingId] = useState<string>();
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
+  const [loadFailure, setLoadFailure] = useState<string>();
   const refresh = useCallback(async () => {
-    try { const next = await listSshProfiles(); setProfiles(next); setFormOpen(next.length === 0); }
-    catch (error) { setFailure(errorText(error, t)); } finally { setLoading(false); }
+    setLoading(true); setLoadFailure(undefined);
+    try { const next = await listSshProfiles(); setProfiles(next); setFormOpen((current) => current || next.length === 0); }
+    catch (error) { setLoadFailure(errorText(error, t)); } finally { setLoading(false); }
   }, [t]);
   useEffect(() => { void refresh(); }, [refresh]);
   const submit = async (event: FormEvent) => {
@@ -71,10 +76,10 @@ function useSshProfile(onProfilesChanged: () => void, t: Translate) {
   };
   const remove = async (profile: SshProfileSummary) => {
     setDeletingId(profile.profileId); setFailure(undefined); setResult(undefined);
-    try { await deleteSshProfile(profile.profileId); setProfiles((current) => { const next = current.filter((item) => item.profileId !== profile.profileId); if (next.length === 0) setFormOpen(true); return next; }); setConfirmingId(undefined); onProfilesChanged(); setResult(`${t("serversDeleted")} ${profile.label}`); }
+    try { await deleteSshProfile(profile.profileId); await refresh(); setConfirmingId(undefined); onProfilesChanged(); setResult(`${t("serversDeleted")} ${profile.label}`); }
     catch (error) { setFailure(errorText(error, t)); } finally { setDeletingId(undefined); }
   };
-  return { profiles, form, formOpen, acknowledged, working, loading, deletingId, confirmingId, result, failure, setForm, setFormOpen, setAcknowledged, setConfirmingId, submit, remove };
+  return { profiles, form, formOpen, acknowledged, working, loading, loadFailure, deletingId, confirmingId, result, failure, setForm, setFormOpen, setAcknowledged, setConfirmingId, refresh, submit, remove };
 }
 
 type SshProfileModel = ReturnType<typeof useSshProfile>;

@@ -58,6 +58,18 @@ describe("repository management", () => {
     expect(container.querySelector(".repository-form")).not.toBeNull();
   });
 
+  it("does not offer storage creation when the registry cannot be read", async () => {
+    commands.listRepositories.mockRejectedValueOnce(new Error("registry unavailable")).mockResolvedValueOnce([]);
+    await act(async () => root.render(<RepositoryPanel onRepositoriesChanged={vi.fn()} t={(key) => key} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.querySelector(".repository-form")).toBeNull();
+    expect(container.textContent).not.toContain("setupCreateRepository");
+    await act(async () => button("readinessRefresh").click());
+    await vi.waitFor(() => expect(container.querySelector(".repository-form")).not.toBeNull());
+    expect(commands.listRepositories).toHaveBeenCalledTimes(2);
+  });
+
   async function render() {
     await act(async () => root.render(<RepositoryPanel onRepositoriesChanged={vi.fn()} t={(key) => key} />));
     await vi.waitFor(() => expect(container.textContent).toContain("Archive"));

@@ -7,6 +7,7 @@ import {
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import type { Translate } from "../i18n";
+import { ResourceLoadFailure } from "./ResourceLoadFailure";
 
 const emptyForm: RepositoryRequest = { label: "", path: "" };
 
@@ -14,10 +15,12 @@ export function RepositoryPanel({ onRepositoriesChanged, t }: { onRepositoriesCh
   const model = useRepository(onRepositoriesChanged, t);
   return <section className="repository-panel" aria-labelledby="repository-title">
     <header className="repository-panel__header"><div><p className="eyebrow"><HardDrive size={15} aria-hidden="true" />{t("setupRepositoryEyebrow")}</p><h2 id="repository-title">{t("setupRepositoryTitle")}</h2><p>{t("setupRepositoryBody")}</p></div><span className="signing-state"><FolderArchive size={16} />{t("setupLocal")}</span></header>
-    {model.loading && <p className="server-list__empty">{t("readinessLoading")}</p>}
-    {!model.loading && <RepositoryCards model={model} t={t} />}
-    {!model.loading && !model.formOpen && <button className="button button--secondary repository-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("setupCreateRepository")}</button>}
-    {!model.loading && model.formOpen && <RepositoryForm model={model} t={t} />}
+    {model.loadFailure
+      ? <ResourceLoadFailure message={model.loadFailure} onRetry={() => void model.refresh()} retryLabel={t("readinessRefresh")} retrying={model.loading} />
+      : <>{model.loading && <p className="server-list__empty">{t("readinessLoading")}</p>}
+        {!model.loading && <RepositoryCards model={model} t={t} />}
+        {!model.loading && !model.formOpen && <button className="button button--secondary repository-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("setupCreateRepository")}</button>}
+        {!model.loading && model.formOpen && <RepositoryForm model={model} t={t} />}</>}
     {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
     {model.result && <p className="repository-panel__success"><CircleCheck size={16} />{model.result}</p>}
   </section>;
@@ -72,9 +75,11 @@ function useRepository(onRepositoriesChanged: () => void, t: Translate) {
   const [formOpen, setFormOpen] = useState(false);
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
+  const [loadFailure, setLoadFailure] = useState<string>();
   const refresh = useCallback(async () => {
+    setLoading(true); setLoadFailure(undefined);
     try { const next = await listRepositories(); setRepositories(next); setFormOpen((current) => current || next.length === 0); }
-    catch (error) { setFailure(errorText(error, t)); } finally { setLoading(false); }
+    catch (error) { setLoadFailure(errorText(error, t)); } finally { setLoading(false); }
   }, [t]);
   useEffect(() => { void refresh(); }, [refresh]);
   const notify = async () => { await refresh(); onRepositoriesChanged(); };
@@ -96,7 +101,7 @@ function useRepository(onRepositoriesChanged: () => void, t: Translate) {
   const startEditing = (repository: RepositorySummary) => { setConfirmingId(undefined); setEditing({ repositoryId: repository.repositoryId, path: repository.path }); };
   const pickNewPath = async () => { const path = await pickRepositoryPath(); if (path) setForm((current) => ({ ...current, path })); };
   const pickEditPath = async () => { const path = await pickRepositoryPath(); if (path) setEditing((current) => current && ({ ...current, path })); };
-  return { repositories, form, editing, confirmingId, working, loading, formOpen, result, failure, setForm, setEditing, setConfirmingId, setFormOpen, submit, prepare, savePath, remove, startEditing, pickNewPath, pickEditPath };
+  return { repositories, form, editing, confirmingId, working, loading, loadFailure, formOpen, result, failure, setForm, setEditing, setConfirmingId, setFormOpen, refresh, submit, prepare, savePath, remove, startEditing, pickNewPath, pickEditPath };
 }
 
 type RepositoryModel = ReturnType<typeof useRepository>;

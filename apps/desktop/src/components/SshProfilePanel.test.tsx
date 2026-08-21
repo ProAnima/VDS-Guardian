@@ -48,4 +48,22 @@ describe("SSH profile loading", () => {
     expect(container.querySelector(".ssh-profile-form")).toBeNull();
     expect(container.textContent).toContain("serversAdd");
   });
+
+  it("does not show an empty state or form when the server registry cannot be read", async () => {
+    commands.listSshProfiles.mockRejectedValueOnce(new Error("registry unavailable")).mockResolvedValueOnce([]);
+    await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("serversEmpty");
+    expect(container.textContent).not.toContain("setupServerTitle");
+    await act(async () => retryButton(container).click());
+    await vi.waitFor(() => expect(container.textContent).toContain("setupServerTitle"));
+    expect(commands.listSshProfiles).toHaveBeenCalledTimes(2);
+  });
 });
+
+function retryButton(container: HTMLElement): HTMLButtonElement {
+  const button = [...container.querySelectorAll("button")].find((item) => item.textContent?.includes("readinessRefresh"));
+  if (!(button instanceof HTMLButtonElement)) throw new Error("Retry button not found");
+  return button;
+}

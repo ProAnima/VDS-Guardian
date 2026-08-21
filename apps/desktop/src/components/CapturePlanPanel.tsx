@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, CircleAlert, Database, LoaderCircle } from "lucide-react";
+import { Check, Database, LoaderCircle } from "lucide-react";
 import type { Translate } from "../i18n";
 import { captureErrorText } from "../shared/capture-error";
 import { togglePathSelection } from "../shared/backup-selection";
@@ -14,6 +14,7 @@ import { CaptureSelectionReview } from "./CaptureSelectionReview";
 import { BackupSelectionSummary } from "./BackupSelectionSummary";
 import { OperationFailureNotice } from "./OperationFailureNotice";
 import { CaptureSourcePicker } from "./CaptureSourcePicker";
+import { ResourceLoadFailure } from "./ResourceLoadFailure";
 
 interface CapturePlanPanelProps { onPlansChanged: () => void; resourcesRevision: number; t: Translate; }
 
@@ -22,7 +23,7 @@ export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: Captu
   return <section className="repository-panel" aria-labelledby="plan-title">
     <header className="repository-panel__header"><h2 id="plan-title">{t("backupChooseDataTitle")}</h2></header>
     {model.resourcesLoading && <p className="capture-resources-state"><LoaderCircle className="spin" size={16} />{t("readinessLoading")}</p>}
-    {!model.resourcesLoading && model.resourceFailure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.resourceFailure}</p>}
+    {!model.resourcesLoading && model.resourceFailure && <ResourceLoadFailure message={model.resourceFailure} onRetry={model.retryResources} retryLabel={t("readinessRefresh")} retrying={model.resourcesLoading} />}
     {!model.resourcesLoading && !model.resourceFailure && !model.resourcesReady && <p className="capture-resources-state">{t("backupSetupRequired")}</p>}
     {!model.resourcesLoading && !model.resourceFailure && model.resourcesReady && !model.running && <SelectionForm model={model} t={t} />}
     {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.run()} t={t} />}
@@ -54,6 +55,7 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
   const [profileId, setProfileId] = useState(""); const [repositoryId, setRepositoryId] = useState(""); const [items, setItems] = useState<BackupSelectionItem[]>([]); const [databasePath, setDatabasePath] = useState("");
   const [preview, setPreview] = useState<CaptureSelectionPreview>(); const [reviewing, setReviewing] = useState(false); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [cancelling, setCancelling] = useState(false); const [runId, setRunId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
   const [resourcesLoading, setResourcesLoading] = useState(true); const [resourceFailure, setResourceFailure] = useState<string>();
+  const [retryRevision, setRetryRevision] = useState(0);
   const invalidate = () => { setPreview(undefined); setResult(undefined); };
   const changeProfile = (value: string) => { setProfileId(value); setItems([]); invalidate(); };
   const changeRepository = (value: string) => { setRepositoryId(value); invalidate(); };
@@ -70,12 +72,13 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
       .catch((error: unknown) => { if (active) setResourceFailure(safeErrorText(error, t("readinessErrorFallback"))); })
       .finally(() => { if (active) setResourcesLoading(false); });
     return () => { active = false; };
-  }, [resourcesRevision, t]);
+  }, [resourcesRevision, retryRevision, t]);
   const review = async (event: FormEvent) => { event.preventDefault(); if (!hasTauriRuntime()) return; setReviewing(true); setFailure(undefined); setResult(undefined); try { setPreview(await previewCaptureSelection({ profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined })); } catch { setFailure(t("captureReviewFailed")); } finally { setReviewing(false); } };
   const run = async () => { if (!preview) return; const nextRunId = newRunId(); setRunId(nextRunId); setWorking(true); setRunning(true); setFailure(undefined); try { const job = await runCaptureSelection({ selection: { profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined }, confirmation: preview.confirmation, runId: nextRunId }); onPlansChanged(); setPreview(undefined); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setWorking(false); setRunning(false); setRunId(undefined); setCancelling(false); } };
   const cancel = async () => { if (!runId || cancelling) return; setCancelling(true); try { await cancelJob(runId); } catch (error) { setFailure(safeErrorText(error, t("captureErrorFallback"))); setCancelling(false); } };
+  const retryResources = () => setRetryRevision((current) => current + 1);
   const resourcesReady = profiles.length > 0 && repositories.length > 0;
-  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, reviewing, working, running, cancelling, resourcesLoading, resourcesReady, resourceFailure, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, run, cancel };
+  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, reviewing, working, running, cancelling, resourcesLoading, resourcesReady, resourceFailure, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, retryResources, review, run, cancel };
 }
 
 type CaptureSelectionModel = ReturnType<typeof useCaptureSelection>;

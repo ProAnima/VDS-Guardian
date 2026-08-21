@@ -50,6 +50,41 @@ describe("restore resource races", () => {
     await act(async () => first.resolve(description("backup-1", "/srv/one")));
     expect(container.textContent).not.toContain("/srv/one");
   });
+
+  it("retries resource loading without showing a false empty-storage state", async () => {
+    commands.listRepositories.mockRejectedValueOnce(new Error("registry unavailable"));
+    commands.listBackups.mockResolvedValue([backup("backup-1")]);
+    commands.inspectRestoreBackup.mockResolvedValue(description("backup-1", "/srv/one"));
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("restoreNoRepositories");
+    await act(async () => retryButton(container).click());
+    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+  });
+
+  it("retries a failed backup list without claiming the storage is empty", async () => {
+    commands.listBackups.mockRejectedValueOnce(new Error("backup index unavailable")).mockResolvedValueOnce([backup("backup-1")]);
+    commands.inspectRestoreBackup.mockResolvedValue(description("backup-1", "/srv/one"));
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("restoreNoBackups");
+    await act(async () => retryButton(container).click());
+    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+  });
+
+  it("retries inspection of the selected verified backup", async () => {
+    commands.listRepositories.mockResolvedValue([{ repositoryId: "repo-1", label: "One", path: "D:/one", recoveryReady: true }]);
+    commands.listBackups.mockResolvedValue([backup("backup-1")]);
+    commands.inspectRestoreBackup.mockRejectedValueOnce(new Error("manifest unavailable")).mockResolvedValueOnce(description("backup-1", "/srv/one"));
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("/srv/one");
+    await act(async () => retryButton(container).click());
+    await vi.waitFor(() => expect(container.textContent).toContain("/srv/one"));
+  });
 });
 
 function backup(backupId: string): BackupSummary { return { backupId, sealedAt: "2026-08-21T00:00:00Z", verification: "verified" }; }
@@ -57,3 +92,4 @@ function description(backupId: string, root: string): BackupRestoreDescription {
 function selectWithOption(container: HTMLElement, value: string): HTMLSelectElement { const option = container.querySelector<HTMLOptionElement>(`option[value="${value}"]`); if (!(option?.parentElement instanceof HTMLSelectElement)) throw new Error(`missing option: ${value}`); return option.parentElement; }
 function selectValue(select: HTMLSelectElement, value: string): void { const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set; setter?.call(select, value); select.dispatchEvent(new Event("change", { bubbles: true })); }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
+function retryButton(container: HTMLElement): HTMLButtonElement { const button = [...container.querySelectorAll("button")].find((item) => item.textContent?.includes("readinessRefresh")); if (!(button instanceof HTMLButtonElement)) throw new Error("Retry button not found"); return button; }
