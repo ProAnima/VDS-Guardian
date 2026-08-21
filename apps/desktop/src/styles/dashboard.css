@@ -295,6 +295,8 @@
 .backup-settings__advanced-content { display: grid; gap: 14px; margin-top: 13px; }
 .capture-resources-state { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius-sm); color: var(--text-muted); font-size: .72rem; }
 .repository-panel__add { margin-top: 14px; }
+.operation-progress { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--surface-muted); font-size: .74rem; }
+.operation-progress > span { display: flex; align-items: center; gap: 8px; }
 .signing-confirm { margin-top: 22px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised); }
 .signing-confirm strong { font-size: 0.82rem; }
 .signing-confirm p { margin: 7px 0 0; color: var(--text-muted); font-size: 0.74rem; line-height: 1.6; }

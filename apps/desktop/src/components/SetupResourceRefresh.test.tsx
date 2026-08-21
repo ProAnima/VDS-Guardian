@@ -8,6 +8,7 @@ import { SigningIdentityPanel } from "./SigningIdentityPanel";
 
 const commands = vi.hoisted(() => ({
   browseRemoteDirectory: vi.fn(),
+  cancelJob: vi.fn(),
   enrollSigningIdentity: vi.fn(),
   getSigningIdentityStatus: vi.fn(),
   listRepositories: vi.fn(),
@@ -42,6 +43,7 @@ describe("setup resource refresh", () => {
       { repositoryId: "repo-1", label: "Archive", path: "D:/archive", recoveryReady: true },
     ]);
     commands.runCaptureSelection.mockResolvedValue({ backupId: "backup-1" });
+    commands.cancelJob.mockResolvedValue(true);
     commands.previewCaptureSelection.mockResolvedValue({
       profileId: "server-1", repositoryId: "repo-1", normalizedRoots: ["/srv"],
       logicalItems: [{ kind: "remote_path", absolutePath: "/srv" }], warnings: [],
@@ -95,6 +97,30 @@ describe("setup resource refresh", () => {
     expect(commands.runCaptureSelection).toHaveBeenCalledWith(expect.objectContaining({
       confirmation: "CREATE BACKUP FOR server-1 IN repo-1 abcdef123456",
     }));
+    expect(container.textContent).toContain("captureSealed");
+    expect([...container.querySelectorAll("button")].some((candidate) => candidate.textContent?.includes("backupCreate"))).toBe(false);
+  });
+
+  it("locks the editor and sends one cancellation request for a running backup", async () => {
+    commands.runCaptureSelection.mockReturnValue(new Promise(() => undefined));
+    await act(async () => root.render(
+      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+    ));
+    const selection = await vi.waitFor(() => {
+      const candidate = container.querySelector<HTMLInputElement>('input[aria-label="browserSelect srv"]');
+      if (!candidate) throw new Error("Remote path selection was not rendered");
+      return candidate;
+    });
+    await act(async () => selection.click());
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(button("backupCreate")).toBeDefined());
+    await act(async () => button("backupCreate").click());
+    const cancel = await vi.waitFor(() => button("captureCancel"));
+    expect(container.querySelector(".capture-workspace")).toBeNull();
+    await act(async () => cancel.click());
+    expect(cancel.disabled).toBe(true);
+    await act(async () => cancel.click());
+    expect(commands.cancelJob).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the file explorer hidden until backup prerequisites exist", async () => {

@@ -85,6 +85,9 @@ describe("restore cancellation", () => {
     expect(request.runId).toMatch(/^[0-9a-f-]{36}$/);
     await act(async () => button("restoreCancelRunning").click());
     expect(commands.cancelJob).toHaveBeenCalledWith(request.runId);
+    expect(button("restoreCancelRunning").disabled).toBe(true);
+    await act(async () => button("restoreCancelRunning").click());
+    expect(commands.cancelJob).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an existing remote destination before confirmation", async () => {

@@ -25,7 +25,7 @@ export function RestorePanel({ onManageBackups, onManageServers, t }: RestorePan
     <section className="repository-panel" aria-labelledby="restore-title">
       <header className="repository-panel__header"><h2 id="restore-title">{t("restoreBackupsTitle")}</h2></header>
       {model.plan ? <Confirmation model={model} t={t} /> : <RestoreForm model={model} onManageBackups={onManageBackups} onManageServers={onManageServers} t={t} />}
-      {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
+      {model.result && <p className="repository-panel__success" role="status"><Check size={16} />{model.result}</p>}
       {model.failure && <OperationFailureNotice message={model.failure} safe="restoreFailureSafe" changed="restoreFailureChanged" t={t} />}
       {!hasTauriRuntime() && <p className="signing-panel__desktop">{t("restoreDesktopRequired")}</p>}
     </section>
@@ -84,10 +84,10 @@ function useRestoreSelection(profiles: SshProfileSummary[], repositoryId: string
 interface ActionInput { repositoryId: string; backupId: string; profileId: string; mode: RestoreMode; targetPath: string; }
 function useRestoreAction(t: Translate, input: ActionInput) {
   const [plan, setPlan] = useState<Plan>(); const [confirmation, setConfirmation] = useState("");
-  const [busy, setBusy] = useState(false); const [runId, setRunId] = useState<string>();
+  const [busy, setBusy] = useState(false); const [cancelling, setCancelling] = useState(false); const [runId, setRunId] = useState<string>();
   const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
   const preview = (event: FormEvent) => { event.preventDefault(); void runPreview(); };
-  const runPreview = async () => { setBusy(true); setFailure(undefined); try {
+  const runPreview = async () => { setBusy(true); setFailure(undefined); setResult(undefined); try {
     if (input.mode === "replace") setPlan({ mode: "replace", value: await previewSourceReplacement(request(input)) });
     else setPlan({ mode: "separate", value: await previewDeploy({ ...request(input), targetPath: input.targetPath }) });
     setConfirmation("");
@@ -96,8 +96,9 @@ function useRestoreAction(t: Translate, input: ActionInput) {
     if (plan.mode === "replace") { const done = await executeSourceReplacement({ ...request(input), confirmation, runId: id }); setResult(`${t("restoreSuccess")} ${done.root}`); }
     else { const done = await executeDeploy({ ...request(input), targetPath: input.targetPath, confirmation, runId: id }); setResult(`${t("restoreSuccess")} ${done.targetPath}`); }
     setPlan(undefined); setConfirmation("");
-  } catch (error) { setFailure(safeErrorText(error, t("restoreErrorFallback"))); } finally { setBusy(false); setRunId(undefined); } };
-  return { plan, setPlan, confirmation, setConfirmation, busy, runId, result, failure, setFailure, preview, execute };
+  } catch (error) { setFailure(safeErrorText(error, t("restoreErrorFallback"))); } finally { setBusy(false); setRunId(undefined); setCancelling(false); } };
+  const cancel = async () => { if (!runId || cancelling) return; setCancelling(true); try { await cancelJob(runId); } catch (error) { setFailure(safeErrorText(error, t("restoreErrorFallback"))); setCancelling(false); } };
+  return { plan, setPlan, confirmation, setConfirmation, busy, cancelling, runId, result, failure, setFailure, preview, execute, cancel };
 }
 
 function request(input: ActionInput) { return { repositoryId: input.repositoryId, backupId: input.backupId, targetProfileId: input.profileId }; }
@@ -165,7 +166,7 @@ function Confirmation({ model, t }: { model: Model; t: Translate }) {
     <label><span>{t("restorePlanConfirmLabel")}</span><input value={model.confirmation} placeholder={t("restoreConfirmPlaceholder")} onChange={(e) => model.setConfirmation(e.target.value)} /></label>
     <div className="signing-confirm__actions"><button className="button button--secondary" disabled={model.busy} onClick={() => model.setPlan(undefined)}>{t("restoreCancel")}</button>
       <button className="button button--primary" disabled={model.busy || model.confirmation !== phrase || (plan.mode === "replace" && plan.value.conflicts.length > 0)} onClick={() => void model.execute()}>{model.busy ? <LoaderCircle className="spin" size={16} /> : <RotateCcw size={16} />}{model.busy ? t("restoreExecuting") : t("restoreExecute")}</button>
-      {model.runId && <button className="button button--secondary" onClick={() => void cancelJob(model.runId ?? "")}>{t("restoreCancelRunning")}</button>}
+      {model.runId && <button className="button button--secondary" disabled={model.cancelling} onClick={() => void model.cancel()}>{model.cancelling && <LoaderCircle className="spin" size={15} />}{t("restoreCancelRunning")}</button>}
     </div>
   </div>;
 }
