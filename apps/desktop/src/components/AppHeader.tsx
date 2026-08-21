@@ -9,17 +9,12 @@ const themes: Array<{ id: ThemeId; icon: typeof Sun; label: "themeSystem" | "the
   { id: "dark", icon: Moon, label: "themeDark" },
 ];
 
-export function AppHeader({ preferences, version }: { preferences: Preferences; version: string }) {
+export function AppHeader({ preferences }: { preferences: Preferences }) {
   const { locale, setLocale, theme, setTheme, t } = preferences;
   return (
     <header className="topbar">
-      <div className="topbar__identity">
-        <span className="topbar__status"><i aria-hidden="true" />{t("iterationBadge")}</span>
-        <span className="topbar__version">v{version}</span>
-      </div>
       <div className="topbar__controls">
         <label className="locale-control">
-          <span>{t("language")}</span>
           <select value={locale} onChange={(event) => setLocale(event.target.value as LocaleId)} aria-label={t("language")}>
             {locales.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
           </select>

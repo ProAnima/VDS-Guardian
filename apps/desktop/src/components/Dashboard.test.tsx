@@ -28,27 +28,26 @@ describe("Dashboard", () => {
     container.remove();
   });
 
-  it("shows the active safety flow and opens setup actions", async () => {
-    const startSetup = vi.fn();
+  it("shows one compact workflow and opens each operator action", async () => {
+    const addServer = vi.fn();
+    const runBackup = vi.fn();
+    const restore = vi.fn();
     await act(async () => root.render(
-      <Dashboard status={status} t={(key) => key} onAddServer={startSetup} onRunBackup={startSetup} />,
+      <Dashboard status={status} t={(key) => key} onAddServer={addServer} onRunBackup={runBackup} onRestore={restore} />,
     ));
 
     expect(container.textContent).toContain("securityBody");
     expect(container.textContent).not.toContain("lockedBody");
     expect(container.textContent).toContain("dashboardStartTitle");
-    expect(container.textContent).toContain("dashboardStartServerBody");
-    expect(container.textContent).not.toContain("setupHeroBody");
-    const setupActions = [...container.querySelectorAll("button")]
-      .filter((button) => button.textContent?.includes("addServer"));
-    expect(setupActions).toHaveLength(2);
-    await act(async () => setupActions[1]?.click());
-    expect(startSetup).toHaveBeenCalledOnce();
+    expect(container.querySelectorAll(".workflow-step")).toHaveLength(3);
+    expect([...container.querySelectorAll("button")].filter((button) => button.textContent?.includes("runBackup"))).toHaveLength(1);
+    await act(async () => container.querySelector<HTMLButtonElement>(".workflow-step")?.click());
+    expect(addServer).toHaveBeenCalledOnce();
   });
 
   it("keeps the fail-closed explanation when live operations are disabled", async () => {
     await act(async () => root.render(
-      <Dashboard status={{ ...status, liveOperationsEnabled: false }} t={(key) => key} onAddServer={vi.fn()} onRunBackup={vi.fn()} />,
+      <Dashboard status={{ ...status, liveOperationsEnabled: false }} t={(key) => key} onAddServer={vi.fn()} onRunBackup={vi.fn()} onRestore={vi.fn()} />,
     ));
 
     expect(container.textContent).toContain("lockedTitle");

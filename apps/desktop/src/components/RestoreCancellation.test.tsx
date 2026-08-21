@@ -103,8 +103,8 @@ describe("restore cancellation", () => {
 
   it("shows live replacement conflicts and keeps execution disabled", async () => {
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
-    await vi.waitFor(() => expect(container.textContent).toContain("restoreImpactReplaces"));
-    await act(async () => button("restoreImpactReplaces").click());
+    await vi.waitFor(() => expect(container.textContent).toContain("restoreModeReplace"));
+    await act(async () => button("restoreModeReplace").click());
     await act(async () => container.querySelector("form")?.requestSubmit());
     await vi.waitFor(() => expect(container.textContent).toContain("restoreFailureChanged: app"));
     await act(async () => change(

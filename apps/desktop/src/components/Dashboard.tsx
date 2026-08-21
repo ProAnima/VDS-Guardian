@@ -1,74 +1,68 @@
-import { Archive, ArrowUpRight, LockKeyhole, Plus, Server, ShieldCheck } from "lucide-react";
+import { Archive, ArrowUpRight, LockKeyhole, RotateCcw, Server, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { Translate } from "../i18n";
 import type { FoundationStatus } from "../shared/commands";
+
 interface DashboardProps {
   status: FoundationStatus;
   t: Translate;
   onAddServer: () => void;
   onRunBackup: () => void;
+  onRestore: () => void;
 }
 
-export function Dashboard({ status, t, onAddServer, onRunBackup }: DashboardProps) {
+export function Dashboard(props: DashboardProps) {
+  const { status, t, onAddServer, onRunBackup, onRestore } = props;
   return (
-    <main className="dashboard">
-      <Hero status={status} t={t} onAddServer={onAddServer} onRunBackup={onRunBackup} />
-      <SetupPanel t={t} onAddServer={onAddServer} />
-      <SecurityBanner t={t} />
-      <footer className="app-footer"><span>{t("footerPlatform")}</span><span>{t("footerLicense")}</span></footer>
+    <main className="dashboard dashboard--overview">
+      <section className="overview-hero">
+        <div className="overview-hero__content">
+          <p className="eyebrow"><ShieldCheck size={15} aria-hidden="true" />{t("pageEyebrow")}</p>
+          <h1>{t("pageTitle")}</h1>
+          <p>{t("pageDescription")}</p>
+          <button className="button button--primary" type="button" onClick={onRunBackup}>
+            <Archive size={17} aria-hidden="true" />{t("runBackup")}
+          </button>
+        </div>
+        <SafetyStatus status={status} t={t} />
+      </section>
+      <section className="workflow-panel" aria-labelledby="workflow-title">
+        <header><span>01—03</span><h2 id="workflow-title">{t("dashboardStartTitle")}</h2></header>
+        <div className="workflow-grid">
+          <WorkflowStep index="01" icon={Server} title={t("navServers")} body={t("serversBody")} onClick={onAddServer} />
+          <WorkflowStep index="02" icon={Archive} title={t("navBackups")} body={t("backupHeroBody")} onClick={onRunBackup} />
+          <WorkflowStep index="03" icon={RotateCcw} title={t("navRestore")} body={t("restoreBody")} onClick={onRestore} />
+        </div>
+      </section>
     </main>
   );
 }
 
-function Hero({ status, t, onAddServer, onRunBackup }: DashboardProps) {
+function SafetyStatus({ status, t }: Pick<DashboardProps, "status" | "t">) {
+  const ready = status.liveOperationsEnabled;
+  const Icon = ready ? ShieldCheck : LockKeyhole;
   return (
-    <section className="hero-panel">
-      <div className="hero-panel__content">
-        <p className="eyebrow"><ShieldCheck size={15} aria-hidden="true" />{t("pageEyebrow")}</p>
-        <h1>{t("pageTitle")}</h1>
-        <p>{t("pageDescription")}</p>
-        <div className="hero-panel__actions">
-          <button className="button button--primary" type="button" onClick={onAddServer}><Plus size={17} />{t("addServer")}</button>
-          <button className="button button--secondary" type="button" onClick={onRunBackup}><Archive size={17} />{t("runBackup")}</button>
-        </div>
-      </div>
-      <div className="safety-lock">
-        <span className="safety-lock__icon">
-          {status.liveOperationsEnabled
-            ? <ShieldCheck size={23} aria-hidden="true" />
-            : <LockKeyhole size={23} aria-hidden="true" />}
-        </span>
-        <div>
-          <strong>{t(status.liveOperationsEnabled ? "statusReady" : "lockedTitle")}</strong>
-          <p>{t(status.liveOperationsEnabled ? "securityBody" : "lockedBody")}</p>
-        </div>
-      </div>
-    </section>
+    <aside className="overview-status" data-ready={ready || undefined}>
+      <span><Icon size={20} aria-hidden="true" /></span>
+      <div><strong>{t(ready ? "statusReady" : "lockedTitle")}</strong><p>{t(ready ? "securityBody" : "lockedBody")}</p></div>
+    </aside>
   );
 }
 
-function SetupPanel({ t, onAddServer }: Pick<DashboardProps, "t" | "onAddServer">) {
-  return (
-    <section className="content-panel servers-panel">
-      <PanelHeader title={t("dashboardStartTitle")} action={t("serversAction")} onAction={onAddServer} />
-      <div className="empty-state">
-        <div className="empty-state__visual"><Server size={31} strokeWidth={1.6} /><span /><span /></div>
-        <h2>{t("dashboardStartServerTitle")}</h2>
-        <p>{t("dashboardStartServerBody")}</p>
-        <button type="button" className="text-button" onClick={onAddServer}><span>{t("addServer")}</span><ArrowUpRight size={15} /></button>
-      </div>
-    </section>
-  );
+interface WorkflowStepProps {
+  index: string;
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  onClick: () => void;
 }
 
-function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  return <header className="panel-header"><h2>{title}</h2>{action && <button type="button" disabled={!onAction} onClick={onAction}>{action}</button>}</header>;
-}
-
-function SecurityBanner({ t }: { t: Translate }) {
+function WorkflowStep({ index, icon: Icon, title, body, onClick }: WorkflowStepProps) {
   return (
-    <section className="security-banner">
-      <span><LockKeyhole size={20} aria-hidden="true" /></span>
-      <div><strong>{t("securityTitle")}</strong><p>{t("securityBody")}</p></div>
-    </section>
+    <button className="workflow-step" type="button" onClick={onClick}>
+      <span className="workflow-step__index">{index}</span>
+      <span className="workflow-step__icon"><Icon size={19} aria-hidden="true" /></span>
+      <strong>{title}</strong><small>{body}</small>
+      <ArrowUpRight className="workflow-step__arrow" size={16} aria-hidden="true" />
+    </button>
   );
 }

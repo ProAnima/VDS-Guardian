@@ -1,4 +1,4 @@
-import { Archive, LayoutDashboard, Rocket, RotateCcw, Server, type LucideIcon } from "lucide-react";
+import { Archive, LayoutDashboard, RotateCcw, Server, type LucideIcon } from "lucide-react";
 import type { MessageKey } from "../i18n/messages-primary";
 import type { Translate } from "../i18n";
 import type { ViewId } from "../App";
@@ -15,7 +15,6 @@ const primaryNav: NavItem[] = [
   { key: "navServers", icon: Server, view: "servers" },
   { key: "navBackups", icon: Archive, view: "backup" },
   { key: "navRestore", icon: RotateCcw, view: "restore" },
-  { key: "navDeploy", icon: Rocket, view: "deploy" },
 ];
 
 interface AppSidebarProps {
@@ -33,12 +32,6 @@ export function AppSidebar({ t, activeView, onNavigate }: AppSidebarProps) {
           <NavButton key={item.key} item={item} t={t} activeView={activeView} onNavigate={onNavigate} />
         ))}
       </nav>
-      <div className="sidebar__footer">
-        <div className="node-pill">
-          <span className="node-pill__signal" aria-hidden="true" />
-          <div><span>{t("nodeLabel")}</span><strong>{t("localNode")}</strong></div>
-        </div>
-      </div>
     </aside>
   );
 }

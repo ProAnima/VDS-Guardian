@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { AppSidebar } from "./components/AppSidebar";
 import { Dashboard } from "./components/Dashboard";
-import { DeployPanel } from "./components/DeployPanel";
 import { RestorePanel } from "./components/RestorePanel";
 import { SetupPanel } from "./components/SetupPanel";
 import { ServersPanel } from "./components/ServersPanel";
 import { getFoundationStatus, previewStatus, type FoundationStatus } from "./shared/commands";
 import { usePreferences } from "./shared/usePreferences";
 
-export type ViewId = "overview" | "servers" | "backup" | "restore" | "deploy";
+export type ViewId = "overview" | "servers" | "backup" | "restore";
 
 export function App() {
   const preferences = usePreferences();
@@ -24,17 +23,21 @@ export function App() {
     <div className="app-frame">
       <AppSidebar t={preferences.t} activeView={view} onNavigate={setView} />
       <div className="app-workspace">
-        <AppHeader preferences={preferences} version={status.version} />
+        <AppHeader preferences={preferences} />
         {view === "overview" ? (
-          <Dashboard status={status} t={preferences.t} onAddServer={() => setView("servers")} onRunBackup={() => setView("backup")} />
+          <Dashboard
+            status={status}
+            t={preferences.t}
+            onAddServer={() => setView("servers")}
+            onRunBackup={() => setView("backup")}
+            onRestore={() => setView("restore")}
+          />
         ) : view === "servers" ? (
           <ServersPanel t={preferences.t} />
         ) : view === "backup" ? (
-          <SetupPanel t={preferences.t} />
-        ) : view === "restore" ? (
-          <RestorePanel t={preferences.t} />
+          <SetupPanel onManageServers={() => setView("servers")} t={preferences.t} />
         ) : (
-          <DeployPanel t={preferences.t} />
+          <RestorePanel onManageBackups={() => setView("backup")} onManageServers={() => setView("servers")} t={preferences.t} />
         )}
       </div>
     </div>

@@ -59,4 +59,45 @@ describe("SetupStatusPanel failures", () => {
     ));
     expect(container.textContent).not.toContain("C:/secret/path");
   });
+
+  it("opens the exact prerequisite that needs attention", async () => {
+    const openSettings = vi.fn();
+    const manageServers = vi.fn();
+    commands.getSigningIdentityStatus.mockResolvedValue({ state: "ready", identity: null });
+
+    await act(async () => root.render(
+      <SetupStatusPanel
+        onManageServers={manageServers}
+        onOpenSettings={openSettings}
+        resourcesRevision={0}
+        t={createTranslator("ru")}
+      />,
+    ));
+
+    const buttons = await vi.waitFor(() => {
+      const candidates = [...container.querySelectorAll<HTMLButtonElement>(".setup-status__items button")];
+      expect(candidates).toHaveLength(2);
+      return candidates;
+    });
+    await act(async () => buttons.find((button) => button.textContent?.includes("Хранилище"))?.click());
+    await act(async () => buttons.find((button) => button.textContent?.includes("Сервер"))?.click());
+    expect(openSettings).toHaveBeenCalledOnce();
+    expect(openSettings).toHaveBeenCalledWith("storage");
+    expect(manageServers).toHaveBeenCalledOnce();
+  });
+
+  it("collapses completed prerequisites into one ready state", async () => {
+    commands.getSigningIdentityStatus.mockResolvedValue({ state: "ready", identity: null });
+    commands.listRepositories.mockResolvedValue([
+      { repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: true },
+    ]);
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+    ]);
+
+    await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} t={createTranslator("ru")} />));
+
+    await vi.waitFor(() => expect(container.textContent).toContain("Можно создавать бэкап"));
+    expect(container.querySelector(".setup-status__items")).toBeNull();
+  });
 });

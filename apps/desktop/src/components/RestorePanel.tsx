@@ -11,20 +11,20 @@ import {
 } from "../shared/commands";
 import { newRunId } from "../shared/run-id";
 
-interface RestorePanelProps { t: Translate; }
+interface RestorePanelProps { onManageBackups?: () => void; onManageServers?: () => void; t: Translate; }
 type RestoreMode = "separate" | "replace";
 type Plan = { mode: "separate"; value: DeploymentPreview } | { mode: "replace"; value: ReplacementResult };
 
-export function RestorePanel({ t }: RestorePanelProps) {
+export function RestorePanel({ onManageBackups, onManageServers, t }: RestorePanelProps) {
   const model = useRestoreModel(t);
   return <main className="dashboard">
-    <section className="hero-panel"><div className="hero-panel__content">
+    <section className="hero-panel backup-hero"><div className="hero-panel__content">
       <p className="eyebrow"><RotateCcw size={15} />{t("restoreEyebrow")}</p>
       <h1>{t("restoreTitle")}</h1><p>{t("restoreBody")}</p>
     </div></section>
     <section className="repository-panel" aria-labelledby="restore-title">
       <header className="repository-panel__header"><h2 id="restore-title">{t("restoreBackupsTitle")}</h2></header>
-      {model.plan ? <Confirmation model={model} t={t} /> : <RestoreForm model={model} t={t} />}
+      {model.plan ? <Confirmation model={model} t={t} /> : <RestoreForm model={model} onManageBackups={onManageBackups} onManageServers={onManageServers} t={t} />}
       {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
       {model.failure && <OperationFailureNotice message={model.failure} safe="restoreFailureSafe" changed="restoreFailureChanged" t={t} />}
       {!hasTauriRuntime() && <p className="signing-panel__desktop">{t("restoreDesktopRequired")}</p>}
@@ -42,22 +42,31 @@ function useRestoreModel(t: Translate) {
   const [description, setDescription] = useState<BackupRestoreDescription>();
   const [mode, setMode] = useState<RestoreMode>("separate");
   const [targetPath, setTargetPath] = useState("");
+  const [resourcesLoading, setResourcesLoading] = useState(true);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [descriptionLoading, setDescriptionLoading] = useState(false);
   const action = useRestoreAction(t, { repositoryId, backupId, profileId, mode, targetPath });
   const setFailure = action.setFailure;
   useEffect(() => { void Promise.all([listRepositories(), listSshProfiles()]).then(([repos, servers]) => {
     setRepositories(repos); setProfiles(servers); setRepositoryId(repos[0]?.repositoryId ?? "");
-  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback")))); }, [setFailure, t]);
-  useEffect(() => { if (!repositoryId) return; void listBackups(repositoryId).then((items) => {
+  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
+    .finally(() => setResourcesLoading(false)); }, [setFailure, t]);
+  useEffect(() => { setBackups([]); setBackupId(""); if (!repositoryId) return;
+    setBackupsLoading(true); void listBackups(repositoryId).then((items) => {
     setBackups(items); setBackupId(items[0]?.backupId ?? "");
-  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback")))); }, [repositoryId, setFailure, t]);
+  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
+      .finally(() => setBackupsLoading(false)); }, [repositoryId, setFailure, t]);
   useEffect(() => { setDescription(undefined); if (!repositoryId || !backupId) return;
+    setDescriptionLoading(true);
     void inspectRestoreBackup(repositoryId, backupId).then((value) => {
       setDescription(value); setProfileId(value.sourceProfileId); setTargetPath(value.roots[0] ?? "");
       if (!value.replacementAvailable) setMode("separate");
-    }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))));
+    }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
+      .finally(() => setDescriptionLoading(false));
   }, [repositoryId, backupId, setFailure, t]);
   return { repositories, backups, profiles, repositoryId, setRepositoryId, backupId, setBackupId,
-    profileId, setProfileId, description, mode, setMode, targetPath, setTargetPath, ...action };
+    profileId, setProfileId, description, mode, setMode, targetPath, setTargetPath,
+    resourcesLoading, backupsLoading, descriptionLoading, ...action };
 }
 
 interface ActionInput { repositoryId: string; backupId: string; profileId: string; mode: RestoreMode; targetPath: string; }
@@ -82,20 +91,35 @@ function useRestoreAction(t: Translate, input: ActionInput) {
 function request(input: ActionInput) { return { repositoryId: input.repositoryId, backupId: input.backupId, targetProfileId: input.profileId }; }
 type Model = ReturnType<typeof useRestoreModel>;
 
-function RestoreForm({ model, t }: { model: Model; t: Translate }) {
-  if (model.repositories.length === 0) return <p className="restore-panel__empty">{t("restoreNoRepositories")}</p>;
+function RestoreForm({ model, onManageBackups, onManageServers, t }: { model: Model; onManageBackups?: () => void; onManageServers?: () => void; t: Translate }) {
+  if (model.resourcesLoading) return <p className="restore-panel__empty">{t("readinessLoading")}</p>;
+  if (model.repositories.length === 0) return <EmptyRestoreState action={t("navBackups")} message={t("restoreNoRepositories")} onClick={onManageBackups} />;
   return <form className="repository-form" onSubmit={model.preview}>
     <label><span>{t("restoreRepository")}</span><select value={model.repositoryId} onChange={(e) => model.setRepositoryId(e.target.value)}>{model.repositories.map((item) => <option key={item.repositoryId} value={item.repositoryId}>{item.label}</option>)}</select></label>
-    <label><span>{t("restoreBackupsTitle")}</span><select value={model.backupId} onChange={(e) => model.setBackupId(e.target.value)}>{model.backups.map((item) => <option key={item.backupId} value={item.backupId}>{item.backupId} — {item.sealedAt}</option>)}</select></label>
-    {model.description && <BackupExplorer description={model.description} t={t} />}
-    <div className="restore-mode" role="radiogroup">
-      <button className={`button ${model.mode === "separate" ? "button--primary" : "button--secondary"}`} type="button" onClick={() => model.setMode("separate")}>{t("restoreDestination")}</button>
-      <button className={`button ${model.mode === "replace" ? "button--primary" : "button--secondary"}`} type="button" disabled={!model.description?.replacementAvailable} onClick={() => model.setMode("replace")}>{t("restoreImpactReplaces")}</button>
-    </div>
-    <label><span>{t("deployTargetProfile")}</span><select value={model.profileId} disabled={model.mode === "replace"} onChange={(e) => model.setProfileId(e.target.value)}>{model.profiles.map((item) => <option key={item.profileId} value={item.profileId}>{item.label}</option>)}</select></label>
-    <label><span>{t("deployTargetPath")}</span><input value={model.targetPath} readOnly={model.mode === "replace"} onChange={(e) => model.setTargetPath(e.target.value)} placeholder={t("deployTargetPathHint")} /></label>
-    <button className="button button--primary" disabled={model.busy || !model.backupId || !model.profileId || !model.targetPath} type="submit">{model.busy ? <LoaderCircle className="spin" size={16} /> : <Eye size={16} />}{model.busy ? t("restorePreviewing") : t("restorePreview")}</button>
+    <label><span>{t("restoreBackupsTitle")}</span><select value={model.backupId} disabled={model.backupsLoading || model.backups.length === 0} onChange={(e) => model.setBackupId(e.target.value)}>{model.backups.map((item) => <option key={item.backupId} value={item.backupId}>{item.backupId} — {item.sealedAt}</option>)}</select></label>
+    {model.backupsLoading && <p className="restore-panel__empty repository-form__wide">{t("restorePreviewing")}</p>}
+    {!model.backupsLoading && model.backups.length === 0 && <p className="restore-panel__empty repository-form__wide">{t("restoreNoBackups")}</p>}
+    {model.descriptionLoading && <p className="restore-panel__empty repository-form__wide">{t("restorePreviewing")}</p>}
+    {model.description && <>
+      <BackupExplorer description={model.description} t={t} />
+      {model.profiles.length === 0
+        ? <EmptyRestoreState action={t("addServer")} message={t("deployNoTargetProfiles")} onClick={onManageServers} />
+        : <>
+      <div className="restore-mode" role="radiogroup" aria-label={t("restorePlanDestination")}>
+        <button data-active={model.mode === "separate" || undefined} role="radio" aria-checked={model.mode === "separate"} type="button" onClick={() => model.setMode("separate")}><Folder size={17} />{t("restoreModeSeparate")}</button>
+        <button data-active={model.mode === "replace" || undefined} role="radio" aria-checked={model.mode === "replace"} type="button" disabled={!model.description.replacementAvailable} onClick={() => model.setMode("replace")}><RotateCcw size={17} />{t("restoreModeReplace")}</button>
+      </div>
+      <p className="restore-mode__hint">{t(model.mode === "replace" ? "restorePlanRollback" : "restoreDestinationHint")}</p>
+      <label><span>{t("deployTargetProfile")}</span><select value={model.profileId} disabled={model.mode === "replace"} onChange={(e) => model.setProfileId(e.target.value)}>{model.profiles.map((item) => <option key={item.profileId} value={item.profileId}>{item.label}</option>)}</select></label>
+      <label><span>{t("deployTargetPath")}</span><input value={model.targetPath} readOnly={model.mode === "replace"} onChange={(e) => model.setTargetPath(e.target.value)} placeholder={t("deployTargetPathHint")} /></label>
+      <button className="button button--primary" disabled={model.busy || !model.profileId || !model.targetPath} type="submit">{model.busy ? <LoaderCircle className="spin" size={16} /> : <Eye size={16} />}{model.busy ? t("restorePreviewing") : t("restorePreview")}</button>
+        </>}
+    </>}
   </form>;
+}
+
+function EmptyRestoreState({ action, message, onClick }: { action: string; message: string; onClick?: () => void }) {
+  return <div className="restore-panel__empty-action"><p>{message}</p><button className="button button--secondary" disabled={!onClick} onClick={onClick} type="button">{action}</button></div>;
 }
 
 function BackupExplorer({ description, t }: { description: BackupRestoreDescription; t: Translate }) {
