@@ -97,6 +97,37 @@ describe("setup resource refresh", () => {
     }));
   });
 
+  it("keeps the file explorer hidden until backup prerequisites exist", async () => {
+    commands.listRepositories.mockResolvedValue([]);
+    commands.listSshProfiles.mockResolvedValue([]);
+    await act(async () => root.render(
+      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+    ));
+
+    await vi.waitFor(() => expect(container.textContent).toContain("backupSetupRequired"));
+    expect(container.querySelector(".capture-workspace")).toBeNull();
+  });
+
+  it("preserves valid server and storage choices while resources refresh", async () => {
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "server-1", label: "VDS 1", host: "one.example", port: 22, user: "backup" },
+      { profileId: "server-2", label: "VDS 2", host: "two.example", port: 22, user: "backup" },
+    ]);
+    commands.listRepositories.mockResolvedValue([
+      { repositoryId: "repo-1", label: "Archive 1", path: "D:/one", recoveryReady: true },
+      { repositoryId: "repo-2", label: "Archive 2", path: "D:/two", recoveryReady: true },
+    ]);
+    const changed = vi.fn();
+    await act(async () => root.render(<CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />));
+    const selects = await vi.waitFor(() => requiredSelects(container));
+    await act(async () => selectValue(selects[0], "server-2"));
+    await act(async () => selectValue(selects[1], "repo-2"));
+
+    await act(async () => root.render(<CapturePlanPanel onPlansChanged={changed} resourcesRevision={1} t={(key) => key} />));
+    await vi.waitFor(() => expect(commands.listRepositories).toHaveBeenCalledTimes(2));
+    expect(requiredSelects(container).map((select) => select.value)).toEqual(["server-2", "repo-2"]);
+  });
+
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent?.includes(label));
@@ -104,3 +135,15 @@ describe("setup resource refresh", () => {
     return match;
   }
 });
+
+function requiredSelects(container: HTMLElement): [HTMLSelectElement, HTMLSelectElement] {
+  const selects = [...container.querySelectorAll("select")];
+  if (selects.length !== 2) throw new Error("Backup selectors are not ready");
+  return [selects[0]!, selects[1]!];
+}
+
+function selectValue(select: HTMLSelectElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+  setter?.call(select, value);
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}

@@ -113,7 +113,7 @@ export const ptBr = {
   backupReadyBody: "Revise os caminhos resolvidos e os avisos antes de criar o backup.", backupReview: "Revise o backup", backupCreate: "Criar backup",
   backupCreating: "Criando e verificando…", setupHostKeyHint: "Cole a chave pública do host do servidor verificada pelo seu provedor ou outro canal confiável.", setupKeyHint: "Escolha a chave privada SSH usada para ler os dados de backup deste servidor.",
   serverAddCheck: "Adicionar e verificar servidor", backupChecklistEyebrow: "Antes do primeiro backup", backupChecklistTitle: "Pronto para fazer backup?",
-  backupChecklistBody: "Apenas esses três pré-requisitos são necessários. A seleção de backup em si é criada abaixo.", backupStorageAction: "Escolha uma pasta de backup e prepare sua chave de recuperação.", backupStorageReady: "Pronto para recuperação:",
+  backupChecklistBody: "Apenas esses três pré-requisitos são necessários. A seleção de backup em si é criada abaixo.", backupSetupRequired: "Conclua primeiro as etapas de configuração destacadas acima antes de escolher os dados do backup.", backupStorageAction: "Escolha uma pasta de backup e prepare sua chave de recuperação.", backupStorageReady: "Pronto para recuperação:",
   repositoryChangeFolder: "Alterar pasta", repositorySaveFolder: "Salvar pasta", repositoryCancel: "Cancelar",
   repositoryDelete: "Remover do aplicativo", repositoryDeleteQuestion: "Remover este armazenamento do aplicativo?", repositoryDeleteWarning: "Os backups no disco permanecerão intactos.",
   repositoryDeleted: "Armazenamento removido do aplicativo:", repositoryPathUpdated: "Pasta de armazenamento alterada:", repositoryPathHint: "Escolha uma pasta existente deste mesmo armazenamento. Os arquivos não são movidos.",

@@ -289,6 +289,12 @@
 .backup-settings > p { margin: 9px 0 0; color: var(--text-muted); font-size: 0.71rem; }
 .backup-settings__content { display: grid; gap: 16px; margin-top: 18px; }
 .backup-settings__target { scroll-margin-block-start: 72px; }
+.backup-settings__advanced { padding: 13px 14px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface-muted); }
+.backup-settings__advanced > summary { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: .72rem; font-weight: 700; cursor: pointer; list-style: none; }
+.backup-settings__advanced > summary::-webkit-details-marker { display: none; }
+.backup-settings__advanced-content { display: grid; gap: 14px; margin-top: 13px; }
+.capture-resources-state { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius-sm); color: var(--text-muted); font-size: .72rem; }
+.repository-panel__add { margin-top: 14px; }
 .signing-confirm { margin-top: 22px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised); }
 .signing-confirm strong { font-size: 0.82rem; }
 .signing-confirm p { margin: 7px 0 0; color: var(--text-muted); font-size: 0.74rem; line-height: 1.6; }

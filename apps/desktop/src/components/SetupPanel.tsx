@@ -1,4 +1,4 @@
-import { Settings2 } from "lucide-react";
+import { KeyRound, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../i18n";
 import { CapturePlanPanel } from "./CapturePlanPanel";
@@ -11,6 +11,24 @@ import { SetupStatusPanel } from "./SetupStatusPanel";
 interface SetupPanelProps {
   onManageServers: () => void;
   t: Translate;
+}
+
+interface AdvancedRecoverySettingsProps {
+  onRepositoriesChanged: () => void;
+  resourcesRevision: number;
+  t: Translate;
+}
+
+function AdvancedRecoverySettings({ onRepositoriesChanged, resourcesRevision, t }: AdvancedRecoverySettingsProps) {
+  return (
+    <details className="backup-settings__advanced">
+      <summary><KeyRound size={16} />{t("recoveryExportEyebrow")}</summary>
+      <div className="backup-settings__advanced-content">
+        <RecoveryBundlePanel resourcesRevision={resourcesRevision} t={t} />
+        <RecoveryImportPanel onRepositoriesChanged={onRepositoriesChanged} t={t} />
+      </div>
+    </details>
+  );
 }
 
 export function SetupPanel({ onManageServers, t }: SetupPanelProps) {
@@ -43,8 +61,7 @@ export function SetupPanel({ onManageServers, t }: SetupPanelProps) {
         <div className="backup-settings__content">
           <div className="backup-settings__target" ref={protectionRef}><SigningIdentityPanel onIdentityChanged={resourcesChanged} t={t} /></div>
           <div className="backup-settings__target" ref={storageRef}><RepositoryPanel onRepositoriesChanged={resourcesChanged} t={t} /></div>
-          <RecoveryBundlePanel resourcesRevision={resourcesRevision} t={t} />
-          <RecoveryImportPanel onRepositoriesChanged={resourcesChanged} t={t} />
+          <AdvancedRecoverySettings onRepositoriesChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />
         </div>
       </details>
       <CapturePlanPanel onPlansChanged={resourcesChanged} resourcesRevision={resourcesRevision} t={t} />

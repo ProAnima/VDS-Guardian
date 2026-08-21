@@ -113,7 +113,7 @@ export const ja = {
   backupReadyBody: "バックアップを作成する前に、解決されたパスと警告を確認してください。", backupReview: "バックアップを確認する", backupCreate: "バックアップの作成",
   backupCreating: "作成と検証中…", setupHostKeyHint: "プロバイダーまたは別の信頼できるチャネルを通じて検証されたサーバーの公開ホスト キーを貼り付けます。", setupKeyHint: "このサーバーからバックアップ データを読み取るために使用される秘密 SSH キーを選択します。",
   serverAddCheck: "サーバーを追加して確認する", backupChecklistEyebrow: "最初のバックアップの前に", backupChecklistTitle: "バックアップの準備はできましたか?",
-  backupChecklistBody: "これら 3 つの前提条件のみが必要です。バックアップ選択自体は以下で作成されます。", backupStorageAction: "バックアップフォルダーを選択し、その回復キーを準備します。", backupStorageReady: "回復準備完了:",
+  backupChecklistBody: "これら 3 つの前提条件のみが必要です。バックアップ選択自体は以下で作成されます。", backupSetupRequired: "バックアップ対象を選ぶ前に、上で示された設定手順を完了してください。", backupStorageAction: "バックアップフォルダーを選択し、その回復キーを準備します。", backupStorageReady: "回復準備完了:",
   repositoryChangeFolder: "フォルダーを変更", repositorySaveFolder: "フォルダーを保存", repositoryCancel: "キャンセル",
   repositoryDelete: "アプリから削除", repositoryDeleteQuestion: "このストレージをアプリから削除しますか？", repositoryDeleteWarning: "ディスク上のバックアップは変更されません。",
   repositoryDeleted: "ストレージをアプリから削除しました：", repositoryPathUpdated: "ストレージフォルダーを変更しました：", repositoryPathHint: "同じストレージの既存フォルダーを選択してください。ファイルは移動されません。",

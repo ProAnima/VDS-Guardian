@@ -113,7 +113,7 @@ export const zhCn = {
   backupReadyBody: "在创建备份之前查看已解析的路径和警告。", backupReview: "查看备份", backupCreate: "创建备份",
   backupCreating: "创建并验证...", setupHostKeyHint: "粘贴通过您的提供商或其他可信渠道验证的服务器公共主机密钥。", setupKeyHint: "选择用于从此服务器读取备份数据的私有 SSH 密钥。",
   serverAddCheck: "添加并验证服务器", backupChecklistEyebrow: "第一次备份之前", backupChecklistTitle: "准备好备份了吗？",
-  backupChecklistBody: "只需要这三个先决条件。备份选择本身在下面创建。", backupStorageAction: "选择一个备份文件夹并准备其恢复密钥。", backupStorageReady: "恢复准备就绪：",
+  backupChecklistBody: "只需要这三个先决条件。备份选择本身在下面创建。", backupSetupRequired: "请先完成上方标记的设置步骤，然后再选择备份数据。", backupStorageAction: "选择一个备份文件夹并准备其恢复密钥。", backupStorageReady: "恢复准备就绪：",
   repositoryChangeFolder: "更改文件夹", repositorySaveFolder: "保存文件夹", repositoryCancel: "取消",
   repositoryDelete: "从应用中移除", repositoryDeleteQuestion: "从应用中移除此存储？", repositoryDeleteWarning: "磁盘上的备份将保持不变。",
   repositoryDeleted: "已从应用中移除存储：", repositoryPathUpdated: "存储文件夹已更改：", repositoryPathHint: "请选择同一存储的现有文件夹。文件不会被移动。",

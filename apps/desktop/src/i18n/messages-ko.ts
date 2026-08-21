@@ -113,7 +113,7 @@ export const ko = {
   backupReadyBody: "백업을 생성하기 전에 해결된 경로와 경고를 검토하세요.", backupReview: "백업 검토", backupCreate: "백업 만들기",
   backupCreating: "생성 및 확인 중…", setupHostKeyHint: "공급자 또는 다른 신뢰할 수 있는 채널을 통해 확인된 서버 공개 호스트 키를 붙여넣습니다.", setupKeyHint: "이 서버에서 백업 데이터를 읽는 데 사용되는 개인 SSH 키를 선택하세요.",
   serverAddCheck: "서버 추가 및 확인", backupChecklistEyebrow: "첫 번째 백업 전", backupChecklistTitle: "백업할 준비가 되셨나요?",
-  backupChecklistBody: "이 세가지 전제조건만 있으면 됩니다. 백업 선택 자체는 아래에 생성됩니다.", backupStorageAction: "백업 폴더를 선택하고 복구 키를 준비하세요.", backupStorageReady: "복구 준비됨:",
+  backupChecklistBody: "이 세가지 전제조건만 있으면 됩니다. 백업 선택 자체는 아래에 생성됩니다.", backupSetupRequired: "백업 데이터를 선택하기 전에 위에 표시된 설정 단계를 먼저 완료하세요.", backupStorageAction: "백업 폴더를 선택하고 복구 키를 준비하세요.", backupStorageReady: "복구 준비됨:",
   repositoryChangeFolder: "폴더 변경", repositorySaveFolder: "폴더 저장", repositoryCancel: "취소",
   repositoryDelete: "앱에서 제거", repositoryDeleteQuestion: "이 저장소를 앱에서 제거하시겠습니까?", repositoryDeleteWarning: "디스크의 백업은 그대로 유지됩니다.",
   repositoryDeleted: "앱에서 저장소 제거됨:", repositoryPathUpdated: "저장소 폴더 변경됨:", repositoryPathHint: "동일한 저장소의 기존 폴더를 선택하세요. 파일은 이동되지 않습니다.",

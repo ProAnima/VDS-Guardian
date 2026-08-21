@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { CircleAlert, CircleCheck, FolderArchive, HardDrive, LoaderCircle, Pencil, Trash2 } from "lucide-react";
+import { CircleAlert, CircleCheck, FolderArchive, HardDrive, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   deleteRepository, hasTauriRuntime, initializeRepositoryRecovery, listRepositories,
   pickRepositoryPath, registerRepository, updateRepositoryPath,
@@ -14,18 +14,20 @@ export function RepositoryPanel({ onRepositoriesChanged, t }: { onRepositoriesCh
   const model = useRepository(onRepositoriesChanged, t);
   return <section className="repository-panel" aria-labelledby="repository-title">
     <header className="repository-panel__header"><div><p className="eyebrow"><HardDrive size={15} aria-hidden="true" />{t("setupRepositoryEyebrow")}</p><h2 id="repository-title">{t("setupRepositoryTitle")}</h2><p>{t("setupRepositoryBody")}</p></div><span className="signing-state"><FolderArchive size={16} />{t("setupLocal")}</span></header>
-    <RepositoryForm model={model} t={t} />
+    {model.loading && <p className="server-list__empty">{t("readinessLoading")}</p>}
+    {!model.loading && <RepositoryCards model={model} t={t} />}
+    {!model.loading && !model.formOpen && <button className="button button--secondary repository-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("setupCreateRepository")}</button>}
+    {!model.loading && model.formOpen && <RepositoryForm model={model} t={t} />}
     {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
     {model.result && <p className="repository-panel__success"><CircleCheck size={16} />{model.result}</p>}
-    <RepositoryCards model={model} t={t} />
   </section>;
 }
 
 function RepositoryForm({ model, t }: { model: RepositoryModel; t: Translate }) {
   return <form className="repository-form" onSubmit={(event) => void model.submit(event)}>
-    <label><span>{t("setupLabel")}</span><input value={model.form.label} onChange={(event) => model.setForm({ ...model.form, label: event.target.value })} placeholder="Recovery disk" required maxLength={128} /></label>
+    <label><span>{t("setupLabel")}</span><input value={model.form.label} onChange={(event) => model.setForm({ ...model.form, label: event.target.value })} required maxLength={128} /></label>
     <label><span>{t("setupFolder")}</span><span className="path-picker"><input value={model.form.path} onChange={(event) => model.setForm({ ...model.form, path: event.target.value })} placeholder={t("setupPathPlaceholder")} required /><button type="button" onClick={() => void model.pickNewPath()}>{t("setupBrowse")}</button></span></label>
-    <div className="repository-form__actions"><button className="button button--primary" disabled={model.working || !hasTauriRuntime()} type="submit">{model.working ? <LoaderCircle className="spin" size={16} /> : <FolderArchive size={16} />}{model.working ? t("setupCreatingRepository") : t("setupCreateRepository")}</button>{!hasTauriRuntime() && <span className="signing-panel__desktop">{t("setupDesktopOnly")}</span>}</div>
+    <div className="repository-form__actions"><button className="button button--primary" disabled={model.working || !hasTauriRuntime()} type="submit">{model.working ? <LoaderCircle className="spin" size={16} /> : <FolderArchive size={16} />}{model.working ? t("setupCreatingRepository") : t("setupCreateRepository")}</button>{model.repositories.length > 0 && <button className="text-button" type="button" onClick={() => model.setFormOpen(false)}>{t("repositoryCancel")}</button>}{!hasTauriRuntime() && <span className="signing-panel__desktop">{t("setupDesktopOnly")}</span>}</div>
   </form>;
 }
 
@@ -66,10 +68,13 @@ function useRepository(onRepositoriesChanged: () => void, t: Translate) {
   const [editing, setEditing] = useState<{ repositoryId: string; path: string }>();
   const [confirmingId, setConfirmingId] = useState<string>();
   const [working, setWorking] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
   const refresh = useCallback(async () => {
-    try { setRepositories(await listRepositories()); } catch (error) { setFailure(errorText(error, t)); }
+    try { const next = await listRepositories(); setRepositories(next); setFormOpen((current) => current || next.length === 0); }
+    catch (error) { setFailure(errorText(error, t)); } finally { setLoading(false); }
   }, [t]);
   useEffect(() => { void refresh(); }, [refresh]);
   const notify = async () => { await refresh(); onRepositoriesChanged(); };
@@ -80,7 +85,7 @@ function useRepository(onRepositoriesChanged: () => void, t: Translate) {
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); if (!hasTauriRuntime()) return;
-    await run(async () => { const repository = await registerRepository(form); await initializeRepositoryRecovery(repository.repositoryId); await notify(); setForm(emptyForm); return `${t("setupRepositoryCreated")} ${repository.label}`; });
+    await run(async () => { const repository = await registerRepository(form); await initializeRepositoryRecovery(repository.repositoryId); await notify(); setForm(emptyForm); setFormOpen(false); return `${t("setupRepositoryCreated")} ${repository.label}`; });
   };
   const prepare = async (repository: RepositorySummary) => run(async () => { await initializeRepositoryRecovery(repository.repositoryId); await notify(); return `${t("setupRecoveryPrepared")} ${repository.label}`; });
   const savePath = async (event: FormEvent) => {
@@ -91,7 +96,7 @@ function useRepository(onRepositoriesChanged: () => void, t: Translate) {
   const startEditing = (repository: RepositorySummary) => { setConfirmingId(undefined); setEditing({ repositoryId: repository.repositoryId, path: repository.path }); };
   const pickNewPath = async () => { const path = await pickRepositoryPath(); if (path) setForm((current) => ({ ...current, path })); };
   const pickEditPath = async () => { const path = await pickRepositoryPath(); if (path) setEditing((current) => current && ({ ...current, path })); };
-  return { repositories, form, editing, confirmingId, working, result, failure, setForm, setEditing, setConfirmingId, submit, prepare, savePath, remove, startEditing, pickNewPath, pickEditPath };
+  return { repositories, form, editing, confirmingId, working, loading, formOpen, result, failure, setForm, setEditing, setConfirmingId, setFormOpen, submit, prepare, savePath, remove, startEditing, pickNewPath, pickEditPath };
 }
 
 type RepositoryModel = ReturnType<typeof useRepository>;

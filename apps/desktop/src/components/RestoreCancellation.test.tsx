@@ -115,6 +115,20 @@ describe("restore cancellation", () => {
     expect(commands.executeSourceReplacement).not.toHaveBeenCalled();
   });
 
+  it("suggests a new destination and preserves it across mode changes", async () => {
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    const target = await vi.waitFor(() => requiredInput('input[placeholder="deployTargetPathHint"]'));
+    expect(target.value).toBe("/srv/app-restored");
+
+    await act(async () => button("restoreModeReplace").click());
+    expect(target.value).toBe("/srv/app");
+    expect(target.readOnly).toBe(true);
+
+    await act(async () => button("restoreModeSeparate").click());
+    expect(target.value).toBe("/srv/app-restored");
+    expect(target.readOnly).toBe(false);
+  });
+
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent?.includes(label));
@@ -122,6 +136,12 @@ describe("restore cancellation", () => {
     return match;
   }
 });
+
+function requiredInput(selector: string): HTMLInputElement {
+  const input = document.querySelector<HTMLInputElement>(selector);
+  if (!input) throw new Error(`missing input: ${selector}`);
+  return input;
+}
 
 function change(input: HTMLInputElement | null, value: string): void {
   if (!input) throw new Error("missing input");

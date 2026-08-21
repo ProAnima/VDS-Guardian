@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, Database, LoaderCircle } from "lucide-react";
+import { Check, CircleAlert, Database, LoaderCircle } from "lucide-react";
 import type { Translate } from "../i18n";
 import { captureErrorText } from "../shared/capture-error";
 import { togglePathSelection } from "../shared/backup-selection";
@@ -9,6 +9,7 @@ import {
   type RepositorySummary, type SshProfileSummary,
 } from "../shared/commands";
 import { newRunId } from "../shared/run-id";
+import { safeErrorText } from "../shared/safe-error";
 import { CaptureSelectionReview } from "./CaptureSelectionReview";
 import { BackupSelectionSummary } from "./BackupSelectionSummary";
 import { OperationFailureNotice } from "./OperationFailureNotice";
@@ -20,7 +21,10 @@ export function CapturePlanPanel({ onPlansChanged, resourcesRevision, t }: Captu
   const model = useCaptureSelection(onPlansChanged, resourcesRevision, t);
   return <section className="repository-panel" aria-labelledby="plan-title">
     <header className="repository-panel__header"><h2 id="plan-title">{t("backupChooseDataTitle")}</h2></header>
-    <SelectionForm model={model} t={t} />
+    {model.resourcesLoading && <p className="capture-resources-state"><LoaderCircle className="spin" size={16} />{t("readinessLoading")}</p>}
+    {!model.resourcesLoading && model.resourceFailure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.resourceFailure}</p>}
+    {!model.resourcesLoading && !model.resourceFailure && !model.resourcesReady && <p className="capture-resources-state">{t("backupSetupRequired")}</p>}
+    {!model.resourcesLoading && !model.resourceFailure && model.resourcesReady && <SelectionForm model={model} t={t} />}
     {model.preview && <CaptureSelectionReview preview={model.preview} saving={model.working} onSave={() => void model.run()} t={t} />}
     {model.running && <RunPlanControls model={model} t={t} />}
     {model.result && <p className="repository-panel__success"><Check size={16} />{model.result}</p>}
@@ -49,6 +53,7 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
   const [profiles, setProfiles] = useState<SshProfileSummary[]>([]); const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
   const [profileId, setProfileId] = useState(""); const [repositoryId, setRepositoryId] = useState(""); const [items, setItems] = useState<BackupSelectionItem[]>([]); const [databasePath, setDatabasePath] = useState("");
   const [preview, setPreview] = useState<CaptureSelectionPreview>(); const [reviewing, setReviewing] = useState(false); const [working, setWorking] = useState(false); const [running, setRunning] = useState(false); const [runId, setRunId] = useState<string>(); const [result, setResult] = useState<string>(); const [failure, setFailure] = useState<string>();
+  const [resourcesLoading, setResourcesLoading] = useState(true); const [resourceFailure, setResourceFailure] = useState<string>();
   const invalidate = () => { setPreview(undefined); setResult(undefined); };
   const changeProfile = (value: string) => { setProfileId(value); setItems([]); invalidate(); };
   const changeRepository = (value: string) => { setRepositoryId(value); invalidate(); };
@@ -59,20 +64,28 @@ function useCaptureSelection(onPlansChanged: () => void, resourcesRevision: numb
   const toggleDockerItem = (item: BackupSelectionItem) => { setItems((current) => current.some((candidate) => selectionKey(candidate) === selectionKey(item)) ? current.filter((candidate) => selectionKey(candidate) !== selectionKey(item)) : [...current, item]); invalidate(); };
   const removeItem = (item: BackupSelectionItem) => { setItems((current) => current.filter((candidate) => selectionKey(candidate) !== selectionKey(item))); invalidate(); };
   const clearItems = () => { setItems([]); invalidate(); };
-  useEffect(() => { void loadResources(setProfiles, setRepositories, setProfileId, setRepositoryId); }, [resourcesRevision]);
+  useEffect(() => {
+    let active = true; setResourcesLoading(true); setResourceFailure(undefined);
+    void loadResources().then((resources) => { if (!active) return; setProfiles(resources.profiles); setRepositories(resources.repositories); setProfileId((current) => retainedId(current, resources.profiles, "profileId")); setRepositoryId((current) => retainedId(current, resources.repositories, "repositoryId")); })
+      .catch((error: unknown) => { if (active) setResourceFailure(safeErrorText(error, t("readinessErrorFallback"))); })
+      .finally(() => { if (active) setResourcesLoading(false); });
+    return () => { active = false; };
+  }, [resourcesRevision, t]);
   const review = async (event: FormEvent) => { event.preventDefault(); if (!hasTauriRuntime()) return; setReviewing(true); setFailure(undefined); try { setPreview(await previewCaptureSelection({ profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined })); } catch { setFailure(t("captureReviewFailed")); } finally { setReviewing(false); } };
   const run = async () => { if (!preview) return; const nextRunId = newRunId(); setRunId(nextRunId); setWorking(true); setRunning(true); setFailure(undefined); try { const job = await runCaptureSelection({ selection: { profileId, repositoryId, items, sqlitePath: databasePath.trim() || undefined }, confirmation: preview.confirmation, runId: nextRunId }); onPlansChanged(); setResult(`${t("captureSealed")} ${job.backupId}`); } catch (error) { setFailure(captureErrorText(error, t("captureErrorFallback"))); } finally { setWorking(false); setRunning(false); setRunId(undefined); } };
   const cancel = async () => { if (runId) await cancelJob(runId); };
-  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, reviewing, working, running, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, run, cancel };
+  const resourcesReady = profiles.length > 0 && repositories.length > 0;
+  return { profiles, repositories, profileId, repositoryId, items, databasePath, preview, reviewing, working, running, resourcesLoading, resourcesReady, resourceFailure, result, failure, changeProfile, changeRepository, changeDatabase, toggleRemotePath, toggleDockerItem, removeItem, clearItems, review, run, cancel };
 }
 
 type CaptureSelectionModel = ReturnType<typeof useCaptureSelection>;
 
-async function loadResources(setProfiles: (items: SshProfileSummary[]) => void, setRepositories: (items: RepositorySummary[]) => void, setProfileId: (id: string) => void, setRepositoryId: (id: string) => void) {
+async function loadResources(): Promise<{ profiles: SshProfileSummary[]; repositories: RepositorySummary[] }> {
   const [profiles, repositories] = await Promise.all([listSshProfiles(), listRepositories()]); const ready = repositories.filter((item) => item.recoveryReady);
-  setProfiles(profiles); setRepositories(ready); setProfileId(profiles[0]?.profileId ?? ""); setRepositoryId(ready[0]?.repositoryId ?? "");
+  return { profiles, repositories: ready };
 }
 
 function pathsForItem(item: BackupSelectionItem): string[] { if (item.kind === "remote_path") return [item.absolutePath]; if (item.kind === "docker_mount") return [item.capturablePath]; return item.capturablePaths; }
 function itemPaths(items: BackupSelectionItem[]): string[] { return items.flatMap(pathsForItem); }
 function selectionKey(item: BackupSelectionItem): string { return JSON.stringify(item); }
+function retainedId<T extends Record<K, string>, K extends "profileId" | "repositoryId">(current: string, items: T[], key: K): string { return items.some((item) => item[key] === current) ? current : items[0]?.[key] ?? ""; }

@@ -33,40 +33,52 @@ export function RestorePanel({ onManageBackups, onManageServers, t }: RestorePan
 }
 
 function useRestoreModel(t: Translate) {
-  const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
-  const [backups, setBackups] = useState<BackupSummary[]>([]);
-  const [profiles, setProfiles] = useState<SshProfileSummary[]>([]);
-  const [repositoryId, setRepositoryId] = useState("");
-  const [backupId, setBackupId] = useState("");
-  const [profileId, setProfileId] = useState("");
-  const [description, setDescription] = useState<BackupRestoreDescription>();
-  const [mode, setMode] = useState<RestoreMode>("separate");
-  const [targetPath, setTargetPath] = useState("");
-  const [resourcesLoading, setResourcesLoading] = useState(true);
-  const [backupsLoading, setBackupsLoading] = useState(false);
-  const [descriptionLoading, setDescriptionLoading] = useState(false);
+  const [failure, setFailure] = useState<string>();
+  const resources = useRestoreResources(t, setFailure);
+  const backups = useRestoreBackups(resources.repositoryId, t, setFailure);
+  const selection = useRestoreSelection(resources.profiles, resources.repositoryId, backups.backupId, t, setFailure);
+  const { repositoryId } = resources; const { backupId } = backups;
+  const { profileId, mode, targetPath } = selection;
   const action = useRestoreAction(t, { repositoryId, backupId, profileId, mode, targetPath });
-  const setFailure = action.setFailure;
-  useEffect(() => { void Promise.all([listRepositories(), listSshProfiles()]).then(([repos, servers]) => {
-    setRepositories(repos); setProfiles(servers); setRepositoryId(repos[0]?.repositoryId ?? "");
-  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
-    .finally(() => setResourcesLoading(false)); }, [setFailure, t]);
+  const setActionFailure = action.setFailure;
+  useEffect(() => { if (failure) setActionFailure(failure); }, [failure, setActionFailure]);
+  return { ...resources, ...backups, ...selection, ...action };
+}
+
+function useRestoreResources(t: Translate, setFailure: (value: string) => void) {
+  const [repositories, setRepositories] = useState<RepositorySummary[]>([]); const [profiles, setProfiles] = useState<SshProfileSummary[]>([]);
+  const [repositoryId, setRepositoryId] = useState(""); const [resourcesLoading, setResourcesLoading] = useState(true);
+  useEffect(() => { let active = true; void Promise.all([listRepositories(), listSshProfiles()]).then(([repos, servers]) => {
+    if (!active) return; setRepositories(repos); setProfiles(servers); setRepositoryId((current) => retainedResourceId(current, repos, "repositoryId"));
+  }).catch((error: unknown) => { if (active) setFailure(safeErrorText(error, t("restoreErrorFallback"))); })
+    .finally(() => { if (active) setResourcesLoading(false); }); return () => { active = false; }; }, [setFailure, t]);
+  return { repositories, profiles, repositoryId, setRepositoryId, resourcesLoading };
+}
+
+function useRestoreBackups(repositoryId: string, t: Translate, setFailure: (value: string) => void) {
+  const [backups, setBackups] = useState<BackupSummary[]>([]); const [backupId, setBackupId] = useState("");
+  const [backupsLoading, setBackupsLoading] = useState(false);
   useEffect(() => { setBackups([]); setBackupId(""); if (!repositoryId) return;
-    setBackupsLoading(true); void listBackups(repositoryId).then((items) => {
-    setBackups(items); setBackupId(items[0]?.backupId ?? "");
-  }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
-      .finally(() => setBackupsLoading(false)); }, [repositoryId, setFailure, t]);
+    let active = true; setBackupsLoading(true); void listBackups(repositoryId).then((items) => { if (!active) return; setBackups(items); setBackupId(items[0]?.backupId ?? ""); })
+      .catch((error: unknown) => { if (active) setFailure(safeErrorText(error, t("restoreErrorFallback"))); })
+      .finally(() => { if (active) setBackupsLoading(false); }); return () => { active = false; };
+  }, [repositoryId, setFailure, t]);
+  return { backups, backupId, setBackupId, backupsLoading };
+}
+
+function useRestoreSelection(profiles: SshProfileSummary[], repositoryId: string, backupId: string, t: Translate, setFailure: (value: string) => void) {
+  const [description, setDescription] = useState<BackupRestoreDescription>(); const [profileId, setProfileId] = useState("");
+  const [mode, setMode] = useState<RestoreMode>("separate"); const [separatePath, setSeparatePath] = useState("");
+  const [descriptionLoading, setDescriptionLoading] = useState(false);
   useEffect(() => { setDescription(undefined); if (!repositoryId || !backupId) return;
-    setDescriptionLoading(true);
-    void inspectRestoreBackup(repositoryId, backupId).then((value) => {
-      setDescription(value); setProfileId(value.sourceProfileId); setTargetPath(value.roots[0] ?? "");
-      if (!value.replacementAvailable) setMode("separate");
-    }).catch((error: unknown) => setFailure(safeErrorText(error, t("restoreErrorFallback"))))
-      .finally(() => setDescriptionLoading(false));
-  }, [repositoryId, backupId, setFailure, t]);
-  return { repositories, backups, profiles, repositoryId, setRepositoryId, backupId, setBackupId,
-    profileId, setProfileId, description, mode, setMode, targetPath, setTargetPath,
-    resourcesLoading, backupsLoading, descriptionLoading, ...action };
+    let active = true; setDescriptionLoading(true); void inspectRestoreBackup(repositoryId, backupId).then((value) => { if (!active) return;
+      setDescription(value); setProfileId(preferredProfileId(value.sourceProfileId, profiles)); setSeparatePath(suggestRestorePath(value.roots[0]));
+      if (!value.replacementAvailable || !profiles.some((item) => item.profileId === value.sourceProfileId)) setMode("separate");
+    }).catch((error: unknown) => { if (active) setFailure(safeErrorText(error, t("restoreErrorFallback"))); })
+      .finally(() => { if (active) setDescriptionLoading(false); }); return () => { active = false; };
+  }, [repositoryId, backupId, profiles, setFailure, t]);
+  const targetPath = mode === "replace" ? description?.roots[0] ?? "" : separatePath;
+  return { description, profileId, setProfileId, mode, setMode, targetPath, setTargetPath: setSeparatePath, descriptionLoading };
 }
 
 interface ActionInput { repositoryId: string; backupId: string; profileId: string; mode: RestoreMode; targetPath: string; }
@@ -107,7 +119,7 @@ function RestoreForm({ model, onManageBackups, onManageServers, t }: { model: Mo
         : <>
       <div className="restore-mode" role="radiogroup" aria-label={t("restorePlanDestination")}>
         <button data-active={model.mode === "separate" || undefined} role="radio" aria-checked={model.mode === "separate"} type="button" onClick={() => model.setMode("separate")}><Folder size={17} />{t("restoreModeSeparate")}</button>
-        <button data-active={model.mode === "replace" || undefined} role="radio" aria-checked={model.mode === "replace"} type="button" disabled={!model.description.replacementAvailable} onClick={() => model.setMode("replace")}><RotateCcw size={17} />{t("restoreModeReplace")}</button>
+        <button data-active={model.mode === "replace" || undefined} role="radio" aria-checked={model.mode === "replace"} type="button" disabled={!replacementReady(model)} onClick={() => model.setMode("replace")}><RotateCcw size={17} />{t("restoreModeReplace")}</button>
       </div>
       <p className="restore-mode__hint">{t(model.mode === "replace" ? "restorePlanRollback" : "restoreDestinationHint")}</p>
       <label><span>{t("deployTargetProfile")}</span><select value={model.profileId} disabled={model.mode === "replace"} onChange={(e) => model.setProfileId(e.target.value)}>{model.profiles.map((item) => <option key={item.profileId} value={item.profileId}>{item.label}</option>)}</select></label>
@@ -131,6 +143,14 @@ function BackupExplorer({ description, t }: { description: BackupRestoreDescript
 }
 
 function activeState(state: string): boolean { return ["running", "paused", "restarting"].includes(state); }
+
+function replacementReady(model: Model): boolean { return Boolean(model.description?.replacementAvailable && model.profiles.some((item) => item.profileId === model.description?.sourceProfileId)); }
+
+function preferredProfileId(sourceProfileId: string, profiles: SshProfileSummary[]): string { return profiles.some((item) => item.profileId === sourceProfileId) ? sourceProfileId : profiles[0]?.profileId ?? ""; }
+
+function suggestRestorePath(root: string | undefined): string { if (!root || root === "/") return "/restore"; return `${root.replace(/\/$/u, "")}-restored`; }
+
+function retainedResourceId<T extends Record<K, string>, K extends "repositoryId">(current: string, items: T[], key: K): string { return items.some((item) => item[key] === current) ? current : items[0]?.[key] ?? ""; }
 
 function Confirmation({ model, t }: { model: Model; t: Translate }) {
   const plan = model.plan; if (!plan) return null;

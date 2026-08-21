@@ -51,6 +51,13 @@ describe("repository management", () => {
     await vi.waitFor(() => expect(commands.deleteRepository).toHaveBeenCalledWith("repository-1"));
   });
 
+  it("keeps the new-storage form collapsed after setup", async () => {
+    await render();
+    expect(container.querySelector(".repository-form")).toBeNull();
+    await act(async () => button("setupCreateRepository").click());
+    expect(container.querySelector(".repository-form")).not.toBeNull();
+  });
+
   async function render() {
     await act(async () => root.render(<RepositoryPanel onRepositoriesChanged={vi.fn()} t={(key) => key} />));
     await vi.waitFor(() => expect(container.textContent).toContain("Archive"));
