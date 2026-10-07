@@ -9,9 +9,14 @@ export function DestinationBar({ model, t }: { model: RestoreModel; t: Translate
   const locked = action.busy;
   return (
     <form className="destination" onSubmit={(event) => { event.preventDefault(); void action.preview(); }}>
-      <div className="destination__modes" role="radiogroup" aria-label={t("restorePlanDestination")}>
+      <div className="destination__modes" role="radiogroup" aria-label={t("restoreModeTitle")}>
         <button type="button" role="radio" aria-checked={!replace} data-active={!replace || undefined} disabled={locked} onClick={() => selection.setMode("separate")} data-tip-side="start" {...tip(t("restoreModeSeparate"))}><FolderPlus size={16} aria-hidden="true" /></button>
-        <button type="button" role="radio" aria-checked={replace} data-active={replace || undefined} disabled={locked || !selection.replacementReady} onClick={() => selection.setMode("replace")} data-tip-side="start" {...tip(t("restoreModeReplace"))}><RotateCcw size={16} aria-hidden="true" /></button>
+        <button
+          type="button" role="radio" aria-checked={replace} data-active={replace || undefined} disabled={locked}
+          aria-disabled={!selection.replacementReady || undefined} onClick={() => selection.replacementReady && selection.setMode("replace")} data-tip-side="start"
+          {...tip(selection.replacementReady ? t("restoreModeReplace") : `${t("restoreModeReplace")}
+${t("restoreReplaceUnavailable")}`)}
+        ><RotateCcw size={16} aria-hidden="true" /></button>
       </div>
       <label className="picker" data-tip={t("deployTargetProfile")}>
         <Server size={15} aria-hidden="true" />

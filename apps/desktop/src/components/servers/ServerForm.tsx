@@ -3,6 +3,7 @@ import { CircleAlert, CircleHelp, Eye, EyeOff, FolderOpen, Fingerprint, KeyRound
 import type { Translate } from "../../i18n";
 import { hasTauriRuntime, pickSshKeyPath, type SshProfileRequest } from "../../shared/commands";
 import { tip } from "../../shared/tip";
+import { useDrawerFocus } from "../../shared/useDrawerFocus";
 import { useHostKeyLookup, type HostKeyLookup } from "./useHostKeyLookup";
 import type { ServersModel } from "./useServers";
 
@@ -15,8 +16,10 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
     lookup.reset(); enrollment.setAcknowledged(false);
     setForm((current) => ({ ...current, password: "" })); model.setFormOpen(false);
   };
+  // The very first server cannot be dismissed: there is nothing to go back to.
+  const drawer = useDrawerFocus<HTMLElement>(list.profiles.length > 0 ? close : undefined);
   return (
-    <aside className="drawer" role="dialog" aria-label={t("setupServerTitle")}>
+    <aside className="drawer" ref={drawer} tabIndex={-1} role="dialog" aria-label={t("setupServerTitle")}>
       <header className="drawer__header">
         <Server size={16} aria-hidden="true" /><strong>{t("setupServerTitle")}</strong>
         {list.profiles.length > 0 && <button className="icon-button" type="button" onClick={close} {...tip(t("dismiss"))}><X size={15} aria-hidden="true" /></button>}
@@ -110,7 +113,7 @@ function PasswordField({ form, setForm, t }: AuthFieldsProps) {
 function Field({ label, hint, narrow, children }: { label: string; hint?: string; narrow?: boolean; children: ReactNode }) {
   return (
     <label className="field" data-narrow={narrow || undefined}>
-      <span className="field__label">{label}{hint && <span className="field__hint" data-tip={hint} data-tip-side="start"><CircleHelp size={13} aria-hidden="true" /></span>}</span>
+      <span className="field__label">{label}{hint && <span className="field__hint" data-tip={hint} data-tip-side="start" tabIndex={0} role="img" aria-label={hint}><CircleHelp size={13} aria-hidden="true" /></span>}</span>
       {children}
     </label>
   );

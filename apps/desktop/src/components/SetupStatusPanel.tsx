@@ -2,6 +2,7 @@ import { ArrowUpRight, CircleAlert, CircleCheck, LoaderCircle, RefreshCw } from 
 import { evaluateSetupReadiness, type SetupStatusItem } from "./setup-readiness";
 import { useSetupStatus } from "./use-setup-status";
 import type { Translate } from "../i18n";
+import { tip } from "../shared/tip";
 
 interface SetupStatusPanelProps {
   onManageServers?: () => void;
@@ -15,10 +16,10 @@ export function SetupStatusPanel({ onManageServers, onOpenSettings, resourcesRev
   const items = model.resources ? evaluateSetupReadiness(model.resources, t) : [];
   const ready = items.length > 0 && items.every((item) => item.readiness === "ready");
   return <section className="setup-status" aria-labelledby="setup-status-title">
-    <header><h2 id="setup-status-title">{ready && <CircleCheck size={16} />}{t(ready ? "backupReadyTitle" : "backupChecklistTitle")}</h2><button aria-label={t("readinessRefresh")} className="text-button" disabled={model.loading} title={t("readinessRefresh")} onClick={model.reload} type="button"><RefreshCw className={model.loading ? "spin" : undefined} size={15} /></button></header>
+    <header><h2 id="setup-status-title">{ready && <CircleCheck size={16} aria-hidden="true" />}{t(ready ? "backupReadyTitle" : "backupChecklistTitle")}</h2><button className="text-button" disabled={model.loading} onClick={model.reload} type="button" {...tip(t("readinessRefresh"))}><RefreshCw className={model.loading ? "spin" : undefined} size={15} aria-hidden="true" /></button></header>
     {model.loading && !model.resources && <p className="setup-status__loading"><LoaderCircle className="spin" size={16} />{t("readinessLoading")}</p>}
     {!ready && items.length > 0 && <div className="setup-status__items">{items.map((item) => <StatusItem key={item.label} item={item} onClick={statusAction(item, onManageServers, onOpenSettings)} />)}</div>}
-    {model.failures.length > 0 && <div className="setup-status__failures" role="alert">{model.failures.map((failure) => <p key={failure.label}><CircleAlert size={16} />{t("readinessFailurePrefix")} «{failure.label}»: {failure.detail}</p>)}</div>}
+    {model.failures.length > 0 && <div className="setup-status__failures" role="alert">{model.failures.map((failure) => <p key={failure.label}><CircleAlert size={16} aria-hidden="true" /><span>{t("readinessFailurePrefix")} <strong>{failure.label}</strong>: {failure.detail}</span></p>)}</div>}
   </section>;
 }
 

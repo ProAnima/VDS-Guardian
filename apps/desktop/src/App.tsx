@@ -5,6 +5,7 @@ import { Dashboard } from "./components/Dashboard";
 import { RestorePanel } from "./components/RestorePanel";
 import { SetupPanel } from "./components/SetupPanel";
 import { ServersPanel } from "./components/ServersPanel";
+import { TooltipLayer } from "./components/TooltipLayer";
 import { getFoundationStatus, previewStatus, type FoundationStatus } from "./shared/commands";
 import { usePreferences } from "./shared/usePreferences";
 
@@ -60,6 +61,7 @@ export function App() {
           <div className="view-host" hidden={view !== id} key={id}>{content[id]()}</div>
         ))}
       </div>
+      <TooltipLayer />
     </div>
   );
 }

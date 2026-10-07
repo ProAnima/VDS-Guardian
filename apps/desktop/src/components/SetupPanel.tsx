@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { KeyRound, Settings2, X } from "lucide-react";
 import type { Translate } from "../i18n";
 import { tip } from "../shared/tip";
-import { useLatest } from "../shared/useLatest";
+import { useDrawerFocus } from "../shared/useDrawerFocus";
 import { BackupWorkspace } from "./backup/BackupWorkspace";
 import { RecoveryBundlePanel } from "./RecoveryBundlePanel";
 import { RecoveryImportPanel } from "./RecoveryImportPanel";
@@ -51,19 +51,14 @@ interface SettingsDrawerProps {
 function SettingsDrawer({ target, revision, onChanged, onClose, t }: SettingsDrawerProps) {
   const protectionRef = useRef<HTMLDivElement>(null);
   const storageRef = useRef<HTMLDivElement>(null);
-  const close = useLatest(onClose);
+  const drawer = useDrawerFocus<HTMLElement>(onClose);
   // Scroll only when the requested section changes, not on every re-render of the drawer.
   useEffect(() => {
     const frame = requestAnimationFrame(() => (target === "storage" ? storageRef : protectionRef).current?.scrollIntoView({ block: "start" }));
     return () => cancelAnimationFrame(frame);
   }, [target]);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close.current(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
   return (
-    <aside className="drawer" role="dialog" aria-label={t("backupSettingsTitle")}>
+    <aside className="drawer" ref={drawer} tabIndex={-1} role="dialog" aria-label={t("backupSettingsTitle")}>
       <header className="drawer__header">
         <Settings2 size={16} aria-hidden="true" /><strong>{t("backupSettingsTitle")}</strong>
         <button className="icon-button" type="button" onClick={onClose} {...tip(t("dismiss"))}><X size={15} aria-hidden="true" /></button>

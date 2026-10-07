@@ -178,6 +178,56 @@ describe("restore cancellation", () => {
     expect(container.querySelector<HTMLButtonElement>('[data-backup-id="backup-1"]')?.disabled).toBe(true);
   });
 
+  it("spells out the server, stopped services, safety backup and rollback copy before replacing", async () => {
+    commands.previewSourceReplacement.mockResolvedValueOnce({
+      backupId: "backup-1", targetProfileId: "profile-1", root: "/srv/app", containers: ["app", "db"], replaces: ["/srv/app"],
+      conflicts: ["container_image_changed:app:1.2.3"], safetyBackupRequired: true, serviceStopRequired: true,
+      confirmation: "REPLACE backup-1", rollbackPath: "/srv/.guardian-rollback/app",
+    });
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector('[aria-label="restoreModeReplace"]')).not.toBeNull());
+    await act(async () => button("restoreModeReplace").click());
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(container.querySelector(".confirm__facts")).not.toBeNull());
+    const facts = Object.fromEntries([...container.querySelectorAll(".confirm__fact")].map((fact) => [fact.querySelector("dt")?.textContent, fact.querySelector("dd")?.textContent]));
+    expect(facts).toMatchObject({
+      deployTargetProfile: "Source", restorePlanServiceStop: "app, db",
+      restorePlanSafetyBackup: "restorePlanSafetyBackupAuto", restorePlanRollbackPath: "/srv/.guardian-rollback/app",
+    });
+    expect(container.textContent).toContain("restoreFailureChanged: app:1.2.3");
+  });
+
+  it("explains why replacing is unavailable instead of silently disabling it", async () => {
+    commands.inspectRestoreBackup.mockResolvedValue({
+      backupId: "backup-1", sourceProfileId: "gone", roots: ["/srv/app"], dockerWorkloads: [], entries: [], totalEntries: 0, replacementAvailable: true,
+    });
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    const replace = await vi.waitFor(() => {
+      const radio = container.querySelector<HTMLButtonElement>('[role="radio"][aria-disabled="true"]');
+      if (!radio) throw new Error("replace radio not yet disabled");
+      return radio;
+    });
+    expect(replace.getAttribute("data-tip")).toContain("restoreReplaceUnavailable");
+    await act(async () => replace.click());
+    expect(replace.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("moves the backup choice with the arrow keys", async () => {
+    commands.listBackups.mockResolvedValue([
+      { backupId: "backup-1", sealedAt: "2026-07-17T00:00:00Z", verification: "verified" },
+      { backupId: "backup-2", sealedAt: "2026-07-18T00:00:00Z", verification: "verified" },
+    ]);
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-2"]')).not.toBeNull());
+    const list = container.querySelector<HTMLElement>('[role="listbox"]');
+    const selected = () => container.querySelector('[role="option"][aria-selected="true"]')?.getAttribute("data-backup-id");
+    await act(async () => list?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(selected()).toBe("backup-2");
+    await act(async () => list?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    expect(selected()).toBe("backup-1");
+    expect(container.querySelectorAll('[role="option"][tabindex="0"]')).toHaveLength(1);
+  });
+
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent?.includes(label) || candidate.getAttribute("aria-label") === label);

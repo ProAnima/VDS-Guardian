@@ -49,7 +49,7 @@ describe("SSH profile loading", () => {
     expect(container.querySelector('[aria-label="serversAdd"]')).not.toBeNull();
   });
 
-  it("shows how each saved server is logged in to, treating a missing kind as a key", async () => {
+  it("shows how each saved server is logged in to, marking a missing kind as unrecorded", async () => {
     commands.listSshProfiles.mockResolvedValue([
       { profileId: "a", label: "Key", host: "a.example", port: 22, user: "backup", authKind: "ssh_key" },
       { profileId: "b", label: "Agent", host: "b.example", port: 22, user: "backup", authKind: "ssh_agent" },
@@ -60,7 +60,7 @@ describe("SSH profile loading", () => {
     await vi.waitFor(() => expect(container.querySelectorAll(".server-row")).toHaveLength(4));
     const kinds = [...container.querySelectorAll<HTMLElement>(".server-row__auth")].map((badge) => [badge.dataset.kind, badge.getAttribute("aria-label")]);
     expect(kinds).toEqual([
-      ["ssh_key", "setupAuthKey"], ["ssh_agent", "serversAuthAgent"], ["password", "setupAuthPassword"], ["ssh_key", "setupAuthKey"],
+      ["ssh_key", "setupAuthKey"], ["ssh_agent", "serversAuthAgent"], ["password", "setupAuthPassword"], ["unknown", "serversAuthUnknown"],
     ]);
   });
 
