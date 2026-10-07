@@ -17,7 +17,12 @@ desktop, and `guardian-mcp` adapters; and the desktop app, CLI, and
 release is not production-ready: signed installers and release-candidate
 desktop evidence remain incomplete (sections 4 and 5). The simple server
 explorer/selection path (ADR 0015) is implemented but still needs its
-release-candidate usability evidence.
+release-candidate usability evidence. Servers can be enrolled with a login
+password delivered through a one-shot loopback askpass broker (ADR 0017,
+crate `guardian-askpass`), and the desktop Servers form can fetch a server's
+host key and pins it only after the operator confirms its `SHA256:`
+fingerprint (ADR 0018); both are drilled against a real `sshd` but are not
+yet part of release-candidate desktop evidence.
 The compiled clean-machine path, including recovery-key import, passed on
 Windows locally and on Linux CI for commit `3912a90`. Bounded Docker
 inventory/mount selection is now part of the operator path; automatic Docker

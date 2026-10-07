@@ -47,9 +47,10 @@ The Servers view contains only server management:
    reference is removed or replaced.
 
 Secrets never appear on cards, in portable settings, diagnostics, logs, or
-repository metadata. Password authentication is a required capability but is
-not considered implemented until the secure broker described by ADR 0015 and
-the security tests in `SECURITY_MODEL.md` exist.
+repository metadata. Password authentication is a required capability; it is
+delivered through the one-shot askpass broker of ADR 0017, which satisfies the
+constraints ADR 0015 set and is covered by the tests listed there and in
+`SECURITY_MODEL.md`.
 
 ### Backups
 

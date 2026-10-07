@@ -46,11 +46,25 @@ Adapters will be added by capability, not bundled into the domain crate:
   read-only `RemoteBrowserPort` provides bounded, paginated directory pages
   without following symlinks or accepting arbitrary commands. The
   `guardian-ssh` adapter uses system OpenSSH through direct argv, temporary
-  exact `known_hosts` input, and non-interactive strict host-key checking;
-  it now covers read-only archive/database capture, Docker inventory
+  exact `known_hosts` input, and strict host-key checking; every operation
+  takes a typed `SshIdentity` (private key, SSH-agent public key, or login
+  password). It now covers read-only archive/database capture, Docker inventory
   inspection, and (ADR 0007) pushing a sealed backup's payloads onto a new
   host, and is wired into the full capture-to-seal use case by
-  `guardian-capture`.
+  `guardian-capture`. It also provides the desktop-only host-key lookup
+  (ADR 0018, `host_key_scan`): system `ssh` with no credential records the
+  presented key into a throw-away `known_hosts`, and the result is shown with
+  its standard `SHA256:` fingerprint; nothing is pinned by the lookup.
+- Password delivery (ADR 0017, `guardian-askpass`): for a password login
+  `guardian-ssh` starts a one-shot broker on `127.0.0.1` that holds the
+  password in zeroized memory and serves it once to a request presenting a
+  random 256-bit token (per-connection budget 1.5 s, at most 8 connections in
+  flight, lifetime = SSH connect timeout + 30 s, closed when the command is
+  dropped). `ssh` runs the application's own executable as `SSH_ASKPASS`:
+  desktop, `guardian-cli` and `guardian-mcp` call
+  `guardian_ssh::init_password_helper()` first in `main`, which answers only the
+  `<user>@<host>'s password:` prompt and otherwise registers the executable as
+  the helper. The stand-alone `guardian-askpass` binary is for tests only.
 - Local repository with staging, atomic seal, read-only best-effort flags, and
   whole-directory retention. Staging can reserve an exclusive payload path for
   a streaming adapter, then registers the regular file and hashes it from disk
@@ -72,7 +86,8 @@ Implemented adapters are split by capability across `guardian-local-repository`
 (staging/seal/retention), `guardian-signing` (Ed25519 node identity),
 `guardian-os-keyring` (OS credential store) with `guardian-vault` as its
 encrypted-file fallback, `guardian-archive` (tar.zst read/write), `guardian-ssh`
-(pinned OpenSSH transport, above), `guardian-encryption` (the format-v2
+(pinned OpenSSH transport, above), `guardian-askpass` (password broker and
+askpass helper, above), `guardian-encryption` (the format-v2
 payload envelope, ADR 0004), `guardian-database` (PostgreSQL/MySQL capability
 discovery only — no dump/restore adapter yet), and `guardian-docker` (Docker
 inventory inspection and mount-to-path resolution, ADR 0008).
@@ -80,7 +95,9 @@ inventory inspection and mount-to-path resolution, ADR 0008).
 non-secret configuration documents (repositories, capture plans, profiles).
 Composition-root crates wire these adapters into full use cases:
 `guardian-capture` (capture-to-seal, including the embedded-database
-snapshot adapter, ADR 0005) and `guardian-deploy` (remote deploy to a new
+snapshot adapter, ADR 0005, and `build_capture_requests`, the one builder
+desktop and `guardian-mcp` both use to turn a saved plan into capture
+requests and a manifest) and `guardian-deploy` (remote deploy to a new
 host, ADR 0007). `guardian-cli`, the desktop's `src-tauri` crate, and
 `guardian-mcp` (ADR 0012) are the three surfaces that call these composition
 roots. `guardian-capture` reads repository free space through a small local
@@ -103,8 +120,9 @@ command (enrollment, capture, restore, deploy, Docker inventory) runs on a
 call — there is no progress-event stream to the frontend yet, so a
 long-running job's UI stays in a single loading state until it resolves.
 Signing status and explicit enrollment were the first infrastructure
-commands: the Overview setup panel reads status, and only calls enrollment
-after an explicit acknowledgement and final confirmation. Their Tauri functions
+commands: the protection section of the Backup view's settings drawer reads
+status, and only calls enrollment after an explicit acknowledgement and final
+confirmation. Their Tauri functions
 only resolve the app config path and dispatch the shared signing service to a
 blocking worker. SSH profile enrollment, repository registration, recovery-bundle
 export/import, confirmed capture-selection execution, Docker inventory browsing, and
@@ -113,7 +131,15 @@ commands call the shared `guardian-local-repository` service; desktop keeps an
 entered passphrase in memory, requires it twice for export, and bundle import
 authenticates before registering an unknown repository. Guided setup refreshes
 dependent selectors after each completed step and excludes repositories whose
-recovery key is unavailable from capture. SSH enrollment is one shared-core
+recovery key is unavailable from capture. SSH enrollment happens in the
+Servers view's "Add server" drawer: the operator chooses key mode (a private
+key or the `.pub` of an SSH-agent key) or password mode, may fetch the host
+key (`scan_host_key`, ADR 0018) and must confirm its `SHA256:` fingerprint or
+the pasted key. `enroll_ssh_profile` itself refuses an unconfirmed key and a
+confirmed fingerprint that is not the submitted key's
+(`require_host_key_confirmation`), encodes a password as a `PASSWORD-V1`
+credential (wiping its own copy when dropped), and records the profile's
+`auth_kind`. Enrollment is then one shared-core
 transaction: it stages the credential, runs the pinned capture-capability
 probe, commits the profile only on success, and removes the staged credential
 after any failed probe or profile commit. The desktop server manager also owns
@@ -121,25 +147,39 @@ the explicit deletion adapter: it blocks profiles referenced by capture plans,
 atomically removes an unused profile, deletes its OS-stored credential, and
 compensates by restoring the profile if credential cleanup fails.
 `guardian-mcp` remains excluded.
-The desktop navigation separates the server manager from backup preparation:
-the Servers view contains only saved server cards and enrollment, while the
-Backups view owns signing, repository recovery readiness, and capture-plan
-selection. This keeps infrastructure prerequisites out of the routine server
-management path without duplicating their application services.
-The Backups view composes `RemoteBrowserPort` with Docker inventory. The shared
+The desktop navigation is a sidebar rail with four views: Overview (readiness
+tiles and shortcuts only), Servers (the saved server list with each server's
+login method, enrollment drawer and deletion), Backup, and Restore. The Backup
+view owns capture; its settings drawer holds signing ("protection"),
+repository storage, and the recovery bundle export/import. This keeps
+infrastructure prerequisites out of the routine server management path without
+duplicating their application services. A profile saved before `auth_kind`
+existed is shown as "login method not recorded", never as a particular kind.
+The Backup view composes `RemoteBrowserPort` with Docker inventory. The shared
 `preview_capture_selection` policy owns the serialized logical-item contract,
 re-resolves Docker mounts/groups against current inventory, removes duplicate
 or nested roots, and returns warnings plus a deterministic preview identity.
-Desktop consumes that preview before persisting the normalized roots. Making
-the preview an execution precondition for desktop and MCP remains the next
-application-service step.
-The desktop explorer presents the two discovery sources as separate bounded
-sections: a paginated filesystem table with path breadcrumbs, metadata,
-non-selectable reasons, retry/loading/empty states, and current-folder
-selection; and a Docker inventory grouped into Compose applications and
-individual persistent mounts. A persistent selection summary preserves the
-logical item identity rather than flattening Docker choices into UI-only path
-strings. This is presentation state only; core preview remains authoritative.
+The preview is an execution precondition on both surfaces: desktop
+`run_capture_selection` and MCP `execute_capture_selection` re-preview the
+current selection, reject a confirmation that no longer matches, and only then
+persist the internal capture plan and run it.
+The desktop explorer is one keyboard-navigable tree with two bounded roots:
+Docker (Compose applications, containers and their persistent mounts) and
+Files (a lazily expanded, paginated remote directory tree with metadata,
+non-selectable reasons, and retry/loading/empty states). Selections collect
+in a basket beside the tree, and "Review backup" shows the shared preview
+before "Create backup". The basket preserves the logical item identity rather
+than flattening Docker choices into UI-only path strings. This is presentation
+state only; core preview remains authoritative.
+The Restore view lists a repository's verified backups and their contents,
+then offers two destinations: a separate new path on a saved server (the
+deploy composition, ADR 0007) or replacing the original data in place (managed
+source replacement, ADR 0016, only for backups that carry source-layout
+metadata whose server is still saved). Either previews a plan whose facts are
+shown as visible label/value pairs, and executes only after the operator types
+the exact confirmation phrase. Restoring into a new local directory is not a
+desktop action; it remains available through the CLI and MCP `restore`
+operations.
 The pinned-SSH filesystem adapter supplies entry type, size, second-precision
 UTC modification time, and basename through one reviewed read-only `find`
 command. Modification time participates in the listing digest used by bounded
@@ -172,7 +212,7 @@ rather than creating a new, network-reachable one. `preview_restore`/
 `DeploymentPlan::approve` already require; `execute_restore`/`execute_deploy`
 require it back unchanged — the calling agent supplies it explicitly, the
 same as a human copying it from a CLI or desktop preview. Enrollment,
-credential import, repository registration, vault init, signing enrollment,
+host-key lookup (ADR 0018), credential import, repository registration, vault init, signing enrollment,
 recovery-key init/export/import (ADR 0013) are deliberately not exposed: each
 either mints new local trust/config state or carries the single highest-blast-
 radius secret in the system. ADR 0015 permits only confirmed explicit capture
@@ -244,8 +284,9 @@ Configuration contains public profile data and secret references only:
 
 ```text
 profile ID, display name, host, port, user
-pinned host key fingerprint
-credential reference (never secret bytes)
+pinned host key (algorithm and public key)
+credential reference (never secret bytes) and optional login kind
+  (auth_kind: ssh_key | ssh_agent | password)
 backup plan ID and schedule
 repository ID and local path
 retention and verification policies
@@ -271,14 +312,16 @@ recovery journal, never private key material.
 - Retention writes a durable non-secret intent outside its temporary quarantine
   directory. Opening a repository reconciles interrupted moves by rollback or
   resumes a durably marked cleanup; contradictory state fails closed.
-- Operator-triggered cancellation (ADR 0010) covers SSH-backed capture and
-  deploy plus desktop local restore. The CLI installs a Ctrl+C handler for
-  deploy, the desktop app tracks all three operations in a per-run registry
-  with a Cancel affordance, and `guardian-mcp` (ADR 0012) exposes the same
-  registry for capture and deploy through a `cancel_job` tool. SSH transports
-  poll the cross-thread handle between reads; local restore checks it while
-  decrypting, decompressing, and extracting each payload and again before the
-  final atomic publish.
+- Operator-triggered cancellation (ADR 0010) covers SSH-backed capture,
+  deploy, and managed source replacement. The CLI installs a Ctrl+C handler
+  for deploy, the desktop app tracks capture, deploy, and source replacement
+  in a per-run registry with a Cancel affordance, and `guardian-mcp` (ADR 0012)
+  exposes the same registry for capture and deploy through a `cancel_job`
+  tool. SSH transports poll the cross-thread handle between reads. The
+  local-restore code path checks a handle while decrypting, decompressing, and
+  extracting each payload and again before the final atomic publish, but no
+  current surface lets an operator cancel it: the desktop no longer restores
+  locally, and CLI/MCP local restore is not cancellable.
   The `JobRegistry` desktop and `guardian-mcp` share lives in `guardian-core`,
   not duplicated per surface. The spawned child is isolated into its own
   process group so only that cooperative signal, never a raw OS interrupt

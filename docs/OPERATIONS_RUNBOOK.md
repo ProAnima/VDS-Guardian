@@ -38,8 +38,9 @@ repository:
    copy) — losing it makes the bundle undecryptable, by design.
 
 The desktop export form requires the passphrase twice and refuses to create a
-bundle when the entries differ. A repository shown as `recovery не настроено`
-must be prepared before it is offered for capture or bundle export.
+bundle when the entries differ (Backup view → settings drawer → Recovery
+bundle). A repository shown as `recovery not configured` must be prepared
+before it is offered for capture or bundle export.
 
 To recover on a clean machine that has the repository directory and the
 bundle, but no state from the original machine's OS credential store:
@@ -71,10 +72,13 @@ it. Capture, deploy, and cancellation use the same run-id-keyed job registry
 the desktop app uses, so a capture or deploy started via MCP can be
 cancelled the same cooperative way.
 
-In the desktop app, a running local restore also exposes **Cancel restore**.
-The operation checks cancellation while decrypting and extracting payloads and
-again before publishing; a cancelled restore removes its temporary staging tree
-and leaves the requested destination absent.
+In the desktop app, the Restore view restores to a new path on a saved server
+(deploy) or replaces the original data in place (ADR 0016); a running restore
+of either kind exposes **Cancel restore**, which uses the same cooperative
+job registry. The desktop no longer restores into a local directory; use the
+CLI or MCP `restore` operations for that. Local restore is not cancellable
+from those surfaces, and a failed one removes its temporary staging tree and
+leaves the requested destination absent.
 
 ## Scheduled backup
 
@@ -141,9 +145,19 @@ staging tree, leave the target absent, and record `attempted` then `failed`.
 An eighth clean-machine restore fixture is also correctly signed and encrypted,
 but contains a tar `../` path; archive inspection rejects it after decryption
 and leaves neither a destination nor local restore staging behind.
+Later cases cover the newer paths: a managed source replacement (ADR 0016)
+cuts a real source over to an earlier backup and checks that the replaced data
+is preserved in its rollback copy; a password login (ADR 0017) as `root`
+seals a backup with the password absent from the repository, a wrong password
+is attempted exactly once, and a host that does not match the pin never sees a
+password attempt; and the host-key lookup (ADR 0018) returns the server's own
+key with a fingerprint equal to `ssh-keygen -l`, while a closed port fails
+quickly. A filter limits a run to some cases, for example
+`npm run test:integration:drill -- password_login`.
 It does not prove
 rollback for any stack type —
-restore/deploy rollback is not implemented — and does not cover every
+restore/deploy rollback is not implemented, and the replacement case checks
+only that the rollback copy is kept — and does not cover every
 supported stack type or failure mode, so it does not by itself satisfy the
 requirement above for a release claim. Run the drill manually for anything
 the automated version does not yet cover, or when CI access is unavailable.

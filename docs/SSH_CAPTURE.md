@@ -16,8 +16,29 @@ file. It never uses accept-new mode or the operator's global known-host file.
 ## Invocation policy
 
 The system `ssh` executable receives direct local argv, never a locally
-constructed shell command. Its options disable password and keyboard-interactive
-authentication and require `StrictHostKeyChecking=yes` and `IdentitiesOnly=yes`.
+constructed shell command. Every invocation uses `-F none`,
+`StrictHostKeyChecking=yes`, the temporary pinned `known_hosts` file and
+`GlobalKnownHostsFile=none`. The remaining options depend on the kind of
+credential stored under the profile's credential id (recorded on the profile
+as optional `auth_kind`: `ssh_key`, `ssh_agent` or `password`; profiles saved
+before the field existed carry none):
+
+| Kind | Options |
+| --- | --- |
+| `ssh_key`, `ssh_agent` | `BatchMode=yes`, `PasswordAuthentication=no`, `KbdInteractiveAuthentication=no`, `PreferredAuthentications=publickey`, `IdentitiesOnly=yes`, `-i <temporary identity path>` |
+| `password` (ADR 0017) | `BatchMode=no`, `PasswordAuthentication=yes`, `KbdInteractiveAuthentication=no`, `PubkeyAuthentication=no`, `PreferredAuthentications=password`, `NumberOfPasswordPrompts=1`; no `-i` |
+
+A password login therefore gets exactly one attempt, and OpenSSH verifies the
+pinned host key before any password is offered. The password never appears in
+argv, the environment, a file or a log: the child is started with
+`SSH_ASKPASS=<the application's own executable>`, `SSH_ASKPASS_REQUIRE=force`,
+`GUARDIAN_ASKPASS_PORT` and a 256-bit one-time `GUARDIAN_ASKPASS_TOKEN`, and the
+helper fetches the password once from a `127.0.0.1` broker
+(`guardian-askpass`) that lives only for the connect timeout plus 30 seconds
+and is closed when the command is dropped. Each binary calls
+`guardian_ssh::init_password_helper()` first in `main`; until it has, a password
+identity fails closed with `AskpassUnavailable`.
+
 The capture composition resolves the profile credential reference through the
 injected OS credential store. It accepts an unencrypted OpenSSH key envelope or
 an unencrypted PEM private key (RSA, EC, or PKCS#8), writes it to a short-lived temporary identity
@@ -32,9 +53,15 @@ raw key bytes for this case; the resolved identity is written only as a
 `.pub` file with no private-key-shaped path alongside it, relying on
 OpenSSH's own documented fallback (read the public key from `<path>.pub`,
 then ask the agent to sign) rather than any new SSH flag. Registered
-through `guardian-cli credential register-agent-key` today; desktop UI is
-not yet wired up. Limited to `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521`
-identities in this first slice.
+through `guardian-cli credential register-agent-key`, or in the desktop
+Servers form by choosing the key's `.pub` file instead of a private key.
+Limited to `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521` identities in this
+first slice.
+
+A login password is stored the same way, as a `PASSWORD-V1` marker (base64 of
+1–256 UTF-8 bytes without NUL, CR or LF), and is never materialized to a file.
+Only the desktop Servers form stores one; `guardian-cli credential` has no
+password command, and `import-ssh-key` rejects a password marker.
 
 The only current remote command template is a read-only GNU tar stream:
 
@@ -48,8 +75,8 @@ characters. Each root is single-quote encoded for the remote shell and follows
 
 ## Capability probe
 
-`probe_tar_zstd` uses the same pinned host key, identity file, and noninteractive
-SSH arguments as capture. It runs the fixed command below, with all output
+`probe_tar_zstd` uses the same pinned host key, credential, and authentication
+arguments as capture. It runs the fixed command below, with all output
 discarded, and returns only whether it exited successfully:
 
 ```text

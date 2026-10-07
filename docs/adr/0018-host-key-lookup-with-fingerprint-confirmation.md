@@ -22,7 +22,11 @@ fingerprint and requires explicit trust."
    from my provider or another trusted channel". The acknowledgement is reset
    whenever a new key is fetched or typed, and a fetched key is discarded when
    the address or port changes, so a key can never be confirmed for one server
-   and pinned to another.
+   and pinned to another. The backend does not rely on the form:
+   `enroll_ssh_profile` refuses a request without the acknowledgement
+   (`host_key_unconfirmed`), and when the form sends the fetched fingerprint it
+   must be the fingerprint of exactly the key being pinned
+   (`host_key_fingerprint_mismatch`, `require_host_key_confirmation`).
 3. **How the key is fetched.** System `ssh` connects with no credential
    (`PubkeyAuthentication=no`, `PasswordAuthentication=no`,
    `KbdInteractiveAuthentication=no`, `BatchMode=yes`, `ProxyCommand=none`,
@@ -57,14 +61,19 @@ fingerprint and requires explicit trust."
   cannot compare may still paste a key they obtained by another trusted route.
 - The lookup appears in the server's log as one failed pre-authentication
   connection from the operator's machine.
-- The lookup is bounded: 8 seconds, 16 KiB of recorded key material, no
+- The lookup is bounded: an 8-second connect timeout and at most 11 seconds
+  for the `ssh` process overall, 16 KiB of recorded key material, no
   credential, no retries.
 
 ## Evidence
 
 Unit tests cover fingerprint equality with `ssh-keygen`, parsing and algorithm
 preference, malformed and unsupported keys, host validation, and the argument
-set. A clean-room drill against a real `sshd` checks that the scanned key is
+set; desktop command tests cover the safe error mapping and the backend
+confirmation check (no pin without the acknowledgement, a mismatched confirmed
+fingerprint is refused). A clean-room drill
+(`crates/guardian-capture/tests/clean_room_drill/host_key_scan.rs`) against a
+real `sshd` checks that the scanned key is
 the server's own and that the fingerprint equals an independent `ssh-keygen -l`
 of that key, and that a closed port fails quickly. Front-end tests cover
 fetch, reset of the confirmation, discarding a key on address change, manual

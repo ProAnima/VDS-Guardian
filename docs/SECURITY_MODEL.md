@@ -17,6 +17,7 @@ inspection after decryption and before a restore destination is published.
 ## Primary assets
 
 - SSH private keys and passphrases.
+- SSH login passwords (ADR 0017).
 - Backup payloads and manifests.
 - Backup-node signing identity.
 - Server profiles and pinned host keys.
@@ -37,6 +38,10 @@ inspection after decryption and before a restore destination is published.
    `guardian-mcp` as its own child, the same OS-process trust `guardian-cli`
    and the desktop app already assume; this boundary is not network-reachable
    and does not widen who can trigger capture/restore/deploy.
+9. Application to its own askpass helper (ADR 0017): a one-shot broker on
+   `127.0.0.1`, reachable by every local user, that releases a login password
+   only to a request carrying the one-time token from the `ssh` child's
+   environment.
 
 ## Mandatory controls
 
@@ -59,10 +64,17 @@ inspection after decryption and before a restore destination is published.
   credential cleanup fails, the profile is restored so the UI never silently
   leaves a selectable profile without its key.
 - Password-based SSH (ADR 0017) delivers the password through a one-shot askpass
-  broker over memory-only loopback IPC: the secret lives only in the OS
-  credential store (or encrypted vault) and in zeroized process memory, and
-  OpenSSH receives it from the application's own executable acting as
-  `SSH_ASKPASS` after presenting a 256-bit one-time token. Password bytes never
+  broker over memory-only loopback IPC: the secret is stored as a `PASSWORD-V1`
+  credential under the profile's random credential id (only the desktop
+  Servers form creates one, in the OS credential store; the CLI has no
+  password command and its key import rejects a password marker), and is held
+  otherwise only in zeroized process memory. OpenSSH receives it from the
+  application's own executable acting as `SSH_ASKPASS`, which fetches it once
+  from a `127.0.0.1` broker by presenting a 256-bit one-time token; the broker
+  compares the token in constant time, serves the password to exactly one
+  request, gives each connection a 1.5-second budget, handles at most eight
+  connections at once, and stops after the SSH connect timeout plus 30
+  seconds or as soon as the command is dropped. Password bytes never
   enter argv, environment variables, shell input, configuration, logs,
   diagnostics, or temporary files; the helper answers only the plain login
   prompt (never a passphrase, host-key, password-change or one-time-code
@@ -70,8 +82,9 @@ inspection after decryption and before a restore destination is published.
   against the pin before any password can be offered. `sshpass` and
   terminal-prompt scraping remain forbidden, and host-key pinning and
   capability preflight remain mandatory. A drill against a real `sshd` proves
-  the password reaches only a host that matches the pin and appears nowhere in
-  the repository.
+  the password reaches only a host that matches the pin, is attempted once,
+  and appears nowhere in the repository. Residual risks are listed under
+  "Residual risks" below.
 
 ### Remote browsing and selection
 
@@ -175,6 +188,10 @@ inspection after decryption and before a restore destination is published.
   standard OpenSSH fingerprint; this is retrieval only, the operator's
   acknowledgement that they compared the fingerprint out of band remains
   mandatory and is reset by every new key, and the lookup is not exposed to MCP.
+  The enrollment command enforces this itself rather than trusting the form:
+  it refuses a request without the acknowledgement, and when a fetched
+  fingerprint was confirmed it must be the fingerprint of exactly the key
+  being pinned (`host_key_fingerprint_mismatch` otherwise).
 - Later fingerprint changes fail closed and require a separate re-enrollment
   workflow; no accept-new fallback in scheduled jobs.
 - Use timeouts, keepalive, cancellation, output caps, and strict argument
@@ -183,8 +200,10 @@ inspection after decryption and before a restore destination is published.
 
 The current `guardian-ssh` foundation accepts an exact pinned public host key,
 writes it to a temporary `known_hosts` file, and invokes the system OpenSSH
-client through direct local argv with `StrictHostKeyChecking=yes`, noninteractive
-authentication, and global known-host lookup disabled. It accepts only a
+client through direct local argv with `StrictHostKeyChecking=yes`, global
+known-host lookup disabled, and either noninteractive key-only authentication
+(`BatchMode=yes`) or, for a password login, password-only authentication with
+`NumberOfPasswordPrompts=1` fed by the askpass broker (see "Credentials"). It accepts only a
 validated backup user and an allowlisted read-only tar command template; remote
 path arguments are independently shell-quoted. Every capture has a bounded
 total runtime and removes its partial local stream after a launch error,
@@ -214,15 +233,17 @@ through `guardian-cli credential register-agent-key` or by choosing the
 `SshIdentity::credential_from_key_file`: a supported private key is always
 recognised first and stored unchanged, a `.pub` line becomes the marker, and
 an encrypted private key, `ssh-rsa` or malformed text fails closed). Operator-triggered cancellation (ADR 0010) now
-covers capture, deploy, and desktop local restore: the CLI installs a Ctrl+C
-handler for deploy and the desktop app exposes a Cancel affordance backed by a
-per-job registry, both
+covers capture, deploy, and managed source replacement: the CLI installs a
+Ctrl+C handler for deploy and the desktop app exposes a Cancel affordance
+backed by a per-job registry, both
 setting a cross-thread handle the transport polls between reads; the
 spawned child is placed in its own process group so only that cooperative
-signal, not a raw OS interrupt racing it, ends it. Local restore polls the same
-handle during decryption, tar extraction, and SQLite decompression and again
-before its single atomic publish; cancellation removes its fresh staging tree
-and leaves no destination. Adversarial tests force cancellation mid-stream for
+signal, not a raw OS interrupt racing it, ends it. The local-restore code
+polls a handle during decryption, tar extraction, and SQLite decompression and
+again before its single atomic publish, so a cancellation removes its fresh
+staging tree and leaves no destination; no current surface (CLI or MCP local
+restore; the desktop no longer restores locally) gives the operator a way to
+trigger it. Adversarial tests force cancellation mid-stream for
 both archive forms and at the repository boundary. The Docker-backed drill now
 proves real capture and deploy cancellation after the corresponding stream has
 transferred its first byte: capture leaves no local staging or sealed backup;
@@ -269,13 +290,19 @@ manifest's recovery-wrapped copy, fully authenticates into a transient file,
 and only then extracts to the requested new destination. Key rotation is
 still open.
 
-The desktop enrollment screen follows the same boundary: the operator supplies
-an absolute path to a dedicated unencrypted OpenSSH or PEM private key and
-explicitly confirms that the pasted host key was verified out-of-band. One
-shared-core enrollment transaction validates the regular non-symlink key file,
-stages its bytes in the OS credential store under a generated reference, and
-runs the fixed pinned `tar --zstd` capability preflight before persisting any
-public profile data. The probe never accepts an operator-supplied remote command
+The desktop enrollment drawer (Servers view → Add server) follows the same
+boundary. The operator chooses key mode — an absolute path to a dedicated
+unencrypted OpenSSH or PEM private key, or the `.pub` file of an SSH-agent
+key — or password mode, then either pastes the host key or fetches it
+(ADR 0018) and explicitly confirms that the key or its displayed `SHA256:`
+fingerprint was verified out-of-band; editing the address, port or key
+withdraws that confirmation. The backend re-checks the confirmation and the
+fingerprint before anything is stored. One shared-core enrollment transaction
+then validates the regular non-symlink key file (or encodes the password as a
+`PASSWORD-V1` marker), stages the credential in the OS credential store under
+a generated reference, and runs the fixed pinned `tar --zstd` capability
+preflight before persisting any public profile data, including the
+non-secret `auth_kind` that lets the server list show the login method. The probe never accepts an operator-supplied remote command
 and a changed host key fails closed. A failed secret write, probe, or profile
 commit removes the staged credential and publishes no profile. If the operating
 system refuses that cleanup, enrollment returns a distinct hard error; an
@@ -540,8 +567,9 @@ clears that acknowledgement.
   prior `preview_restore`/`preview_deploy` call returned, passed through to
   the same `RestorePlan`/`DeploymentPlan::approve` check every other surface
   already uses — the server never auto-fills or bypasses this field.
-- Enrollment, credential import, agent-key registration, repository
-  registration, vault initialization, and signing enrollment are not exposed
+- Enrollment, host-key lookup (ADR 0018), credential import, agent-key
+  registration, repository registration, vault initialization, and signing
+  enrollment are not exposed
   as tools: each either mints new local trust or
   configuration state (a human judgment call, and a prompt-injection risk if
   an agent could be steered into enrolling a host key from untrusted
@@ -577,6 +605,26 @@ signing material is never exported with ordinary settings.
   orphaned sibling temp path can be left behind next to the target — never
   a partial target itself, since the atomic rename is the only way content
   reaches the real path.
+- A login password entered in the desktop form passes through WebView
+  JavaScript memory and the Tauri IPC request before it reaches Rust. Only the
+  Rust copy is wiped (`LoginPassword` is zeroized on drop, the stored marker
+  and broker buffers are `Zeroizing`); JavaScript strings and IPC buffers
+  cannot be wiped and persist until the runtime reuses that memory. The form
+  clears its field when closed, and enrollment is the only time the password
+  crosses this boundary — later logins read it from the credential store in
+  Rust.
+- During each password login the password also exists in the memory of the
+  short-lived askpass helper process and of OpenSSH itself; that cannot be
+  avoided with system OpenSSH.
+- The broker's loopback port is reachable by every local user on the same
+  machine, not only by the operator. Without the 256-bit token, which is
+  present only in the environment of the `ssh` child, another user cannot
+  obtain the password; a wrong token neither consumes nor reveals it. Such a
+  user can, however, keep the broker's eight connection slots busy so the
+  helper's request is refused and that one login fails — a local denial of
+  service, never a disclosure. A process running as the operator's own OS
+  user can read the token and also the credential store directly, so the
+  broker adds no new same-user exposure.
 
 These risks are addressed operationally through independent nodes, least
 privilege, offline/off-site copies, signed releases, and regular clean-room
