@@ -2,17 +2,21 @@ use guardian_capture::{
     CaptureInput, FilesystemCaptureComposition, SYSTEM_DISK_SPACE, build_capture_requests,
     current_timestamp, new_backup_id,
 };
-use guardian_configuration::{CapturePlanStore, RepositoryStore};
+use guardian_configuration::{CapturePlanStore, RepositoryStore, StoredCapturePlan};
 use guardian_core::{
-    BackupSelection, CancellationHandle, CaptureUseCaseError, JobRegistry, ProfileStorePort, RunId,
+    BackupSelection, CancellationHandle, CaptureUseCaseError, JobRegistry, ProfileStorePort,
+    RepositoryId, RunId,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
-use guardian_signing::SigningIdentityManager;
+use guardian_signing::{ManagedIdentity, SigningIdentityManager};
 use guardian_ssh::SystemOpenSsh;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, path::PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 use tauri::Manager;
 
 #[derive(Debug, Deserialize)]
@@ -74,26 +78,13 @@ pub(crate) fn run_blocking(
     run_id: RunId,
     handle: CancellationHandle,
 ) -> Result<CaptureJobSummary, CaptureJobFailure> {
-    let plan = CapturePlanStore::at(root.join("plans"))
-        .list()
-        .map_err(|_| CaptureJobFailure::storage())?
-        .into_iter()
-        .find(|stored| stored.plan.plan_id.as_str() == plan_id)
-        .ok_or_else(CaptureJobFailure::plan)?;
+    let plan = load_plan(&root, plan_id)?;
     let profile = ProfileStore::at(root.join("profiles"))
         .get(&plan.plan.profile_id)
         .map_err(|_| CaptureJobFailure::storage())?
         .ok_or_else(CaptureJobFailure::plan)?;
-    let registration = RepositoryStore::at(root.join("repositories"))
-        .get(&plan.plan.repository_id)
-        .map_err(|_| CaptureJobFailure::storage())?
-        .ok_or_else(CaptureJobFailure::plan)?;
-    let repository = LocalRepository::open(&registration.path, registration.repository_id)
-        .map_err(|_| CaptureJobFailure::repository())?;
-    let identity = SigningIdentityManager::open(root.join("node"))
-        .map_err(|_| CaptureJobFailure::signing())?
-        .load_ready(&OsCredentialStore)
-        .map_err(|_| CaptureJobFailure::signing())?;
+    let repository = open_repository(&root, &plan.plan.repository_id)?;
+    let identity = load_signing_identity(&root)?;
     let requests = build_capture_requests(CaptureInput {
         plan: &plan.plan,
         plan_sha256: &plan.sha256,
@@ -104,37 +95,64 @@ pub(crate) fn run_blocking(
         created_at: current_timestamp().map_err(|_| CaptureJobFailure::internal())?,
     })
     .map_err(|_| CaptureJobFailure::plan())?;
-    let audit = NoopAudit;
     let ssh = SystemOpenSsh::default().with_cancellation(handle.clone());
     let composition = FilesystemCaptureComposition {
         repository: &repository,
         ssh: &ssh,
         profile: &profile,
         credentials: &OsCredentialStore,
-        audit: &audit,
+        audit: &NoopAudit,
         disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: guardian_archive::ArchiveLimits::conservative(),
     };
-    let sealed = match composition.execute(requests.backup, requests.database, &identity) {
-        Ok(sealed) => sealed,
-        Err(CaptureUseCaseError::RecoveryKeyRequired) => {
-            return Err(CaptureJobFailure::recovery_key_required());
-        }
-        Err(CaptureUseCaseError::InsufficientRepositorySpace {
-            available_bytes,
-            required_bytes,
-        }) => {
-            return Err(CaptureJobFailure::insufficient_space(
-                available_bytes,
-                required_bytes,
-            ));
-        }
-        Err(_) if handle.is_cancelled() => return Err(CaptureJobFailure::cancelled()),
-        Err(_) => return Err(CaptureJobFailure::capture()),
-    };
+    let sealed = composition
+        .execute(requests.backup, requests.database, &identity)
+        .map_err(|error| capture_failure(error, &handle))?;
     Ok(CaptureJobSummary {
         backup_id: sealed.backup_id.as_str().to_owned(),
     })
+}
+
+fn load_plan(root: &Path, plan_id: &str) -> Result<StoredCapturePlan, CaptureJobFailure> {
+    CapturePlanStore::at(root.join("plans"))
+        .list()
+        .map_err(|_| CaptureJobFailure::storage())?
+        .into_iter()
+        .find(|stored| stored.plan.plan_id.as_str() == plan_id)
+        .ok_or_else(CaptureJobFailure::plan)
+}
+
+fn open_repository(
+    root: &Path,
+    repository_id: &RepositoryId,
+) -> Result<LocalRepository, CaptureJobFailure> {
+    let registration = RepositoryStore::at(root.join("repositories"))
+        .get(repository_id)
+        .map_err(|_| CaptureJobFailure::storage())?
+        .ok_or_else(CaptureJobFailure::plan)?;
+    LocalRepository::open(&registration.path, registration.repository_id)
+        .map_err(|_| CaptureJobFailure::repository())
+}
+
+fn load_signing_identity(root: &Path) -> Result<ManagedIdentity, CaptureJobFailure> {
+    SigningIdentityManager::open(root.join("node"))
+        .map_err(|_| CaptureJobFailure::signing())?
+        .load_ready(&OsCredentialStore)
+        .map_err(|_| CaptureJobFailure::signing())
+}
+
+/// Typed causes the operator can act on keep their own codes; anything else is a cancellation
+/// when the operator asked for one, and a generic capture failure otherwise.
+fn capture_failure(error: CaptureUseCaseError, handle: &CancellationHandle) -> CaptureJobFailure {
+    match error {
+        CaptureUseCaseError::RecoveryKeyRequired => CaptureJobFailure::recovery_key_required(),
+        CaptureUseCaseError::InsufficientRepositorySpace {
+            available_bytes,
+            required_bytes,
+        } => CaptureJobFailure::insufficient_space(available_bytes, required_bytes),
+        _ if handle.is_cancelled() => CaptureJobFailure::cancelled(),
+        _ => CaptureJobFailure::capture(),
+    }
 }
 
 /// One-decimal GiB for operator-facing disk messages.
@@ -237,7 +255,37 @@ impl CaptureJobFailure {
 
 #[cfg(test)]
 mod tests {
-    use super::{CaptureJobFailure, format_gib};
+    use super::{CaptureJobFailure, capture_failure, format_gib};
+    use guardian_core::{CancellationHandle, CaptureUseCaseError};
+
+    #[test]
+    fn actionable_capture_causes_keep_their_codes_even_after_a_cancel_request() {
+        let cancelled = CancellationHandle::new();
+        cancelled.cancel();
+        let idle = CancellationHandle::new();
+        let space = || CaptureUseCaseError::InsufficientRepositorySpace {
+            available_bytes: 1,
+            required_bytes: 2,
+        };
+        for handle in [&idle, &cancelled] {
+            assert_eq!(
+                capture_failure(CaptureUseCaseError::RecoveryKeyRequired, handle).code,
+                CaptureJobFailure::recovery_key_required().code
+            );
+            assert_eq!(
+                capture_failure(space(), handle).code,
+                "repository_disk_space_low"
+            );
+        }
+        assert_eq!(
+            capture_failure(CaptureUseCaseError::Archive, &cancelled).code,
+            CaptureJobFailure::cancelled().code
+        );
+        assert_eq!(
+            capture_failure(CaptureUseCaseError::Archive, &idle).code,
+            CaptureJobFailure::capture().code
+        );
+    }
 
     #[test]
     fn low_disk_failure_names_both_sizes_and_says_nothing_was_written() {
