@@ -141,12 +141,7 @@ impl FilesystemCaptureComposition<'_> {
         let host = self.pinned_host()?;
         let user = self.ssh_user()?;
         let identity_file = self.identity_file()?;
-        self.require_remote_disk_budget(
-            &host,
-            &user,
-            &identity_file,
-            &database.database_path,
-        )?;
+        self.require_remote_disk_budget(&host, &user, &identity_file, &database.database_path)?;
         self.require_sqlite3(&host, &user, &identity_file)?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
