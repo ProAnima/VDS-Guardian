@@ -18,236 +18,24 @@ mod capture;
 mod config;
 mod deploy;
 mod discovery;
+mod params;
+mod response;
 mod restore;
 mod secret_store;
 
+pub use params::*;
+
 use config::ServerConfig;
 use guardian_core::JobRegistry;
+use response::{err, invalid_selection, ok, respond};
 use rmcp::{
     ErrorData, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{Implementation, ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    tool, tool_handler, tool_router,
     transport::stdio,
 };
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-/// Serializes a successful domain result into a structured tool response.
-/// Falls back to a structured error rather than `unwrap`/`panic` on the
-/// (in practice unreachable, since every DTO here is a plain
-/// string/option-of-string struct) chance that serialization itself fails.
-fn ok<T: Serialize>(value: &T) -> rmcp::model::CallToolResult {
-    match serde_json::to_value(value) {
-        Ok(json) => rmcp::model::CallToolResult::structured(json),
-        Err(_) => rmcp::model::CallToolResult::structured_error(serde_json::json!({
-            "code": "serialization_failed",
-            "message": "The tool result could not be serialized.",
-        })),
-    }
-}
-
-/// Serializes a domain failure into a structured, tool-level error — the
-/// request was valid and reached the right composition, but the operation
-/// itself did not succeed (not found, rejected, cancelled, ...). This is
-/// deliberately not a protocol-level `ErrorData`: MCP clients render
-/// protocol errors opaquely, but the caller (an operator or an agent acting
-/// on their behalf) needs to see *why* a restore or deploy was rejected.
-fn err<T: Serialize>(value: &T) -> rmcp::model::CallToolResult {
-    match serde_json::to_value(value) {
-        Ok(json) => rmcp::model::CallToolResult::structured_error(json),
-        Err(_) => rmcp::model::CallToolResult::structured_error(serde_json::json!({
-            "code": "serialization_failed",
-            "message": "The tool failure could not be serialized.",
-        })),
-    }
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ProfileIdParams {
-    /// The enrolled SSH profile's id.
-    pub profile_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct BrowseDirectoryParams {
-    /// The enrolled SSH profile's id.
-    pub profile_id: String,
-    /// A validated absolute POSIX directory, for example `/srv`.
-    pub directory: String,
-    /// Opaque cursor returned by the preceding page, if any.
-    pub cursor: Option<String>,
-    /// Number of entries requested, from 1 through 200.
-    pub limit: u16,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct RepositoryIdParams {
-    /// The registered repository's id.
-    pub repository_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PlanIdParams {
-    /// The saved capture plan's id.
-    pub plan_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct RunCaptureParams {
-    /// The saved capture plan's id.
-    pub plan_id: String,
-    /// A fresh, caller-minted run id (used for cancellation and the audit
-    /// trail). Must not be reused across concurrent or prior runs.
-    pub run_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct CaptureSelectionParams {
-    /// The enrolled SSH profile that owns the selected data.
-    pub profile_id: String,
-    /// The ready local repository that will receive the encrypted backup.
-    pub repository_id: String,
-    /// Filesystem paths and Docker persistent mounts selected from the read-only browser.
-    pub items: Vec<CaptureSelectionItemParams>,
-    /// Optional SQLite database path for a consistent snapshot payload.
-    pub sqlite_path: Option<String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(
-    tag = "kind",
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase"
-)]
-pub enum CaptureSelectionItemParams {
-    RemotePath {
-        absolute_path: String,
-    },
-    DockerMount {
-        container_id: String,
-        mount_destination: String,
-        capturable_path: String,
-    },
-    DockerGroup {
-        group_id: String,
-        capturable_paths: Vec<String>,
-    },
-}
-
-impl CaptureSelectionParams {
-    fn parse(self) -> Result<guardian_core::BackupSelection, ()> {
-        use guardian_core::{BackupSelectionItem, ProfileId, RemotePath, RepositoryId};
-        let items = self
-            .items
-            .into_iter()
-            .map(|item| match item {
-                CaptureSelectionItemParams::RemotePath { absolute_path } => {
-                    Ok(BackupSelectionItem::RemotePath {
-                        absolute_path: RemotePath::parse(absolute_path).map_err(|_| ())?,
-                    })
-                }
-                CaptureSelectionItemParams::DockerMount {
-                    container_id,
-                    mount_destination,
-                    capturable_path,
-                } => Ok(BackupSelectionItem::DockerMount {
-                    container_id,
-                    mount_destination: RemotePath::parse(mount_destination).map_err(|_| ())?,
-                    capturable_path: RemotePath::parse(capturable_path).map_err(|_| ())?,
-                }),
-                CaptureSelectionItemParams::DockerGroup {
-                    group_id,
-                    capturable_paths,
-                } => Ok(BackupSelectionItem::DockerGroup {
-                    group_id,
-                    capturable_paths: capturable_paths
-                        .into_iter()
-                        .map(RemotePath::parse)
-                        .collect::<Result<_, _>>()
-                        .map_err(|_| ())?,
-                }),
-            })
-            .collect::<Result<_, ()>>()?;
-        Ok(guardian_core::BackupSelection {
-            profile_id: ProfileId::parse(self.profile_id).map_err(|_| ())?,
-            repository_id: RepositoryId::parse(self.repository_id).map_err(|_| ())?,
-            items,
-            sqlite_path: self
-                .sqlite_path
-                .map(RemotePath::parse)
-                .transpose()
-                .map_err(|_| ())?,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PreviewCaptureSelectionParams {
-    #[serde(flatten)]
-    pub selection: CaptureSelectionParams,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ExecuteCaptureSelectionParams {
-    #[serde(flatten)]
-    pub selection: CaptureSelectionParams,
-    /// The exact confirmation returned by preview_capture_selection for these inputs.
-    pub confirmation: String,
-    /// A fresh caller-minted run id; use it with cancel_job.
-    pub run_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PreviewRestoreParams {
-    pub repository_id: String,
-    pub backup_id: String,
-    /// An absolute local path that does not already exist.
-    pub destination: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ExecuteRestoreParams {
-    pub repository_id: String,
-    pub backup_id: String,
-    pub destination: String,
-    /// The exact `confirmation` string returned by a prior `preview_restore`
-    /// call for these same inputs. Never auto-fill this from another
-    /// source — it must come from an explicit preview step, standing in for
-    /// the human who would otherwise type or paste it.
-    pub confirmation: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PreviewDeployParams {
-    pub repository_id: String,
-    pub backup_id: String,
-    pub target_profile_id: String,
-    /// An absolute POSIX path on the remote target host that does not
-    /// already exist.
-    pub target_path: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ExecuteDeployParams {
-    pub repository_id: String,
-    pub backup_id: String,
-    pub target_profile_id: String,
-    pub target_path: String,
-    /// The exact `confirmation` string returned by a prior `preview_deploy`
-    /// call for these same inputs.
-    pub confirmation: String,
-    /// A fresh, caller-minted run id (used for cancellation and the audit
-    /// trail). Must not be reused across concurrent or prior runs.
-    pub run_id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct CancelJobParams {
-    /// The `run_id` originally passed to `run_capture` or `execute_deploy`.
-    pub run_id: String,
-}
 
 #[derive(Clone)]
 pub struct GuardianMcpServer {
@@ -269,26 +57,17 @@ impl GuardianMcpServer {
 
     #[tool(description = "List already-enrolled SSH server profiles.")]
     async fn list_ssh_profiles(&self) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(match discovery::list_ssh_profiles(&self.config) {
-            Ok(profiles) => ok(&profiles),
-            Err(failure) => err(&failure),
-        })
+        respond(discovery::list_ssh_profiles(&self.config))
     }
 
     #[tool(description = "List registered local/removable backup repositories.")]
     async fn list_repositories(&self) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(match discovery::list_repositories(&self.config) {
-            Ok(repositories) => ok(&repositories),
-            Err(failure) => err(&failure),
-        })
+        respond(discovery::list_repositories(&self.config))
     }
 
     #[tool(description = "List saved capture plans (profile + repository + roots).")]
     async fn list_capture_plans(&self) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(match discovery::list_capture_plans(&self.config) {
-            Ok(plans) => ok(&plans),
-            Err(failure) => err(&failure),
-        })
+        respond(discovery::list_capture_plans(&self.config))
     }
 
     #[tool(
@@ -298,12 +77,10 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<ProfileIdParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match discovery::list_docker_containers(&self.config, &params.profile_id) {
-                Ok(containers) => ok(&containers),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(discovery::list_docker_containers(
+            &self.config,
+            &params.profile_id,
+        ))
     }
 
     #[tool(
@@ -313,18 +90,13 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<BrowseDirectoryParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match discovery::browse_remote_directory(
-                &self.config,
-                &params.profile_id,
-                &params.directory,
-                params.cursor,
-                params.limit,
-            ) {
-                Ok(page) => ok(&page),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(discovery::browse_remote_directory(
+            &self.config,
+            &params.profile_id,
+            &params.directory,
+            params.cursor,
+            params.limit,
+        ))
     }
 
     #[tool(description = "List a repository's sealed, verified backups.")]
@@ -332,12 +104,7 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<RepositoryIdParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match discovery::list_backups(&self.config, &params.repository_id) {
-                Ok(backups) => ok(&backups),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(discovery::list_backups(&self.config, &params.repository_id))
     }
 
     #[tool(
@@ -347,10 +114,7 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<PlanIdParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(match capture::plan_capture(&self.config, &params.plan_id) {
-            Ok(preview) => ok(&preview),
-            Err(failure) => err(&failure),
-        })
+        respond(capture::plan_capture(&self.config, &params.plan_id))
     }
 
     #[tool(
@@ -360,12 +124,12 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<RunCaptureParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match capture::run_capture(&self.config, &self.jobs, &params.plan_id, &params.run_id) {
-                Ok(summary) => ok(&summary),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(capture::run_capture(
+            &self.config,
+            &self.jobs,
+            &params.plan_id,
+            &params.run_id,
+        ))
     }
 
     #[tool(
@@ -376,14 +140,9 @@ impl GuardianMcpServer {
         Parameters(params): Parameters<PreviewCaptureSelectionParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
         let Ok(selection) = params.selection.parse() else {
-            return Ok(err(
-                &serde_json::json!({ "code": "invalid_capture_selection", "message": "The capture selection is invalid." }),
-            ));
+            return invalid_selection();
         };
-        Ok(match capture::preview_selection(&self.config, &selection) {
-            Ok(preview) => ok(&preview),
-            Err(failure) => err(&failure),
-        })
+        respond(capture::preview_selection(&self.config, &selection))
     }
 
     #[tool(
@@ -394,22 +153,15 @@ impl GuardianMcpServer {
         Parameters(params): Parameters<ExecuteCaptureSelectionParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
         let Ok(selection) = params.selection.parse() else {
-            return Ok(err(
-                &serde_json::json!({ "code": "invalid_capture_selection", "message": "The capture selection is invalid." }),
-            ));
+            return invalid_selection();
         };
-        Ok(
-            match capture::execute_selection(
-                &self.config,
-                &self.jobs,
-                &selection,
-                &params.confirmation,
-                &params.run_id,
-            ) {
-                Ok(summary) => ok(&summary),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(capture::execute_selection(
+            &self.config,
+            &self.jobs,
+            &selection,
+            &params.confirmation,
+            &params.run_id,
+        ))
     }
 
     #[tool(
@@ -419,17 +171,12 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<PreviewRestoreParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match restore::preview_restore(
-                &self.config,
-                &params.repository_id,
-                &params.backup_id,
-                &params.destination,
-            ) {
-                Ok(preview) => ok(&preview),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(restore::preview_restore(
+            &self.config,
+            &params.repository_id,
+            &params.backup_id,
+            &params.destination,
+        ))
     }
 
     #[tool(
@@ -439,18 +186,13 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<ExecuteRestoreParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match restore::execute_restore(
-                &self.config,
-                &params.repository_id,
-                &params.backup_id,
-                &params.destination,
-                &params.confirmation,
-            ) {
-                Ok(preview) => ok(&preview),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(restore::execute_restore(
+            &self.config,
+            &params.repository_id,
+            &params.backup_id,
+            &params.destination,
+            &params.confirmation,
+        ))
     }
 
     #[tool(
@@ -460,18 +202,13 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<PreviewDeployParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match deploy::preview_deploy(
-                &self.config,
-                &params.repository_id,
-                &params.backup_id,
-                &params.target_profile_id,
-                &params.target_path,
-            ) {
-                Ok(preview) => ok(&preview),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(deploy::preview_deploy(
+            &self.config,
+            &params.repository_id,
+            &params.backup_id,
+            &params.target_profile_id,
+            &params.target_path,
+        ))
     }
 
     #[tool(
@@ -481,21 +218,16 @@ impl GuardianMcpServer {
         &self,
         Parameters(params): Parameters<ExecuteDeployParams>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
-        Ok(
-            match deploy::execute_deploy(
-                &self.config,
-                &self.jobs,
-                &params.repository_id,
-                &params.backup_id,
-                &params.target_profile_id,
-                &params.target_path,
-                &params.confirmation,
-                &params.run_id,
-            ) {
-                Ok(preview) => ok(&preview),
-                Err(failure) => err(&failure),
-            },
-        )
+        respond(deploy::execute_deploy(
+            &self.config,
+            &self.jobs,
+            &params.repository_id,
+            &params.backup_id,
+            &params.target_profile_id,
+            &params.target_path,
+            &params.confirmation,
+            &params.run_id,
+        ))
     }
 
     #[tool(
@@ -547,101 +279,4 @@ pub fn run(arguments: &[std::ffi::OsString]) -> Result<(), Box<dyn std::error::E
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{GuardianMcpServer, ServerConfig};
-    use rmcp::{ClientHandler, ServiceExt};
-
-    #[test]
-    fn excluded_tools_stay_excluded() {
-        // Real database (`enroll_or_load` etc.) never appears as a tool name,
-        // so an enrollment/credential-import/vault-init/signing-enroll/
-        // save_capture_plan/recovery-key tool can never be accidentally
-        // reintroduced without this test failing. `recovery` alone (ADR
-        // 0013) covers init/export/import together — the single
-        // highest-blast-radius secret in the system, for the same
-        // one-time-bootstrap/secret-bearing reason the others are excluded.
-        let forbidden = [
-            "enroll",
-            "import_ssh_key",
-            "register_agent_key",
-            "register_repository",
-            "vault_init",
-            "signing_enroll",
-            "save_capture_plan",
-            "recovery",
-        ];
-        let tools = GuardianMcpServer::tool_router().list_all();
-        for tool in &tools {
-            for banned in forbidden {
-                assert!(
-                    !tool.name.contains(banned),
-                    "tool {:?} must not exist in v1's tool surface",
-                    tool.name
-                );
-            }
-        }
-    }
-
-    #[derive(Default, Clone)]
-    struct TestClient;
-    impl ClientHandler for TestClient {}
-
-    /// A real MCP protocol round trip over an in-memory duplex pair (not a
-    /// live subprocess/stdio handshake, but a genuine client/server exchange
-    /// through the real `rmcp` wire protocol, not just a direct Rust call).
-    /// Confirms the server actually speaks MCP: initializes, advertises the
-    /// expected tools, and answers a real `tools/call`. A true external-
-    /// process stdio round trip (a real Claude Code/Desktop subprocess
-    /// launch) is not exercised by any automated test — named honestly
-    /// rather than silently skipped, matching this project's established
-    /// pattern for live-round-trip gaps (ADR 0009, ADR 0010).
-    #[tokio::test]
-    async fn serves_real_mcp_requests_over_an_in_memory_transport()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let root = tempfile::tempdir()?;
-        let config = ServerConfig {
-            repositories_dir: root.path().join("repositories"),
-            profiles_dir: root.path().join("profiles"),
-            plans_dir: root.path().join("plans"),
-            config_dir: root.path().join("node"),
-            vault_dir: None,
-        };
-        let (server_transport, client_transport) = tokio::io::duplex(4096);
-        let server = GuardianMcpServer::new(config);
-        let server_handle = tokio::spawn(async move {
-            let service = server.serve(server_transport).await?;
-            service.waiting().await?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
-        });
-
-        let client = TestClient.serve(client_transport).await?;
-        let tools = client.list_all_tools().await?;
-        let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
-        for expected in [
-            "list_ssh_profiles",
-            "browse_remote_directory",
-            "preview_capture_selection",
-            "execute_capture_selection",
-            "run_capture",
-            "preview_restore",
-            "execute_deploy",
-            "cancel_job",
-        ] {
-            assert!(names.contains(&expected), "missing tool {expected:?}");
-        }
-
-        let result = client
-            .call_tool(rmcp::model::CallToolRequestParams {
-                meta: None,
-                name: "list_ssh_profiles".into(),
-                arguments: None,
-                task: None,
-            })
-            .await?;
-        assert_ne!(result.is_error, Some(true));
-
-        client.cancel().await?;
-        let _ = server_handle.await;
-        Ok(())
-    }
-}
+mod tests;
