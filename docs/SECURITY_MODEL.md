@@ -229,6 +229,10 @@ Before it creates staging, that composition runs the same pinned read-only
 capture. Its OpenSSH stream has a 20 GiB compressed-output cap and requires at
 least that budget plus a 5 GiB free-space reserve on the destination filesystem.
 The capture is rejected before opening staging if the reserve is unavailable.
+That rejection is a distinct typed failure (`InsufficientRepositorySpace`,
+code `repository_disk_space_low`) that reports the free and required byte
+counts and states that nothing was written; an unreadable disk remains a
+separate storage failure, so a shortage is never confused with a fault.
 
 New live filesystem captures replace the inspected staging archive with a
 streaming AES-256-GCM ciphertext before it can enter a sealed directory. A

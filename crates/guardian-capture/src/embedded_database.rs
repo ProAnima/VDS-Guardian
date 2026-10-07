@@ -131,9 +131,10 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
     fn require_disk_budget(&self) -> Result<(), CaptureUseCaseError> {
         let available = available_space(self.repository.root())
             .map_err(|_| CaptureUseCaseError::Storage(StoragePortError::Unavailable))?;
-        (available >= MINIMUM_FREE_BYTES.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES))
-            .then_some(())
-            .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
+        crate::check_space(
+            available,
+            MINIMUM_FREE_BYTES.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES),
+        )
     }
 
     /// The `.backup` snapshot command writes a full uncompressed copy of the

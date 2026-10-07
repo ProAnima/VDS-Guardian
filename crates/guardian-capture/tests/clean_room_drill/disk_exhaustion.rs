@@ -70,11 +70,13 @@ fn exhausted_disk_rejects_capture_before_staging() -> Result<(), Box<dyn Error>>
         manifest: support::drill_manifest(backup_id, run_id.clone(), &profile)?,
         sealed_at: Timestamp::parse("2026-07-16T12:00:01Z")?,
     };
-    if capture
-        .execute(request, None, &support::TestSigner::new())
-        .is_ok()
-    {
-        return Err("capture succeeded with no free repository disk space".into());
+    match capture.execute(request, None, &support::TestSigner::new()) {
+        Err(guardian_core::CaptureUseCaseError::InsufficientRepositorySpace {
+            available_bytes: 0,
+            ..
+        }) => {}
+        Err(other) => return Err(format!("unexpected failure: {other}").into()),
+        Ok(_) => return Err("capture succeeded with no free repository disk space".into()),
     }
 
     let root = repository.root();
