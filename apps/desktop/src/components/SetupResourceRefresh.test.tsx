@@ -170,6 +170,15 @@ describe("setup resource refresh", () => {
     expect(requiredSelects(container).map((select) => select.value)).toEqual(["server-2", "repo-2"]);
   });
 
+  it("refreshes quietly after the first load and keeps the explorer on screen", async () => {
+    await act(async () => root.render(<Workspace onPlansChanged={vi.fn()} resourcesRevision={0} />));
+    await vi.waitFor(() => expect(container.querySelector(".explorer-tree")).not.toBeNull());
+    const tree = container.querySelector(".explorer-tree");
+    commands.listRepositories.mockReturnValue(new Promise(() => undefined));
+    await act(async () => root.render(<Workspace onPlansChanged={vi.fn()} resourcesRevision={1} />));
+    expect(container.querySelector(".explorer-tree")).toBe(tree);
+  });
+
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent?.includes(label));

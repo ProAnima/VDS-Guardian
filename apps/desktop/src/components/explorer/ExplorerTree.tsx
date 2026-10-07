@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
 import { CircleAlert, Container, HardDrive, RefreshCw } from "lucide-react";
 import type { Translate } from "../../i18n";
 import type { BackupSelectionItem } from "../../shared/commands";
@@ -24,6 +24,7 @@ export function ExplorerTree({ profileId, items, onTogglePath, onSetDocker, t }:
   const docker = useDockerTree(profileId);
   const [sections, setSections] = useState<SectionState>({ docker: true, files: true });
   const treeRef = useRef<HTMLDivElement>(null);
+  const trackFocus = useRovingTabStop(treeRef);
   const rows = buildRows(files, docker, sections);
   const fileContext = { t, paths: remotePaths(items), onTogglePath, onToggleDirectory: files.toggle, onMore: files.more, onReload: files.reload };
   const dockerContext = { t, items, onSetDocker, onToggleNode: docker.toggle };
@@ -32,7 +33,7 @@ export function ExplorerTree({ profileId, items, onTogglePath, onSetDocker, t }:
     files: { reload: () => files.reload("/"), failure: t("browserFailure"), refresh: t("browserRefresh") },
   };
   return (
-    <div className="explorer-tree" ref={treeRef} role="tree" aria-label={t("browserContents")} onKeyDown={(event) => moveFocus(event, treeRef.current)}>
+    <div className="explorer-tree" ref={treeRef} role="tree" aria-multiselectable="true" aria-label={t("backupChooseDataTitle")} onFocus={trackFocus} onKeyDown={(event) => moveFocus(event, treeRef.current)}>
       {rows.map((row) => {
         if (row.type === "section") return <SectionRow key={row.key} row={row} t={t} actions={sectionActions[row.section]} onToggle={() => setSections((current) => ({ ...current, [row.section]: !current[row.section] }))} />;
         if (row.type === "entry") return <EntryRow key={row.key} row={row} context={fileContext} />;
@@ -56,7 +57,7 @@ function SectionRow({ row, t, actions, onToggle }: {
   return (
     <RowFrame
       depth={0} icon={docker ? Container : HardDrive} tone="section" name={label} open={row.open} loading={row.loading}
-      openLabel={t(row.open ? "explorerCollapse" : "explorerExpand")} onToggleOpen={onToggle}
+      openLabel={t(row.open ? "explorerCollapse" : "explorerExpand")} onToggleOpen={onToggle} onReload={actions.reload}
       badge={row.count === undefined ? undefined : String(row.count)} hint={row.failed ? actions.failure : undefined}
     >
       {row.failed && <CircleAlert className="tree-row__alert" size={14} aria-hidden="true" />}
@@ -65,6 +66,24 @@ function SectionRow({ row, t, actions, onToggle }: {
       </button>
     </RowFrame>
   );
+}
+
+/**
+ * Roving tab stop: exactly one row is in the Tab order (the last one focused, or the first row),
+ * so Tab enters and leaves the tree in one step and the arrow keys move within it.
+ */
+function useRovingTabStop(tree: RefObject<HTMLDivElement | null>) {
+  const active = useRef<HTMLElement | null>(null);
+  const apply = (current: HTMLElement | null) => {
+    const rows = [...(tree.current?.querySelectorAll<HTMLElement>("[data-row]") ?? [])];
+    const stop = current && rows.includes(current) ? current : rows[0];
+    for (const row of rows) row.tabIndex = row === stop ? 0 : -1;
+  };
+  useLayoutEffect(() => apply(active.current));
+  return (event: FocusEvent<HTMLDivElement>) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>("[data-row]");
+    if (row) { active.current = row; apply(row); }
+  };
 }
 
 function moveFocus(event: KeyboardEvent<HTMLDivElement>, tree: HTMLDivElement | null) {

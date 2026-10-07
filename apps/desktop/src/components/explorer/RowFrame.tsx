@@ -15,6 +15,8 @@ export interface RowFrameProps {
   loading?: boolean;
   openLabel?: string;
   onToggleOpen?: () => void;
+  /** Section rows: reload with R or F5 while the row has focus. */
+  onReload?: () => void;
   check?: RowCheck;
   /** Reason or detail, shown as a localized tooltip instead of inline text. */
   hint?: string;
@@ -77,6 +79,7 @@ function rowKeys(event: KeyboardEvent<HTMLDivElement>, props: RowFrameProps) {
   const collapse = rtl ? "ArrowRight" : "ArrowLeft";
   if (event.key === expand && props.open === false) { event.preventDefault(); props.onToggleOpen?.(); }
   else if (event.key === collapse && props.open) { event.preventDefault(); props.onToggleOpen?.(); }
+  else if ((event.key === "F5" || event.key === "r" || event.key === "R") && props.onReload) { event.preventDefault(); props.onReload(); }
   else if (event.key === " " && props.check && !props.check.disabled) { event.preventDefault(); props.check.onChange(); }
   else if (event.key === "Enter") { event.preventDefault(); if (props.onToggleOpen) props.onToggleOpen(); else if (props.check && !props.check.disabled) props.check.onChange(); }
 }

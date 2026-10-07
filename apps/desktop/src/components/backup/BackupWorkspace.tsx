@@ -30,7 +30,14 @@ export function BackupWorkspace({ onPlansChanged, resourcesRevision, toolbarEnd,
   }, onPlansChanged, t);
   const changeProfile = (id: string) => { resources.setProfileId(id); selection.clear(); };
   if (resources.loading) return <div className="workspace-state"><LoaderCircle className="spin" size={18} aria-label={t("readinessLoading")} /></div>;
-  if (resources.failure) return <ResourceLoadFailure message={resources.failure} onRetry={resources.retry} retryLabel={t("readinessRefresh")} retrying={false} />;
+  if (resources.failure) {
+    return (
+      <section className="backup-workspace">
+        <div className="backup-toolbar"><span className="backup-toolbar__spacer" />{toolbarEnd}</div>
+        <ResourceLoadFailure message={resources.failure} onRetry={resources.retry} retryLabel={t("readinessRefresh")} retrying={false} />
+      </section>
+    );
+  }
   return (
     <section className="backup-workspace" data-ready={resources.ready || undefined}>
       <BackupToolbar {...resources} disabled={run.running} onProfile={changeProfile} onRepository={resources.setRepositoryId} t={t}>{toolbarEnd}</BackupToolbar>

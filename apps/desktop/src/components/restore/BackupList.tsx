@@ -7,16 +7,18 @@ interface BackupListProps {
   backups: BackupSummary[];
   selectedId: string;
   onSelect: (backupId: string) => void;
+  /** While a restore runs the choice is locked, so its plan and Cancel stay on screen. */
+  disabled?: boolean;
   t: Translate;
 }
 
-export function BackupList({ backups, selectedId, onSelect, t }: BackupListProps) {
+export function BackupList({ backups, selectedId, onSelect, disabled, t }: BackupListProps) {
   return (
     <div className="backup-list" role="listbox" aria-label={t("restoreBackupsTitle")}>
       {backups.map((backup) => (
         <button
           className="backup-list__row" type="button" role="option" key={backup.backupId} data-backup-id={backup.backupId}
-          aria-selected={backup.backupId === selectedId} data-tip={backup.backupId} data-tip-side="start"
+          aria-selected={backup.backupId === selectedId} aria-disabled={disabled || undefined} disabled={disabled} data-tip={backup.backupId} data-tip-side="start"
           onClick={() => onSelect(backup.backupId)}
         >
           <ShieldCheck size={15} aria-hidden="true" />

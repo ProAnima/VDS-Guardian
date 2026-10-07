@@ -1,6 +1,7 @@
 .app-frame { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); height: 100vh; overflow: hidden; background: var(--bg); }
 .app-workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-.app-workspace > main { min-height: 0; flex: 1; overflow: auto; }
+.view-host { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.view-host > main { min-height: 0; flex: 1; overflow: auto; }
 
 .sidebar { display: flex; z-index: 3; flex-direction: column; align-items: center; gap: 14px; padding: 12px 6px; background: var(--bg-elevated); border-inline-end: 1px solid var(--border-soft); }
 .brand { display: grid; place-items: center; padding: 2px 0 6px; }

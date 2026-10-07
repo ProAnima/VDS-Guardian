@@ -11,10 +11,10 @@ import { DestinationBar } from "./restore/DestinationBar";
 import { PlanConfirm } from "./restore/PlanConfirm";
 import { useRestoreModel, type RestoreModel } from "./restore/useRestoreModel";
 
-interface RestorePanelProps { onManageBackups?: () => void; onManageServers?: () => void; t: Translate }
+interface RestorePanelProps { onManageBackups?: () => void; onManageServers?: () => void; refreshKey?: number; t: Translate }
 
-export function RestorePanel({ onManageBackups, onManageServers, t }: RestorePanelProps) {
-  const model = useRestoreModel(t);
+export function RestorePanel({ onManageBackups, onManageServers, refreshKey = 0, t }: RestorePanelProps) {
+  const model = useRestoreModel(t, refreshKey);
   const { resources } = model;
   if (resources.loading) return <main className="view"><div className="workspace-state"><LoaderCircle className="spin" size={18} aria-label={t("readinessLoading")} /></div></main>;
   if (resources.failure) return <main className="view"><ResourceLoadFailure message={resources.failure} onRetry={resources.retry} retryLabel={t("readinessRefresh")} retrying={false} /></main>;
@@ -47,7 +47,7 @@ function BackupsColumn({ model, t }: { model: RestoreModel; t: Translate }) {
   if (backups.loading) return <Loading label={t("restorePreviewing")} />;
   if (backups.failure) return <ResourceLoadFailure message={backups.failure} onRetry={backups.retry} retryLabel={t("readinessRefresh")} retrying={false} />;
   if (backups.backups.length === 0) return <EmptyNotice icon={Archive} message={t("restoreNoBackups")} />;
-  return <BackupList backups={backups.backups} selectedId={backups.backupId} onSelect={backups.setBackupId} t={t} />;
+  return <BackupList backups={backups.backups} selectedId={backups.backupId} onSelect={backups.setBackupId} disabled={model.action.busy} t={t} />;
 }
 
 function DetailColumn({ model, t, onManageServers }: { model: RestoreModel; t: Translate; onManageServers?: () => void }) {

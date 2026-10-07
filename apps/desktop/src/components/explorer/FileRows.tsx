@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import { CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
 import type { Translate } from "../../i18n";
 import type { RemoteBrowseEntry } from "../../shared/commands";
@@ -43,8 +43,8 @@ export function EntryRow({ row, context }: { row: Of<"entry">; context: FileRowC
 
 export function MoreRow({ row, context }: { row: Of<"more">; context: FileRowContext }) {
   return (
-    <div className="tree-note" style={{ "--depth": row.depth } as CSSProperties} role="none">
-      <button className="tree-note__action" disabled={row.loading} type="button" onClick={() => context.onMore(row.path)}>
+    <div className="tree-note" style={{ "--depth": row.depth } as CSSProperties} role="treeitem" aria-level={row.depth + 1} data-row="" tabIndex={-1} onKeyDown={clickOnEnter}>
+      <button className="tree-note__action" disabled={row.loading} type="button" tabIndex={-1} onClick={() => context.onMore(row.path)}>
         {row.loading && <LoaderCircle className="spin" size={13} aria-hidden="true" />}{context.t("browserMore")}
       </button>
     </div>
@@ -54,15 +54,22 @@ export function MoreRow({ row, context }: { row: Of<"more">; context: FileRowCon
 export function NoteRow({ row, context }: { row: Of<"note">; context: FileRowContext }) {
   const { t } = context;
   return (
-    <div className="tree-note" data-note={row.note} role="none" style={{ "--depth": row.depth } as CSSProperties}>
+    <div className="tree-note" data-note={row.note} role="treeitem" aria-level={row.depth + 1} data-row="" tabIndex={-1} style={{ "--depth": row.depth } as CSSProperties} onKeyDown={clickOnEnter}>
       {row.note === "loading" && <LoaderCircle className="spin" size={14} aria-hidden="true" />}
       {row.note === "empty" && <span>{t("browserEmpty")}</span>}
       {row.note === "failure" && <>
         <CircleAlert size={14} aria-hidden="true" /><span role="alert">{row.text}</span>
-        <button className="tree-note__icon" type="button" onClick={() => context.onReload(row.path ?? "/")} {...tip(t("browserRetry"))}><RefreshCw size={13} aria-hidden="true" /></button>
+        <button className="tree-note__icon" type="button" tabIndex={-1} onClick={() => context.onReload(row.path ?? "/")} {...tip(t("browserRetry"))}><RefreshCw size={13} aria-hidden="true" /></button>
       </>}
     </div>
   );
+}
+
+/** Enter or Space on a note row activates its single action (load more, retry). */
+function clickOnEnter(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  event.currentTarget.querySelector("button")?.click();
 }
 
 function unavailableReason(entry: RemoteBrowseEntry, t: Translate): string | undefined {

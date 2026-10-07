@@ -11,13 +11,14 @@ interface DashboardProps {
   onRunBackup: () => void;
   onRestore: () => void;
   onOpenSetup?: (target: "protection" | "storage") => void;
+  refreshKey?: number;
 }
 
 const targetIcon: Record<SetupStatusItem["target"], LucideIcon> = { protection: KeyRound, storage: Archive, servers: Server };
 
 export function Dashboard(props: DashboardProps) {
   const { status, t } = props;
-  const setup = useSetupStatus(0, t);
+  const setup = useSetupStatus(props.refreshKey ?? 0, t);
   const items = setup.resources ? evaluateSetupReadiness(setup.resources, t) : [];
   const verdict = evaluateOverviewReadiness({ resources: setup.resources, failureCount: setup.failures.length, loading: setup.loading }, t);
   return (

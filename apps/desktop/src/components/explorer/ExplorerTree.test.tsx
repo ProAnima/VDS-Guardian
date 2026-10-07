@@ -153,6 +153,37 @@ describe("explorer tree", () => {
     expect(container.querySelector(".tree-row__alert")).not.toBeNull();
   });
 
+  it("puts exactly one row in the Tab order and keeps it on the last focused row", async () => {
+    await render();
+    await vi.waitFor(() => expect(row("srv")).toBeDefined());
+    const stops = () => [...container.querySelectorAll<HTMLElement>("[data-row]")].filter((item) => item.tabIndex === 0);
+    expect(stops()).toHaveLength(1);
+    await act(async () => row("srv").focus());
+    await act(async () => chevron("srv").click());
+    await vi.waitFor(() => expect(row("app.sqlite")).toBeDefined());
+    expect(stops()).toEqual([row("srv")]);
+  });
+
+  it("moves with the arrow keys and selects with Space", async () => {
+    const toggle = vi.fn();
+    await render({ onTogglePath: toggle });
+    await vi.waitFor(() => expect(row("srv")).toBeDefined());
+    await act(async () => row("srv").focus());
+    await act(async () => row("srv").dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+    expect(toggle).toHaveBeenCalledWith("/srv");
+    await act(async () => row("srv").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    expect(document.activeElement).not.toBe(row("srv"));
+  });
+
+  it("reloads a section with R", async () => {
+    await render();
+    await vi.waitFor(() => expect(row("srv")).toBeDefined());
+    const calls = commands.browseRemoteDirectory.mock.calls.length;
+    const files = [...container.querySelectorAll<HTMLElement>("[data-row]")].find((item) => item.dataset.tone === "section" && item.textContent?.includes("explorerFiles"));
+    await act(async () => files?.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true })));
+    await vi.waitFor(() => expect(commands.browseRemoteDirectory.mock.calls.length).toBe(calls + 1));
+  });
+
   function row(label: string): HTMLElement {
     const match = [...container.querySelectorAll<HTMLElement>("[data-row]")].find((item) => item.querySelector(".tree-row__name")?.firstChild?.textContent === label);
     if (!match) throw new Error(`Row not found: ${label}`);

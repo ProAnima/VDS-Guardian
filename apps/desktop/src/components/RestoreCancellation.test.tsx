@@ -132,6 +132,52 @@ describe("restore cancellation", () => {
     expect(target.readOnly).toBe(false);
   });
 
+  it("drops a previewed plan when another backup is chosen", async () => {
+    commands.listBackups.mockResolvedValue([
+      { backupId: "backup-1", sealedAt: "2026-07-17T00:00:00Z", verification: "verified" },
+      { backupId: "backup-2", sealedAt: "2026-07-18T00:00:00Z", verification: "verified" },
+    ]);
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-2"]')).not.toBeNull());
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(button("restoreExecute")).toBeDefined());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-backup-id="backup-2"]')?.click());
+    await vi.waitFor(() => expect(container.textContent).not.toContain("restoreExecute"));
+  });
+
+  it("replaces original data only on the server the backup came from", async () => {
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "profile-1", label: "Source", host: "vds.example", port: 22, user: "root", authKind: "ssh_key" },
+      { profileId: "profile-2", label: "Other", host: "other.example", port: 22, user: "root", authKind: "ssh_key" },
+    ]);
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    const server = await vi.waitFor(() => {
+      const select = container.querySelector<HTMLSelectElement>('select[aria-label="deployTargetProfile"]');
+      if (!select) throw new Error("missing server select");
+      return select;
+    });
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(server, "profile-2");
+      server.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => button("restoreModeReplace").click());
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(commands.previewSourceReplacement).toHaveBeenCalled());
+    expect(commands.previewSourceReplacement).toHaveBeenCalledWith(expect.objectContaining({ targetProfileId: "profile-1" }));
+  });
+
+  it("locks the backup list while a restore runs so its Cancel stays reachable", async () => {
+    await act(async () => root.render(<RestorePanel t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-1"]')).not.toBeNull());
+    await act(async () => change(container.querySelector<HTMLInputElement>('input[placeholder="deployTargetPathHint"]'), "/srv/restored"));
+    await act(async () => container.querySelector("form")?.requestSubmit());
+    await vi.waitFor(() => expect(button("restoreExecute")).toBeDefined());
+    await act(async () => change(container.querySelector<HTMLInputElement>('input[placeholder="restoreConfirmPlaceholder"]'), "DEPLOY backup-1 TO profile-1 AT /srv/restored"));
+    await act(async () => button("restoreExecute").click());
+    await vi.waitFor(() => expect(button("restoreCancelRunning")).toBeDefined());
+    expect(container.querySelector<HTMLButtonElement>('[data-backup-id="backup-1"]')?.disabled).toBe(true);
+  });
+
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent?.includes(label) || candidate.getAttribute("aria-label") === label);

@@ -8,7 +8,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .view { position: relative; height: 100%; min-height: 0; }
-.app-workspace > main.view--backup { display: flex; flex-direction: column; overflow: hidden; }
+.view-host > main.view--backup { display: flex; flex-direction: column; overflow: hidden; }
 .workspace-state { display: grid; height: 100%; place-items: center; color: var(--text-muted); }
 
 .backup-workspace { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; }
