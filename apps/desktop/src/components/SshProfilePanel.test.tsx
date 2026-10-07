@@ -45,8 +45,8 @@ describe("SSH profile loading", () => {
     await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
 
     await vi.waitFor(() => expect(container.textContent).toContain("VDS"));
-    expect(container.querySelector(".ssh-profile-form")).toBeNull();
-    expect(container.textContent).toContain("serversAdd");
+    expect(container.querySelector(".server-form")).toBeNull();
+    expect(container.querySelector('[aria-label="serversAdd"]')).not.toBeNull();
   });
 
   it("does not show an empty state or form when the server registry cannot be read", async () => {

@@ -6,6 +6,7 @@ import {
   type SigningIdentityState, type SigningIdentityStatus,
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
+import { PanelHeader } from "./PanelHeader";
 
 interface SigningIdentityPanelProps { onIdentityChanged: () => void; t: Translate; }
 
@@ -56,7 +57,7 @@ function useEnrollment(t: Translate, onIdentityChanged: () => void, setStatus: (
 function SigningHeader({ state, t }: { state: SigningIdentityState | undefined; t: Translate }) {
   const label = state ? t(stateLabel(state)) : t("signingLoading");
   const ready = state === "ready";
-  return <header className="signing-panel__header"><div><p className="eyebrow"><ShieldCheck size={15} aria-hidden="true" />{t("signingEyebrow")}</p><h2 id="signing-identity-title">{t("signingTitle")}</h2><p>{t("signingBody")}</p></div><span className="signing-state" data-ready={ready || undefined}>{ready ? <CircleCheck size={16} /> : <Fingerprint size={16} />}{label}</span></header>;
+  return <PanelHeader id="signing-identity-title" icon={ShieldCheck} title={t("signingTitle")} hint={t("signingBody")}><span className="signing-state" data-ready={ready || undefined}>{ready ? <CircleCheck size={14} /> : <Fingerprint size={14} />}{label}</span></PanelHeader>;
 }
 
 function IdentityDetails({ status, t }: { status: SigningIdentityStatus | undefined; t: Translate }) {

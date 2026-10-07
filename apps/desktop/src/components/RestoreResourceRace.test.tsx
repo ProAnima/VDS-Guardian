@@ -33,9 +33,9 @@ describe("restore resource races", () => {
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
     const repository = await vi.waitFor(() => selectWithOption(container, "repo-2"));
     await act(async () => selectValue(repository, "repo-2"));
-    await vi.waitFor(() => expect(container.querySelector('option[value="backup-2"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-2"]')).not.toBeNull());
     await act(async () => first.resolve([backup("backup-1")]));
-    expect(container.querySelector('option[value="backup-1"]')).toBeNull();
+    expect(container.querySelector('[data-backup-id="backup-1"]')).toBeNull();
   });
 
   it("ignores a late description from the previously selected backup", async () => {
@@ -44,8 +44,12 @@ describe("restore resource races", () => {
     commands.listBackups.mockResolvedValue([backup("backup-1"), backup("backup-2")]);
     commands.inspectRestoreBackup.mockImplementation((_repositoryId: string, backupId: string) => backupId === "backup-1" ? first.promise : Promise.resolve(description("backup-2", "/srv/two")));
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
-    const backupSelect = await vi.waitFor(() => selectWithOption(container, "backup-2"));
-    await act(async () => selectValue(backupSelect, "backup-2"));
+    const second = await vi.waitFor(() => {
+      const row = container.querySelector<HTMLButtonElement>('[data-backup-id="backup-2"]');
+      if (!row) throw new Error("missing backup row");
+      return row;
+    });
+    await act(async () => second.click());
     await vi.waitFor(() => expect(container.textContent).toContain("/srv/two"));
     await act(async () => first.resolve(description("backup-1", "/srv/one")));
     expect(container.textContent).not.toContain("/srv/one");
@@ -60,7 +64,7 @@ describe("restore resource races", () => {
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
     expect(container.textContent).not.toContain("restoreNoRepositories");
     await act(async () => retryButton(container).click());
-    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-1"]')).not.toBeNull());
   });
 
   it("retries a failed backup list without claiming the storage is empty", async () => {
@@ -71,7 +75,7 @@ describe("restore resource races", () => {
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
     expect(container.textContent).not.toContain("restoreNoBackups");
     await act(async () => retryButton(container).click());
-    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-1"]')).not.toBeNull());
   });
 
   it("retries inspection of the selected verified backup", async () => {

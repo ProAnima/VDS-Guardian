@@ -7,6 +7,7 @@ import {
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import type { Translate } from "../i18n";
+import { PanelHeader } from "./PanelHeader";
 import { ResourceLoadFailure } from "./ResourceLoadFailure";
 
 const emptyForm: RepositoryRequest = { label: "", path: "" };
@@ -14,7 +15,7 @@ const emptyForm: RepositoryRequest = { label: "", path: "" };
 export function RepositoryPanel({ onRepositoriesChanged, t }: { onRepositoriesChanged: () => void; t: Translate }) {
   const model = useRepository(onRepositoriesChanged, t);
   return <section className="repository-panel" aria-labelledby="repository-title">
-    <header className="repository-panel__header"><div><p className="eyebrow"><HardDrive size={15} aria-hidden="true" />{t("setupRepositoryEyebrow")}</p><h2 id="repository-title">{t("setupRepositoryTitle")}</h2><p>{t("setupRepositoryBody")}</p></div><span className="signing-state"><FolderArchive size={16} />{t("setupLocal")}</span></header>
+    <PanelHeader id="repository-title" icon={HardDrive} title={t("setupRepositoryTitle")} hint={t("setupRepositoryBody")}><span className="signing-state"><FolderArchive size={14} />{t("setupLocal")}</span></PanelHeader>
     {model.loadFailure
       ? <ResourceLoadFailure message={model.loadFailure} onRetry={() => void model.refresh()} retryLabel={t("readinessRefresh")} retrying={model.loading} />
       : <>{model.loading && <p className="server-list__empty">{t("readinessLoading")}</p>}

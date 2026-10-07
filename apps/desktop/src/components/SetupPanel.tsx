@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Settings2, X } from "lucide-react";
+import { KeyRound, Settings2, X } from "lucide-react";
 import type { Translate } from "../i18n";
 import { tip } from "../shared/tip";
 import { BackupWorkspace } from "./backup/BackupWorkspace";
@@ -11,14 +11,16 @@ import { SigningIdentityPanel } from "./SigningIdentityPanel";
 
 interface SetupPanelProps {
   onManageServers: () => void;
+  /** Opens the settings drawer on this section right away (from an Overview readiness tile). */
+  initialTarget?: "protection" | "storage";
   t: Translate;
 }
 
 type SettingsTarget = "protection" | "storage";
 
-export function SetupPanel({ onManageServers, t }: SetupPanelProps) {
+export function SetupPanel({ onManageServers, initialTarget, t }: SetupPanelProps) {
   const [resourcesRevision, setResourcesRevision] = useState(0);
-  const [settings, setSettings] = useState<{ open: boolean; target?: SettingsTarget }>({ open: false });
+  const [settings, setSettings] = useState<{ open: boolean; target?: SettingsTarget }>({ open: Boolean(initialTarget), target: initialTarget });
   const resourcesChanged = () => setResourcesRevision((current) => current + 1);
   const openSettings = (target?: SettingsTarget) => setSettings({ open: true, target });
   const closeSettings = () => setSettings({ open: false });
@@ -60,8 +62,11 @@ function SettingsDrawer({ target, revision, onChanged, onClose, t }: SettingsDra
       <div className="drawer__content">
         <div ref={protectionRef}><SigningIdentityPanel onIdentityChanged={onChanged} t={t} /></div>
         <div ref={storageRef}><RepositoryPanel onRepositoriesChanged={onChanged} t={t} /></div>
-        <RecoveryBundlePanel resourcesRevision={revision} t={t} />
-        <RecoveryImportPanel onRepositoriesChanged={onChanged} t={t} />
+        <details className="drawer__more">
+          <summary><KeyRound size={15} aria-hidden="true" />{t("recoveryExportEyebrow")}</summary>
+          <RecoveryBundlePanel resourcesRevision={revision} t={t} />
+          <RecoveryImportPanel onRepositoriesChanged={onChanged} t={t} />
+        </details>
       </div>
     </aside>
   );
