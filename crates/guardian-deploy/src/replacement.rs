@@ -45,7 +45,7 @@ impl ReplacementComposition<'_> {
             .probe_replacement_ready(
                 &session.0,
                 &session.1,
-                session.2.path(),
+                &session.2,
                 plan.impact.root.as_str(),
             )
             .map_err(|_| ReplacementError::LivePreflight)?;
@@ -114,14 +114,14 @@ impl ReplacementComposition<'_> {
             .push_replacement_staging_to(
                 &session.0,
                 &session.1,
-                session.2.path(),
+                &session.2,
                 target,
                 reader,
                 expected_bytes,
             )
             .map_err(|_| ReplacementError::PushFailed)?;
         self.ssh
-            .commit_replacement_to(&session.0, &session.1, session.2.path(), target)
+            .commit_replacement_to(&session.0, &session.1, &session.2, target)
             .map_err(|error| match error {
                 SshError::ReplacementRolledBack => ReplacementError::RolledBack,
                 SshError::ReplacementRollbackFailed => ReplacementError::RollbackFailed,

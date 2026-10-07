@@ -13,7 +13,7 @@ use guardian_local_repository::{LocalRepository, LocalRepositoryStorageAdapter};
 use guardian_ssh::{
     PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, SshIdentity, SshUser, SystemOpenSsh,
 };
-use std::{fs, path::Path};
+use std::fs;
 use tempfile::tempdir;
 
 pub const MAX_DATABASE_SNAPSHOT_BYTES: u64 = 20 * 1024 * 1024 * 1024;
@@ -54,10 +54,10 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
         self.require_remote_disk_budget(
             &host,
             &user,
-            identity_file.path(),
+            &identity_file,
             &request.capture.database_path,
         )?;
-        self.require_sqlite3(&host, &user, identity_file.path())?;
+        self.require_sqlite3(&host, &user, &identity_file)?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
             request.manifest.backup_id.clone(),
@@ -67,7 +67,7 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
             ssh: self.ssh,
             host: &host,
             user: &user,
-            identity_file: identity_file.path(),
+            identity: &identity_file,
             maximum_output_bytes: MAX_DATABASE_SNAPSHOT_BYTES,
         };
         // The capture stream is capped at MAX_DATABASE_SNAPSHOT_BYTES of
@@ -117,7 +117,7 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity_file: &SshIdentity,
     ) -> Result<(), CaptureUseCaseError> {
         let available = self
             .ssh
@@ -146,7 +146,7 @@ impl EmbeddedDatabaseCaptureComposition<'_> {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity_file: &SshIdentity,
         database_path: &str,
     ) -> Result<(), CaptureUseCaseError> {
         let (size, free_kb) =
@@ -159,7 +159,7 @@ pub(crate) fn probe_remote_disk_budget(
     ssh: &SystemOpenSsh,
     host: &PinnedHost,
     user: &SshUser,
-    identity_file: &Path,
+    identity_file: &SshIdentity,
     database_path: &str,
 ) -> Result<(u64, u64), CaptureUseCaseError> {
     let temporary =

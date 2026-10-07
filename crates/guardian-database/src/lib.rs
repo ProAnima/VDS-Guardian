@@ -41,7 +41,7 @@ impl SshDumpToolProbe<'_> {
             .probe_database_tools_to(
                 &host,
                 &user,
-                identity.path(),
+                &identity,
                 &destination,
                 u64::try_from(MAX_PROBE_BYTES).map_err(|_| DumpToolProbeError::Unavailable)?,
             )
@@ -159,7 +159,7 @@ impl DatabaseServerVersionProbePort for SshPeerServerVersionProbe<'_> {
             .probe_database_server_to(
                 &host,
                 &user,
-                identity.path(),
+                &identity,
                 connection,
                 &destination,
                 u64::try_from(MAX_SERVER_VERSION_BYTES)

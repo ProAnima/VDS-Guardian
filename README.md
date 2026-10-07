@@ -141,6 +141,12 @@ unencrypted OpenSSH private keys, and does not yet support rotation.
 guardian-cli credential import-ssh-key --credential-id credential-001 --input D:\VDSGuardian\backup.key --json
 ```
 
+A server that only offers a login password (an IP, `root` and a password) is
+supported too: choose "Login password" in the desktop Servers form (ADR 0017).
+The password is kept only in the operating-system credential store and is sent
+to OpenSSH through a one-shot local broker, never through arguments, the
+environment or a file, and only after the server's pinned host key matches.
+
 A passphrase-protected key is supported instead through an already-running
 OS SSH agent (ADR 0009): register only its public key, and keep the
 matching private key loaded in the agent at connection time. VDS Guardian

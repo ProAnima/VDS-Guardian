@@ -2,7 +2,9 @@
 //! deploy — see `docs/adr/0007-remote-deploy-to-a-new-vds.md`.
 
 use crate::stream;
-use crate::{PinnedHost, SshError, SshUser, SystemOpenSsh, map_wait_error, process, shell_quote};
+use crate::{
+    PinnedHost, SshError, SshIdentity, SshUser, SystemOpenSsh, map_wait_error, process, shell_quote,
+};
 use guardian_core::RunId;
 use std::ffi::OsString;
 use std::io::Read;
@@ -36,7 +38,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         target: ReplacementTarget<'_>,
         source: impl Read + Send + 'static,
         expected_bytes: u64,
@@ -44,7 +46,7 @@ impl SystemOpenSsh {
         self.push_to(
             host,
             user,
-            identity_file,
+            identity,
             replacement_staging_command(target),
             Box::new(source),
             expected_bytes,
@@ -55,16 +57,16 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         target: ReplacementTarget<'_>,
     ) -> Result<(), SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
             .args(self.commit_replacement_arguments(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 target,
             ))
@@ -97,7 +99,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         target_path: &str,
         source: impl Read + Send + 'static,
         expected_bytes: u64,
@@ -105,7 +107,7 @@ impl SystemOpenSsh {
         self.push_to(
             host,
             user,
-            identity_file,
+            identity,
             push_filesystem_command(target_path),
             Box::new(source),
             expected_bytes,
@@ -125,7 +127,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         staging: StagingTarget<'_>,
         source: impl Read + Send + 'static,
         expected_bytes: u64,
@@ -133,7 +135,7 @@ impl SystemOpenSsh {
         self.push_to(
             host,
             user,
-            identity_file,
+            identity,
             push_filesystem_into_staging_command(staging),
             Box::new(source),
             expected_bytes,
@@ -149,7 +151,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         staging: StagingTarget<'_>,
         source: impl Read + Send + 'static,
         expected_bytes: u64,
@@ -157,7 +159,7 @@ impl SystemOpenSsh {
         self.push_to(
             host,
             user,
-            identity_file,
+            identity,
             push_database_into_staging_command(staging),
             Box::new(source),
             expected_bytes,
@@ -173,16 +175,16 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         staging: StagingTarget<'_>,
     ) -> Result<(), SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
             .args(self.finalize_deploy_arguments(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 staging,
             ))
@@ -208,16 +210,16 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         target_path: &str,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
             .args(self.target_absence_probe_arguments(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 target_path,
             ))
@@ -235,16 +237,16 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         source_root: &str,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
             .args(self.replacement_ready_probe_arguments(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 source_root,
             ))
@@ -263,14 +265,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         target_path: &str,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             target_absence_probe_command(target_path).into(),
         )
@@ -281,14 +283,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         target: ReplacementTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             replacement_staging_command(target).into(),
         )
@@ -299,14 +301,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         source_root: &str,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             replacement_ready_probe_command(source_root).into(),
         )
@@ -317,14 +319,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         target: ReplacementTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             commit_replacement_command(target).into(),
         )
@@ -335,14 +337,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         target_path: &str,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             push_filesystem_command(target_path).into(),
         )
@@ -353,14 +355,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         staging: StagingTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             push_filesystem_into_staging_command(staging).into(),
         )
@@ -371,14 +373,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         staging: StagingTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             push_database_into_staging_command(staging).into(),
         )
@@ -389,14 +391,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         staging: StagingTarget<'_>,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             finalize_deploy_command(staging).into(),
         )
@@ -406,18 +408,18 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         remote_command: String,
         source: stream::PushSource,
         expected_bytes: u64,
     ) -> Result<PushResult, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let mut child = match self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let mut child = match ssh_command
             .args(self.arguments_for_command(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 remote_command.into(),
             ))

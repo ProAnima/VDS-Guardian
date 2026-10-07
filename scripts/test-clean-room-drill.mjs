@@ -14,6 +14,8 @@ function run(command, args, env = process.env) {
 }
 
 run("cargo", ["build", "--package", "guardian-cli", "--bin", "guardian-cli"]);
+// The password-login drill runs the real SSH_ASKPASS helper, which must sit beside the test binaries.
+run("cargo", ["build", "--package", "guardian-askpass", "--bin", "guardian-askpass"]);
 
 const configuredTarget = process.env.CARGO_TARGET_DIR;
 const targetDir = configuredTarget

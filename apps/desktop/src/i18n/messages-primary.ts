@@ -59,6 +59,7 @@ export const en = {
   repositoryChangeFolder: "Change folder", repositorySaveFolder: "Save folder", repositoryCancel: "Cancel", repositoryDelete: "Remove from app", repositoryDeleteQuestion: "Remove this storage from the app?",
   repositoryDeleteWarning: "Backups on disk will remain untouched.", repositoryDeleted: "Storage removed from the app:", repositoryPathUpdated: "Storage folder changed:", repositoryPathHint: "Choose an existing folder for this same storage. Files are not moved.",
   explorerFiles: "Files", explorerDocker: "Docker", explorerExpand: "Expand", explorerCollapse: "Collapse", dockerNotPersistent: "Temporary mount, not persistent data", dockerUnresolved: "Host path could not be resolved", reviewBack: "Back to selection", dismiss: "Close",
+  setupAuthKey: "SSH key", setupAuthPassword: "Login password", setupPassword: "Password", setupPasswordHint: "Stored only in the operating-system credential store and sent only after the server's verified host key matches.", setupPasswordShow: "Show password", setupPasswordHide: "Hide password", setupRootWarning: "Logging in as root with a password works, but a dedicated backup user is safer.",
 } as const;
 export type MessageKey = keyof typeof en;
 export type Messages = Partial<Record<MessageKey, string>>;
@@ -126,4 +127,5 @@ export const ru = {
   repositoryDelete: "Удалить из приложения", repositoryDeleteQuestion: "Удалить это хранилище из приложения?", repositoryDeleteWarning: "Бэкапы на диске останутся нетронутыми.",
   repositoryDeleted: "Хранилище удалено из приложения:", repositoryPathUpdated: "Папка хранилища изменена:", repositoryPathHint: "Выберите существующую папку этого же хранилища. Файлы не переносятся.",
   explorerFiles: "Файлы", explorerDocker: "Docker", explorerExpand: "Развернуть", explorerCollapse: "Свернуть", dockerNotPersistent: "Временный том, постоянных данных нет", dockerUnresolved: "Путь на сервере не определён", reviewBack: "Назад к выбору", dismiss: "Закрыть",
+  setupAuthKey: "SSH-ключ", setupAuthPassword: "Пароль для входа", setupPassword: "Пароль", setupPasswordHint: "Хранится только в защищённом хранилище ОС и отправляется только после совпадения проверенного ключа сервера.", setupPasswordShow: "Показать пароль", setupPasswordHide: "Скрыть пароль", setupRootWarning: "Вход под root с паролем работает, но отдельный пользователь для бэкапов безопаснее.",
 };

@@ -1,0 +1,23 @@
+[package]
+name = "guardian-askpass"
+description = "One-shot SSH_ASKPASS helper and loopback broker that hand an SSH login password to OpenSSH without argv, environment, or files."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "guardian_askpass"
+path = "src/lib.rs"
+
+[[bin]]
+name = "guardian-askpass"
+path = "src/main.rs"
+
+[dependencies]
+rand_core.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

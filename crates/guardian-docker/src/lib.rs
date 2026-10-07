@@ -39,7 +39,7 @@ impl DockerInventoryPort for SshDockerInventoryAdapter<'_> {
             .inspect_docker_to(
                 &host,
                 &user,
-                identity.path(),
+                &identity,
                 &destination,
                 u64::try_from(MAX_INSPECT_BYTES)
                     .map_err(|_| DockerInventoryPortError::Unavailable)?,

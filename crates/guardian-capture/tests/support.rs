@@ -22,7 +22,8 @@ use guardian_core::{
     AuditPort, BackupId, CaptureAuditCode, CredentialId, EmbeddedDatabaseCaptureRequest,
     FilesystemBackupRequest, FilesystemCaptureRequest, HostPin, Manifest, ManifestSigner,
     PayloadPath, PlanId, PlanReference, Producer, ProfileId, RunId, SealedBackup, SecretStore,
-    SigningError, SourceIdentity, SshEndpoint, Timestamp, VdsProfile,
+    SecretStoreError, SecretValue, SigningError, SourceIdentity, SshEndpoint, Timestamp,
+    VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshUser, SystemOpenSsh};
@@ -38,6 +39,7 @@ pub type TestResult = Result<(), Box<dyn Error>>;
 
 const IMAGE: &str = "vds-guardian-drill-fixture:local";
 const FIXTURE_USER: &str = "backup";
+pub const FIXTURE_ROOT_PASSWORD: &str = "Fixture-Pass-1";
 static IMAGE_BUILT: OnceLock<Result<(), String>> = OnceLock::new();
 
 /// Builds the drill fixture image once per test binary invocation, even if
@@ -158,6 +160,18 @@ impl Container {
         }
     }
 
+    /// Everything the container's sshd has logged so far (it logs to stderr).
+    pub fn logs(&self) -> Result<String, Box<dyn Error>> {
+        let output = std::process::Command::new("docker")
+            .args(["logs", &self.id])
+            .output()?;
+        Ok(format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+
     pub fn copy_out(&self, remote_path: &str, local_path: &Path) -> Result<(), Box<dyn Error>> {
         run(
             "docker",
@@ -231,6 +245,31 @@ pub fn generate_keypair(directory: &Path) -> Result<(PathBuf, PathBuf), Box<dyn 
 /// host key at boot rather than at image-build time, adding a second
 /// readiness dimension beyond what the existing fixture script's flat
 /// sleep needed to cover.
+struct KeyFileSecret(Vec<u8>);
+
+impl SecretStore for KeyFileSecret {
+    fn load(&self, _: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        Ok(Some(SecretValue::new(self.0.clone())))
+    }
+
+    fn store(&self, _: &CredentialId, _: &SecretValue) -> Result<(), SecretStoreError> {
+        Ok(())
+    }
+
+    fn delete(&self, _: &CredentialId) -> Result<(), SecretStoreError> {
+        Ok(())
+    }
+}
+
+/// Wraps a freshly generated key file as the identity the production code resolves.
+pub fn identity_from_key_file(path: &Path) -> Result<guardian_ssh::SshIdentity, Box<dyn Error>> {
+    let secret = KeyFileSecret(std::fs::read(path)?);
+    Ok(guardian_ssh::SshIdentity::from_store(
+        &secret,
+        &CredentialId::parse("drill-key-file")?,
+    )?)
+}
+
 pub fn wait_until_ssh_ready(
     ssh: &SystemOpenSsh,
     host: &PinnedHost,
@@ -238,9 +277,10 @@ pub fn wait_until_ssh_ready(
     identity_path: &Path,
     deadline: Duration,
 ) -> Result<(), Box<dyn Error>> {
+    let identity = identity_from_key_file(identity_path)?;
     let start = Instant::now();
     loop {
-        if ssh.probe_connection(host, user, identity_path).is_ok() {
+        if ssh.probe_connection(host, user, &identity).is_ok() {
             return Ok(());
         }
         if start.elapsed() >= deadline {
@@ -250,12 +290,7 @@ pub fn wait_until_ssh_ready(
             known_hosts.flush()?;
             let known_hosts = known_hosts.into_temp_path();
             let output = std::process::Command::new("ssh")
-                .args(ssh.connection_probe_arguments(
-                    host,
-                    user,
-                    identity_path,
-                    known_hosts.as_ref(),
-                ))
+                .args(ssh.connection_probe_arguments(host, user, &identity, known_hosts.as_ref()))
                 .output()?;
             return Err(format!(
                 "timed out waiting for fixture SSH; known_hosts={:?}; final probe: {}",
@@ -331,6 +366,23 @@ pub fn drill_profile(
     port: u16,
     host_key_base64: &str,
 ) -> Result<VdsProfile, Box<dyn Error>> {
+    drill_profile_as(
+        FIXTURE_USER,
+        profile_id,
+        credential_id,
+        port,
+        host_key_base64,
+    )
+}
+
+/// Same fixture profile for an explicit SSH user (the password drill logs in as `root`).
+pub fn drill_profile_as(
+    user: &str,
+    profile_id: ProfileId,
+    credential_id: CredentialId,
+    port: u16,
+    host_key_base64: &str,
+) -> Result<VdsProfile, Box<dyn Error>> {
     Ok(VdsProfile {
         profile_id,
         label: "Clean-room drill fixture".to_owned(),
@@ -338,7 +390,7 @@ pub fn drill_profile(
         endpoint: SshEndpoint {
             host: "127.0.0.1".to_owned(),
             port,
-            user: FIXTURE_USER.to_owned(),
+            user: user.to_owned(),
             host_pin: HostPin::parse("ssh-ed25519", host_key_base64)?,
         },
     })

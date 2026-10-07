@@ -4,6 +4,7 @@ members = [
   "apps/desktop/src-tauri",
   "crates/guardian-cli",
   "crates/guardian-archive",
+  "crates/guardian-askpass",
   "crates/guardian-encryption",
   "crates/guardian-capture",
   "crates/guardian-core",

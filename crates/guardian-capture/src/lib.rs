@@ -17,7 +17,6 @@ use guardian_ssh::{
     PinnedEmbeddedDatabaseCaptureAdapter, PinnedHost, PinnedSshCapabilityProbe,
     PinnedSshCaptureAdapter, SshIdentity, SshUser, SystemOpenSsh,
 };
-use std::path::Path;
 
 pub use disk_space::{DiskSpacePort, SYSTEM_DISK_SPACE};
 pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
@@ -110,7 +109,7 @@ impl FilesystemCaptureComposition<'_> {
             ssh: self.ssh,
             host: &host,
             user: &user,
-            identity_file: identity_file.path(),
+            identity: &identity_file,
             maximum_output_bytes: MAX_CAPTURE_BYTES,
         };
         let inspector = TarZstdInspector::new(self.archive_limits);
@@ -142,13 +141,8 @@ impl FilesystemCaptureComposition<'_> {
         let host = self.pinned_host()?;
         let user = self.ssh_user()?;
         let identity_file = self.identity_file()?;
-        self.require_remote_disk_budget(
-            &host,
-            &user,
-            identity_file.path(),
-            &database.database_path,
-        )?;
-        self.require_sqlite3(&host, &user, identity_file.path())?;
+        self.require_remote_disk_budget(&host, &user, &identity_file, &database.database_path)?;
+        self.require_sqlite3(&host, &user, &identity_file)?;
         let storage = LocalRepositoryStorageAdapter::encrypted(
             self.repository,
             request.manifest.backup_id.clone(),
@@ -158,7 +152,7 @@ impl FilesystemCaptureComposition<'_> {
             ssh: self.ssh,
             host: &host,
             user: &user,
-            identity_file: identity_file.path(),
+            identity: &identity_file,
             maximum_output_bytes: MAX_CAPTURE_BYTES,
         };
         let inspector = TarZstdInspector::new(self.archive_limits);
@@ -173,7 +167,7 @@ impl FilesystemCaptureComposition<'_> {
             ssh: self.ssh,
             host: &host,
             user: &user,
-            identity_file: identity_file.path(),
+            identity: &identity_file,
             maximum_output_bytes: MAX_DATABASE_SNAPSHOT_BYTES,
         };
         let database_inspector =
@@ -276,7 +270,7 @@ impl FilesystemCaptureComposition<'_> {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity_file: &SshIdentity,
     ) -> Result<(), CaptureUseCaseError> {
         let available = self
             .ssh
@@ -291,7 +285,7 @@ impl FilesystemCaptureComposition<'_> {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity_file: &SshIdentity,
         database_path: &str,
     ) -> Result<(), CaptureUseCaseError> {
         let (size, free_kb) =

@@ -40,6 +40,8 @@ describe("foundation bridge", () => {
       user: "backup",
       hostKey: "ssh-ed25519 AAAA",
       keyPath: "C:/Keys/vds",
+      authKind: "key",
+      password: "",
     })).rejects.toThrow("desktop runtime");
     await expect(deleteSshProfile("profile-001")).rejects.toThrow("desktop runtime");
     await expect(browseRemoteDirectory("profile-001", "/srv")).rejects.toThrow("desktop runtime");

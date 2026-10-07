@@ -1683,6 +1683,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "guardian-askpass"
+version = "0.1.0"
+dependencies = [
+ "rand_core",
+ "zeroize",
+]
+
+[[package]]
 name = "guardian-capture"
 version = "0.1.0"
 dependencies = [
@@ -1884,10 +1892,12 @@ name = "guardian-ssh"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "guardian-askpass",
  "guardian-core",
  "sha2",
  "tempfile",
  "thiserror 2.0.18",
+ "zeroize",
 ]
 
 [[package]]
@@ -4943,6 +4953,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]

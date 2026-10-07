@@ -1,3 +1,5 @@
+mod common;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use guardian_core::RunId;
 use guardian_ssh::{PinnedHost, ReplacementTarget, SshUser, StagingTarget, SystemOpenSsh};
@@ -9,7 +11,7 @@ fn push_filesystem_command_uses_the_atomic_rename_template()
     let arguments = SystemOpenSsh::default().push_filesystem_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app",
     );
@@ -41,7 +43,7 @@ fn push_filesystem_command_restores_an_ordinary_mode_after_mktemp()
     let arguments = SystemOpenSsh::default().push_filesystem_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app",
     );
@@ -66,7 +68,7 @@ fn push_filesystem_command_never_deletes_before_creating_its_own_temp_directory(
     let arguments = SystemOpenSsh::default().push_filesystem_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app",
     );
@@ -93,7 +95,7 @@ fn push_filesystem_into_staging_command_never_renames_into_place()
     let arguments = SystemOpenSsh::default().push_filesystem_into_staging_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         StagingTarget {
             target_path: "/srv/app",
@@ -124,7 +126,7 @@ fn push_database_into_staging_command_requires_an_existing_staging_directory()
     let arguments = SystemOpenSsh::default().push_database_into_staging_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         StagingTarget {
             target_path: "/srv/app",
@@ -151,7 +153,7 @@ fn finalize_deploy_command_publishes_the_staging_directory_with_one_rename()
     let arguments = SystemOpenSsh::default().finalize_deploy_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         StagingTarget {
             target_path: "/srv/app",
@@ -177,7 +179,8 @@ fn the_three_staging_commands_agree_on_the_same_staging_path_for_one_run_id()
     // `run_id`. Prove they can't drift onto different naming schemes.
     let host = pinned_host()?;
     let user = SshUser::parse("backup")?;
-    let identity = Path::new("C:/keys/backup.key");
+    let identity = common::key_identity()?;
+    let identity = &identity;
     let known_hosts = Path::new("C:/known_hosts");
     let run_id = RunId::parse("run-staging-agree")?;
     let ssh = SystemOpenSsh::default();
@@ -213,7 +216,8 @@ fn push_commands_safely_quote_a_target_path_containing_a_single_quote()
 -> Result<(), Box<dyn std::error::Error>> {
     let host = pinned_host()?;
     let user = SshUser::parse("backup")?;
-    let identity = Path::new("C:/keys/backup.key");
+    let identity = common::key_identity()?;
+    let identity = &identity;
     let known_hosts = Path::new("C:/known_hosts");
     let target = "/srv/app's data";
 
@@ -246,7 +250,7 @@ fn target_absence_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::err
     let arguments = SystemOpenSsh::default().target_absence_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app",
     );
@@ -262,7 +266,7 @@ fn zstd_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Error>
     let arguments = SystemOpenSsh::default().zstd_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = render(&arguments);
@@ -286,7 +290,7 @@ fn replacement_stages_then_swaps_with_a_preserved_rollback()
     let stage = render(&ssh.replacement_staging_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         target,
     ));
@@ -298,7 +302,7 @@ fn replacement_stages_then_swaps_with_a_preserved_rollback()
     let commit = render(&ssh.commit_replacement_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         target,
     ));
@@ -318,7 +322,7 @@ fn replacement_preflight_is_pinned_and_read_only() -> Result<(), Box<dyn std::er
     let arguments = SystemOpenSsh::default().replacement_ready_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app/data",
     );
@@ -339,7 +343,7 @@ fn failed_launch_returns_an_error_for_a_push() -> Result<(), Box<dyn std::error:
         .push_filesystem_to(
             &pinned_host()?,
             &SshUser::parse("backup")?,
-            Path::new("C:/keys/backup.key"),
+            &common::key_identity()?,
             "/srv/app",
             source,
             0,

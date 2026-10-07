@@ -25,7 +25,8 @@ Included:
 - a typed external API (an MCP server) over the same application-service
   boundary, for external tools and AI agents;
 - pinned SSH connection to a remote Linux server, initially by key/agent and
-  later by the memory-only password broker required by ADR 0015;
+  by login password through the memory-only askpass broker of ADR 0017 (implemented
+  and drilled against a real `sshd`, including a `root` + password login);
 - bounded read-only remote filesystem browsing and Docker mount/group selection;
 - operator-selected data compiled to explicit absolute filesystem paths;
 - streaming tar.zst capture into a local or removable repository;

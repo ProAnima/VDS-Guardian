@@ -38,7 +38,7 @@ impl RemoteBrowserPort for SshRemoteBrowserAdapter<'_> {
             .browse_directory_to(
                 &host,
                 &user,
-                identity.path(),
+                &identity,
                 &request.directory,
                 &destination,
                 MAX_BROWSE_OUTPUT_BYTES,

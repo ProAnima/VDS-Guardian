@@ -58,11 +58,20 @@ inspection after decryption and before a restore destination is published.
   document is rewritten atomically before its credential is removed; if secure
   credential cleanup fails, the profile is restored so the UI never silently
   leaves a selectable profile without its key.
-- Password-based SSH is unavailable until a native adapter or one-shot askpass
-  broker delivers the password through memory-only local IPC. Password bytes
-  must never enter argv, environment variables, shell input, configuration,
-  logs, diagnostics, or temporary files. `sshpass` and terminal-prompt scraping
-  are forbidden. Host-key pinning and capability preflight remain mandatory.
+- Password-based SSH (ADR 0017) delivers the password through a one-shot askpass
+  broker over memory-only loopback IPC: the secret lives only in the OS
+  credential store (or encrypted vault) and in zeroized process memory, and
+  OpenSSH receives it from the application's own executable acting as
+  `SSH_ASKPASS` after presenting a 256-bit one-time token. Password bytes never
+  enter argv, environment variables, shell input, configuration, logs,
+  diagnostics, or temporary files; the helper answers only the plain login
+  prompt (never a passphrase, host-key, password-change or one-time-code
+  prompt); a login makes exactly one attempt; and the host key is verified
+  against the pin before any password can be offered. `sshpass` and
+  terminal-prompt scraping remain forbidden, and host-key pinning and
+  capability preflight remain mandatory. A drill against a real `sshd` proves
+  the password reaches only a host that matches the pin and appears nowhere in
+  the repository.
 
 ### Remote browsing and selection
 
