@@ -60,7 +60,10 @@ fn a_password_login_still_pins_the_host_and_never_passes_an_identity_file()
     let joined = rendered.join(" ");
     assert!(joined.contains("StrictHostKeyChecking=yes"));
     assert!(joined.contains("GlobalKnownHostsFile=none"));
-    assert!(joined.contains("UserKnownHostsFile=C:/known_hosts"));
+    assert!(
+        joined.contains("UserKnownHostsFile=\"C:/known_hosts\""),
+        "quoted so a path with spaces stays one value"
+    );
     assert!(!rendered.iter().any(|argument| argument == "-i"));
     assert!(!joined.contains("IdentitiesOnly"));
     assert!(joined.contains("root@vds.example"));

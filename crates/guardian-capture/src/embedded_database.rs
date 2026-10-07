@@ -331,6 +331,7 @@ mod tests {
         Ok(VdsProfile {
             profile_id: ProfileId::parse("profile-001")?,
             label: "VDS".to_owned(),
+            auth_kind: None,
             credential_id: CredentialId::parse("credential-001")?,
             endpoint: SshEndpoint {
                 host: "vds.example".to_owned(),

@@ -159,7 +159,8 @@ fn resolve_secret(command: &Command) -> Result<SecretValue, CredentialFailure> {
     match command {
         Command::Import(command) => {
             let key = read_key(&command.input)?;
-            SshIdentity::validate(key.expose()).map_err(|_| CredentialFailure::invalid_key())?;
+            SshIdentity::validate_key_material(key.expose())
+                .map_err(|_| CredentialFailure::invalid_key())?;
             Ok(key)
         }
         Command::RegisterAgentKey(command) => {

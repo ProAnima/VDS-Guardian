@@ -10,19 +10,6 @@
 .overview-status strong { display: block; padding-top: 2px; font-size: .78rem; }
 .overview-status p { margin: 5px 0 0; color: var(--text-muted); font-size: .69rem; line-height: 1.5; }
 
-
-.status-card { position: relative; min-height: 145px; padding: 20px; }
-.status-card + .status-card { border-inline-start: 1px solid var(--border-soft); }
-.status-card__icon { display: grid; width: 34px; height: 34px; place-items: center; margin-bottom: 25px; border-radius: 10px; color: var(--text-muted); background: var(--surface-muted); }
-.status-card > span { display: block; color: var(--text-muted); font-size: 0.7rem; }
-.status-card > strong { display: block; margin-top: 5px; font-size: 0.87rem; }
-.status-card__indicator { position: absolute; inset: 22px 20px auto auto; width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
-[dir="rtl"] .status-card__indicator { inset: 22px auto auto 20px; }
-.status-card[data-tone="green"] .status-card__indicator, .status-card[data-tone="green"] .status-card__icon { color: var(--accent); background-color: var(--accent-soft); }
-.status-card[data-tone="green"] .status-card__indicator { background: var(--accent); }
-.status-card[data-tone="amber"] .status-card__indicator, .status-card[data-tone="amber"] .status-card__icon { color: var(--amber); background-color: var(--amber-soft); }
-.status-card[data-tone="amber"] .status-card__indicator { background: var(--amber); }
-
 .signing-panel { margin-top: 18px; padding: 24px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: linear-gradient(125deg, var(--surface), var(--surface-muted)); }
 .repository-panel { margin-top: 14px; padding: 18px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: linear-gradient(125deg, var(--surface), var(--surface-muted)); }
 .repository-panel h2 { margin: 0; font-size: .95rem; letter-spacing: -0.025em; }
@@ -46,14 +33,14 @@
 .repository-card__actions { display: flex; gap: 6px; }
 .repository-card__actions button, .repository-card__editor button, .repository-card__confirm button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--border-soft); border-radius: 7px; color: var(--text-muted); background: transparent; font-size: .62rem; cursor: pointer; }
 .repository-card__actions button:hover, .repository-card__editor button:hover { border-color: var(--accent); color: var(--text); }
-.repository-card__actions .repository-card__remove:hover { border-color: color-mix(in srgb, #ff6b5e 45%, var(--border)); color: #ff8d80; }
+.repository-card__actions .repository-card__remove:hover { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
 .repository-card__editor, .repository-card__confirm { display: grid; grid-column: 1 / -1; gap: 9px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
 .repository-card__editor > small { color: var(--text-muted); line-height: 1.45; }
 .repository-card__editor > div, .repository-card__confirm > div:last-child { display: flex; justify-content: flex-end; gap: 7px; }
 .repository-card__confirm > div:first-child { display: grid; gap: 3px; }
-.repository-card__confirm strong { color: #ff9b90; font-size: .68rem; }
+.repository-card__confirm strong { color: var(--danger); font-size: .68rem; }
 .repository-card__confirm span { color: var(--text-muted); font-size: .62rem; }
-.repository-card__confirm .repository-card__delete-confirm { border-color: color-mix(in srgb, #ff6b5e 45%, var(--border)); color: #ff9b90; }
+.repository-card__confirm .repository-card__delete-confirm { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
 .repository-card button:disabled { opacity: .55; cursor: wait; }
 .signing-panel h2 { margin: 0; font-size: 1.1rem; letter-spacing: -0.025em; }
 .signing-state { display: inline-flex; height: fit-content; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border)); border-radius: 999px; color: var(--amber); background: var(--amber-soft); font-size: 0.69rem; font-weight: 750; white-space: nowrap; }
@@ -105,16 +92,8 @@
 .spin { animation: signing-spin 900ms linear infinite; }
 @keyframes signing-spin { to { transform: rotate(360deg); } }
 
-.panel-header { display: flex; min-height: 62px; align-items: center; justify-content: space-between; padding: 0 20px; border-block-end: 1px solid var(--border-soft); }
-.panel-header h2 { margin: 0; font-size: 0.88rem; letter-spacing: -0.01em; }
-.panel-header button { border: 0; color: var(--text-muted); background: none; font-size: 0.7rem; }
 .text-button { display: inline-flex; align-items: center; gap: 5px; margin-top: 17px; padding: 0; border: 0; color: var(--accent); background: none; font-size: 0.72rem; cursor: pointer; }
 
-
-
-
-@media (max-width: 1100px) { .status-grid, .setup-status__items { grid-template-columns: repeat(2, 1fr); } .status-card:nth-child(3) { border-inline-start: 0; border-block-start: 1px solid var(--border-soft); } .status-card:nth-child(4) { border-block-start: 1px solid var(--border-soft); } .capture-workspace { grid-template-columns: 1fr; } .selection-summary { position: static; } .selection-summary__items { max-height: 300px; } }
-@media (max-width: 950px) { .hero-panel, .overview-hero { grid-template-columns: 1fr; } .overview-status { max-width: 560px; } .safety-lock { min-height: auto; } .safety-lock__icon { margin-bottom: 24px; } .dashboard__columns { grid-template-columns: 1fr; } .signing-panel__header, .ssh-profile-panel__header, .repository-panel__header { flex-direction: column; } .signing-state { align-self: flex-start; } .remote-browser__columns, .remote-browser__entry { grid-template-columns: 25px minmax(180px, 1fr) 75px; } .remote-browser__columns span:nth-child(3), .remote-browser__entry time { display: none; } }
-@media (max-width: 720px) { .workflow-grid { grid-template-columns: 1fr; } .workflow-step { min-height: 112px; } }
-@media (max-width: 620px) { .dashboard { padding-inline: 18px; padding-top: 26px; } .hero-panel h1, .overview-hero__content h1 { font-size: 2.45rem; } .overview-hero { gap: 22px; padding-block-start: 0; } .status-grid, .setup-status__items { grid-template-columns: 1fr; } .status-card + .status-card { border-inline-start: 0; border-block-start: 1px solid var(--border-soft); } .hero-panel__actions, .signing-panel__actions, .signing-confirm__actions, .ssh-profile-form__actions, .repository-form__actions, .capture-primary-action { flex-direction: column; align-items: stretch; } .button { justify-content: center; } .signing-panel__actions .button { margin-inline-start: 0; } .signing-details, .ssh-profile-form, .repository-form, .capture-sqlite, .restore-mode { grid-template-columns: 1fr; } .capture-sqlite__icon { display: none; } .resource-load-failure { grid-template-columns: auto minmax(0, 1fr); } .resource-load-failure .button { grid-column: 1 / -1; } .remote-browser__header, .docker-picker__header { align-items: flex-start; flex-direction: column; } .remote-browser__select-current { width: 100%; justify-content: center; } .remote-browser__columns, .remote-browser__entry { grid-template-columns: 22px minmax(150px, 1fr); } .remote-browser__columns span:nth-child(4), .remote-browser__entry > span { display: none; } .docker-picker__cards { grid-template-columns: 1fr; } .docker-group-card { grid-template-columns: 34px minmax(0, 1fr) 20px; } .docker-group-card__state { display: none; } .docker-mount-row { grid-template-columns: 18px 18px minmax(0, 1fr); } .docker-mount-row__state { display: none; } }
-@media (max-width: 620px) { [dir="rtl"] .overview-hero__content h1 { font-size: 2.15rem; line-height: 1.08; letter-spacing: 0; } }
+@media (max-width: 1100px) { .setup-status__items { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 950px) { .overview-status { max-width: 560px; } .signing-state { align-self: flex-start; } }
+@media (max-width: 620px) { .dashboard { padding-inline: 18px; padding-top: 26px; } .setup-status__items { grid-template-columns: 1fr; } .signing-panel__actions, .signing-confirm__actions, .repository-form__actions { flex-direction: column; align-items: stretch; } .button { justify-content: center; } .signing-panel__actions .button { margin-inline-start: 0; } .signing-details, .repository-form { grid-template-columns: 1fr; } .resource-load-failure { grid-template-columns: auto minmax(0, 1fr); } .resource-load-failure .button { grid-column: 1 / -1; } }

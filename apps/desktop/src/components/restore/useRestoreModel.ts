@@ -4,8 +4,8 @@ import { useRestoreBackups } from "./useRestoreBackups";
 import { useRestoreResources } from "./useRestoreResources";
 import { useRestoreSelection } from "./useRestoreSelection";
 
-export function useRestoreModel(t: Translate) {
-  const resources = useRestoreResources(t);
+export function useRestoreModel(t: Translate, refreshKey = 0) {
+  const resources = useRestoreResources(t, refreshKey);
   const backups = useRestoreBackups(resources.repositoryId, t);
   const selection = useRestoreSelection(resources.profiles, resources.repositoryId, backups.backupId, t);
   const action = useRestoreAction(t, {

@@ -1,9 +1,9 @@
+use crate::ids::random_id;
 use guardian_configuration::{RepositoryRegistration, RepositoryStore};
 use guardian_core::RepositoryId;
 use guardian_local_repository::{LocalRepository, RepositoryError, RepositoryVerificationKey};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::SigningIdentityManager;
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::Manager;
@@ -112,7 +112,8 @@ fn register_blocking(
     root: PathBuf,
     request: RegisterRepositoryRequest,
 ) -> Result<RepositorySummary, RepositoryCommandFailure> {
-    let id = RepositoryId::parse(random_id()).map_err(|_| RepositoryCommandFailure::internal())?;
+    let id = RepositoryId::parse(random_id("repository"))
+        .map_err(|_| RepositoryCommandFailure::internal())?;
     let repository = LocalRepository::open(&request.path, id.clone())
         .map_err(|_| RepositoryCommandFailure::repository())?;
     let registration = RepositoryRegistration::new(id, request.label, repository.root().to_owned())
@@ -121,18 +122,6 @@ fn register_blocking(
         .upsert(registration.clone())
         .map_err(|_| RepositoryCommandFailure::storage())?;
     Ok(RepositorySummary::from(&registration))
-}
-
-fn random_id() -> String {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    format!(
-        "repository-{}",
-        bytes
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
 }
 
 fn registry_root(app: &tauri::AppHandle) -> Result<PathBuf, RepositoryCommandFailure> {

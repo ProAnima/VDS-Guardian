@@ -82,7 +82,7 @@ pub use preflight::{
     PreflightSshCaptureError, PreflightSshCaptureUseCase, SshCapabilityProbeError,
     SshCapabilityProbePort, SshCaptureCapabilities,
 };
-pub use profile::{HostPin, ProfileError, SshEndpoint, VdsProfile, host_key_fingerprint};
+pub use profile::{AuthKind, HostPin, ProfileError, SshEndpoint, VdsProfile, host_key_fingerprint};
 pub use profile_port::{ProfileStorePort, ProfileStorePortError};
 pub use remote_browser::{
     BrowseRemoteDirectoryError, BrowseRemoteDirectoryUseCase, MAX_REMOTE_PAGE_ENTRIES,

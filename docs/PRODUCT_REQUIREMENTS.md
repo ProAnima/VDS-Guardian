@@ -38,6 +38,8 @@ The Servers view contains only server management:
 1. saved servers appear as readable cards with name, address, user,
    authentication kind, last verified state, and concise actions;
 2. adding a server is one short form followed by a real pinned-host preflight;
+   the form can fetch the host key and shows its fingerprint to compare, so the
+   operator never has to paste a key by hand (ADR 0018);
 3. supported authentication choices are SSH key/agent and login password (a
    `root` + password login works; the form recommends a dedicated backup user);
 4. deleting a server is a two-click, explicitly confirmed operation;
@@ -45,9 +47,10 @@ The Servers view contains only server management:
    reference is removed or replaced.
 
 Secrets never appear on cards, in portable settings, diagnostics, logs, or
-repository metadata. Password authentication is a required capability but is
-not considered implemented until the secure broker described by ADR 0015 and
-the security tests in `SECURITY_MODEL.md` exist.
+repository metadata. Password authentication is a required capability; it is
+delivered through the one-shot askpass broker of ADR 0017, which satisfies the
+constraints ADR 0015 set and is covered by the tests listed there and in
+`SECURITY_MODEL.md`.
 
 ### Backups
 

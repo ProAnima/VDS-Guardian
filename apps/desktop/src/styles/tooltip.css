@@ -1,18 +1,12 @@
-/* Localized tooltip for any element carrying data-tip (see shared/tip.ts). */
-[data-tip] { position: relative; }
-[data-tip]::after {
-  content: attr(data-tip); position: absolute; z-index: 40; inset-block-start: calc(100% + 6px); inset-inline-start: 50%;
-  width: max-content; max-width: 280px; padding: 5px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-xs);
+/* The floating tooltip rendered by components/TooltipLayer.tsx for any element with data-tip. */
+.tooltip {
+  position: fixed; z-index: 100; max-width: 300px; padding: 5px 9px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-xs);
   color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow);
-  font-size: .7rem; font-weight: 500; line-height: 1.35; text-align: start; white-space: normal;
-  display: none; pointer-events: none; transform: translateX(-50%);
+  font-size: .7rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; text-align: start;
+  white-space: pre-line; pointer-events: none; animation: tip-in 120ms ease;
 }
-[dir="rtl"] [data-tip]::after { transform: translateX(50%); }
-/* display:none keeps hidden tooltips out of every scroll container's overflow; the fade-in is a delayed animation. */
-[data-tip]:hover::after, [data-tip]:focus-visible::after { display: block; animation: tip-in 140ms ease 380ms backwards; }
 @keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
-[data-tip][data-tip-side="end"]::after { inset-block-start: 50%; inset-inline-start: calc(100% + 8px); transform: translateY(-50%); }
-[data-tip][data-tip-side="start"]::after { inset-block-start: calc(100% + 6px); inset-inline-start: 0; transform: none; }
-[data-tip][data-tip-side="stop"]::after { inset-block-start: calc(100% + 6px); inset-inline-start: auto; inset-inline-end: 0; transform: none; }
-[data-tip]:disabled:hover::after { display: none; }
-@media (prefers-reduced-motion: reduce) { [data-tip]:hover::after, [data-tip]:focus-visible::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }
+/* Text kept for screen readers where the visual explanation lives in a tooltip. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -5,23 +5,26 @@ import {
   type SshProfileRequest, type SshProfileSummary,
 } from "../../shared/commands";
 import { safeErrorText } from "../../shared/safe-error";
+import { useLatest } from "../../shared/useLatest";
 
 export const initialServerForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", authKind: "key", keyPath: "", password: "" };
 
 /** Saved servers: loading, retry and confirmed removal. */
-function useServerList(t: Translate, notify: (message: { result?: string; failure?: string }) => void, onChanged: () => void) {
+function useServerList(t: Translate, notify: (message: { result?: string; failure?: string }) => void, onChanged: () => void, refreshKey: number) {
   const [profiles, setProfiles] = useState<SshProfileSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailure, setLoadFailure] = useState<string>();
   const [confirmingId, setConfirmingId] = useState<string>();
   const [deletingId, setDeletingId] = useState<string>();
+  const [loaded, setLoaded] = useState(false);
+  const translate = useLatest(t);
   const refresh = useCallback(async () => {
     setLoading(true); setLoadFailure(undefined);
-    try { const next = await listSshProfiles(); setProfiles(next); return next; }
-    catch (error) { setLoadFailure(safeErrorText(error, t("setupServerError"))); return undefined; }
+    try { const next = await listSshProfiles(); setProfiles(next); setLoaded(true); return next; }
+    catch (error) { setLoadFailure(safeErrorText(error, translate.current("setupServerError"))); return undefined; }
     finally { setLoading(false); }
-  }, [t]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  }, [translate]);
+  useEffect(() => { void refresh(); }, [refresh, refreshKey]);
   const remove = async (profile: SshProfileSummary) => {
     setDeletingId(profile.profileId);
     try {
@@ -30,7 +33,7 @@ function useServerList(t: Translate, notify: (message: { result?: string; failur
     } catch (error) { notify({ failure: safeErrorText(error, t("setupServerError")) }); }
     finally { setDeletingId(undefined); }
   };
-  return { profiles, setProfiles, loading, loadFailure, confirmingId, setConfirmingId, deletingId, refresh, remove };
+  return { profiles, setProfiles, loading: loading && !loaded, loadFailure, confirmingId, setConfirmingId, deletingId, refresh, remove };
 }
 
 /** The add-server form and its single enrollment transaction. */
@@ -38,12 +41,12 @@ function useServerEnrollment(t: Translate, onEnrolled: (profile: SshProfileSumma
   const [form, setForm] = useState(initialServerForm);
   const [acknowledged, setAcknowledged] = useState(false);
   const [working, setWorking] = useState(false);
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: FormEvent, confirmedFingerprint?: string) => {
     event.preventDefault();
-    if (!acknowledged || !hasTauriRuntime()) return;
+    if (!acknowledged || working || !hasTauriRuntime()) return;
     setWorking(true);
     try {
-      const profile = await enrollSshProfile(form);
+      const profile = await enrollSshProfile({ ...form, hostKeyConfirmed: acknowledged, confirmedFingerprint });
       onEnrolled(profile); setForm(initialServerForm); setAcknowledged(false);
       notify({ result: `${t("setupServerCreated")} ${profile.label}` });
     } catch (error) { notify({ failure: safeErrorText(error, t("setupServerError")) }); }
@@ -52,12 +55,12 @@ function useServerEnrollment(t: Translate, onEnrolled: (profile: SshProfileSumma
   return { form, setForm, acknowledged, setAcknowledged, working, submit };
 }
 
-export function useServers(onProfilesChanged: () => void, t: Translate) {
+export function useServers(onProfilesChanged: () => void, t: Translate, refreshKey = 0) {
   const [formOpen, setFormOpen] = useState(false);
   const [result, setResult] = useState<string>();
   const [failure, setFailure] = useState<string>();
   const notify = (message: { result?: string; failure?: string }) => { setResult(message.result); setFailure(message.failure); };
-  const list = useServerList(t, notify, onProfilesChanged);
+  const list = useServerList(t, notify, onProfilesChanged, refreshKey);
   const enrollment = useServerEnrollment(t, (profile) => {
     list.setProfiles((current) => [...current, profile]); onProfilesChanged(); setFormOpen(false);
   }, notify);

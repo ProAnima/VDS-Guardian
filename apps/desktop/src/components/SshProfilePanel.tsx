@@ -7,8 +7,8 @@ import { ServerForm } from "./servers/ServerForm";
 import { ServerList } from "./servers/ServerList";
 import { useServers, type ServersModel } from "./servers/useServers";
 
-export function SshProfilePanel({ onProfilesChanged, t }: { onProfilesChanged: () => void; t: Translate }) {
-  const model = useServers(onProfilesChanged, t);
+export function SshProfilePanel({ onProfilesChanged, refreshKey = 0, t }: { onProfilesChanged: () => void; refreshKey?: number; t: Translate }) {
+  const model = useServers(onProfilesChanged, t, refreshKey);
   const { list } = model;
   return (
     <div className="servers-view">

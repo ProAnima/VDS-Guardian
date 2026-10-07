@@ -211,6 +211,7 @@ mod tests {
                 user: "backup".to_owned(),
                 host_pin: HostPin::parse("ssh-ed25519", STANDARD.encode(key))?,
             },
+            auth_kind: None,
             credential_id: CredentialId::parse("credential-1")?,
         })
     }

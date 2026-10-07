@@ -50,22 +50,37 @@ export interface SshProfileRequest {
   password: string;
 }
 
+/** What is sent to enroll a server: the form plus the operator's host-key decision. */
+export interface SshEnrollment extends SshProfileRequest {
+  hostKeyConfirmed: boolean;
+  /** Present when the key was fetched: the fingerprint the operator compared. */
+  confirmedFingerprint?: string;
+}
+
+export interface ScannedHostKey {
+  algorithm: string;
+  /** Base64 public key, as the Servers form stores it after the algorithm. */
+  publicKey: string;
+  /** Standard OpenSSH SHA-256 fingerprint, comparable with a provider panel or `ssh-keygen -l`. */
+  fingerprint: string;
+}
+
+export type AuthKind = "ssh_key" | "ssh_agent" | "password";
+
 export interface SshProfileSummary {
   profileId: string;
   label: string;
   host: string;
   port: number;
   user: string;
+  /** Absent for a profile saved before the login method was recorded. */
+  authKind?: AuthKind;
 }
 
 export interface SshProfileFailure {
   code: string;
   message: string;
   remediation: string;
-}
-
-export interface SshPreflightSummary {
-  tarZstd: boolean;
 }
 
 export interface RepositoryRequest {
@@ -104,8 +119,6 @@ export interface ImportRecoveryBundleRequest {
   passphrase: string;
   confirmation: string;
 }
-export interface CapturePlanRequest { profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
-export interface CapturePlanSummary { planId: string; profileId: string; repositoryId: string; roots: string[]; databasePath?: string; }
 export type BackupSelectionItem =
   | { kind: "remote_path"; absolutePath: string }
   | { kind: "docker_mount"; containerId: string; mountDestination: string; capturablePath: string }
@@ -132,9 +145,6 @@ export interface BackupRestoreDescription {
   backupId: string; sourceProfileId: string; roots: string[]; dockerWorkloads: BackupDockerWorkload[];
   entries: BackupArchiveEntry[]; totalEntries: number; nextOffset?: number; replacementAvailable: boolean;
 }
-export interface RestoreRequest { repositoryId: string; backupId: string; destination: string; confirmation?: string; runId?: string; }
-export interface RestoreImpactPreview { backupId: string; destination: string; mode: "new_destination"; adds: string[]; replaces: string[]; conflicts: string[]; workloadLabels: string[]; confirmation: string; }
-export interface RestoreFailure { code: string; message: string; remediation: string; }
 
 export interface DeployRequest { repositoryId: string; backupId: string; targetProfileId: string; targetPath: string; confirmation?: string; runId?: string; }
 export interface DeploymentPreview { backupId: string; targetProfileId: string; targetProfileLabel: string; targetPath: string; confirmation: string; filesystemPayload: string; databasePayload?: string; }
@@ -184,7 +194,12 @@ export async function enrollSigningIdentity(): Promise<SigningIdentityEnrollment
   return invoke<SigningIdentityEnrollment>("enroll_signing_identity");
 }
 
-export async function enrollSshProfile(request: SshProfileRequest): Promise<SshProfileSummary> {
+export async function scanHostKey(host: string, port: number): Promise<ScannedHostKey> {
+  requireTauriRuntime();
+  return invoke<ScannedHostKey>("scan_host_key", { request: { host, port } });
+}
+
+export async function enrollSshProfile(request: SshEnrollment): Promise<SshProfileSummary> {
   requireTauriRuntime();
   return invoke<SshProfileSummary>("enroll_ssh_profile", { request });
 }
@@ -197,16 +212,6 @@ export async function listSshProfiles(): Promise<SshProfileSummary[]> {
 export async function deleteSshProfile(profileId: string): Promise<void> {
   requireTauriRuntime();
   return invoke<void>("delete_ssh_profile", { request: { profileId, confirmed: true } });
-}
-
-export async function testSshProfile(profileId: string): Promise<void> {
-  requireTauriRuntime();
-  return invoke<void>("test_ssh_profile", { profileId });
-}
-
-export async function preflightSshProfile(profileId: string): Promise<SshPreflightSummary> {
-  requireTauriRuntime();
-  return invoke<SshPreflightSummary>("preflight_ssh_profile", { profileId });
 }
 
 export async function registerRepository(request: RepositoryRequest): Promise<RepositorySummary> {
@@ -238,10 +243,7 @@ export async function importRecoveryBundle(request: ImportRecoveryBundleRequest)
   requireTauriRuntime();
   return invoke<RepositorySummary>("import_recovery_bundle", { request });
 }
-export async function saveCapturePlan(request: CapturePlanRequest): Promise<CapturePlanSummary> { requireTauriRuntime(); return invoke<CapturePlanSummary>("save_capture_plan", { request }); }
 export async function previewCaptureSelection(request: BackupSelection): Promise<CaptureSelectionPreview> { requireTauriRuntime(); return invoke<CaptureSelectionPreview>("preview_capture_selection", { request }); }
-export async function listCapturePlans(): Promise<CapturePlanSummary[]> { if (!hasTauriRuntime()) return []; return invoke<CapturePlanSummary[]>("list_capture_plans"); }
-export async function runCapturePlan(planId: string, runId: string): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_plan", { request: { planId, runId } }); }
 export async function runCaptureSelection(request: CaptureSelectionExecutionRequest): Promise<CaptureJobSummary> { requireTauriRuntime(); return invoke<CaptureJobSummary>("run_capture_selection", { request }); }
 export async function cancelJob(runId: string): Promise<boolean> { if (!hasTauriRuntime()) return false; return invoke<boolean>("cancel_job", { runId }); }
 export async function listBackups(repositoryId: string): Promise<BackupSummary[]> { if (!hasTauriRuntime()) return []; return invoke<BackupSummary[]>("list_backups", { repositoryId }); }
@@ -249,8 +251,6 @@ export async function inspectRestoreBackup(repositoryId: string, backupId: strin
   requireTauriRuntime();
   return invoke<BackupRestoreDescription>("inspect_restore_backup", { request: { repositoryId, backupId, offset } });
 }
-export async function previewRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("preview_restore", { request }); }
-export async function executeRestore(request: RestoreRequest): Promise<RestoreImpactPreview> { requireTauriRuntime(); return invoke<RestoreImpactPreview>("execute_restore", { request }); }
 export async function previewDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("preview_deploy", { request }); }
 export async function executeDeploy(request: DeployRequest): Promise<DeploymentPreview> { requireTauriRuntime(); return invoke<DeploymentPreview>("execute_deploy", { request }); }
 export async function previewSourceReplacement(request: ReplacementRequest): Promise<ReplacementResult> { requireTauriRuntime(); return invoke<ReplacementResult>("preview_source_replacement", { request }); }

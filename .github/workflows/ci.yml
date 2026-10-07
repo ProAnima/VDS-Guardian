@@ -91,3 +91,9 @@ jobs:
           test "${#debs[@]}" -eq 1 && test "${#appimages[@]}" -eq 1
           test -x "${appimages[0]}"
           test ! -d target/release/bundle/rpm
+      - name: Prove the release desktop binary works as the password helper
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -x target/release/vds-guardian-desktop
+          GUARDIAN_DRILL_ASKPASS="$PWD/target/release/vds-guardian-desktop" npm run test:integration:drill -- password_login

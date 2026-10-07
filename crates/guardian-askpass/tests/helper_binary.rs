@@ -11,8 +11,11 @@ const PROMPT: &str = "backup@vds.example's password: ";
 
 fn run(prompt: &str, port: Option<&str>, token: Option<&str>) -> Result<Output, std::io::Error> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guardian-askpass"));
+    // OpenSSH always passes SSH_ASKPASS_REQUIRE to the helper it starts; without it the
+    // program is not acting as a helper at all.
     command
         .arg(prompt)
+        .env("SSH_ASKPASS_REQUIRE", "force")
         .env_remove(PORT_VARIABLE)
         .env_remove(TOKEN_VARIABLE);
     if let Some(port) = port {
@@ -73,6 +76,21 @@ fn fails_silently_without_configuration_or_with_a_malformed_token()
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
     }
+    Ok(())
+}
+
+#[test]
+fn stray_variables_without_the_askpass_call_shape_are_ignored()
+-> Result<(), Box<dyn std::error::Error>> {
+    let broker = Broker::start(b"S3cret-Pass!", Duration::from_secs(10))?;
+    let output = Command::new(env!("CARGO_BIN_EXE_guardian-askpass"))
+        .arg(PROMPT)
+        .env_remove("SSH_ASKPASS_REQUIRE")
+        .env(PORT_VARIABLE, broker.port().to_string())
+        .env(TOKEN_VARIABLE, broker.token())
+        .output()?;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
     Ok(())
 }
 

@@ -1,37 +1,16 @@
+use crate::ids::random_id;
 use guardian_configuration::{CapturePlanStore, RepositoryStore, StoredCapturePlan};
 use guardian_core::{
     BackupSelection, BackupSelectionItem, CaptureSelectionPreview, DiscoverDockerInventoryUseCase,
-    FilesystemCapturePlan, PlanId, ProfileId, ProfileStorePort, RepositoryId,
-    preview_capture_selection,
+    FilesystemCapturePlan, PlanId, ProfileStorePort, preview_capture_selection,
 };
 use guardian_docker::SshDockerInventoryAdapter;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
 use guardian_ssh::SystemOpenSsh;
-use rand_core::{OsRng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::PathBuf;
 use tauri::Manager;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavePlanRequest {
-    profile_id: String,
-    repository_id: String,
-    roots: Vec<String>,
-    database_path: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanSummary {
-    pub plan_id: String,
-    pub profile_id: String,
-    pub repository_id: String,
-    pub roots: Vec<String>,
-    pub database_path: Option<String>,
-    pub sha256: String,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,29 +18,6 @@ pub struct PlanFailure {
     pub code: &'static str,
     pub message: &'static str,
     pub remediation: &'static str,
-}
-
-pub async fn save(
-    app: tauri::AppHandle,
-    request: SavePlanRequest,
-) -> Result<PlanSummary, PlanFailure> {
-    let root = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| PlanFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || save_blocking(root, request))
-        .await
-        .map_err(|_| PlanFailure::internal())?
-}
-
-pub async fn list(app: tauri::AppHandle) -> Result<Vec<PlanSummary>, PlanFailure> {
-    let root = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| PlanFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || list_blocking(root))
-        .await
-        .map_err(|_| PlanFailure::internal())?
 }
 
 pub async fn preview(
@@ -77,30 +33,37 @@ pub async fn preview(
         .map_err(|_| PlanFailure::internal())?
 }
 
+/// Saves the exact previewed selection as a capture plan once its confirmation matches, and
+/// returns the new plan's id.
 pub(crate) fn save_confirmed_selection_blocking(
     root: PathBuf,
     request: BackupSelection,
     confirmation: &str,
-) -> Result<PlanSummary, PlanFailure> {
+) -> Result<String, PlanFailure> {
     let preview = preview_blocking(root.clone(), request)?;
     if preview.confirmation != confirmation {
         return Err(PlanFailure::confirmation());
     }
-    let source_layout = preview.source_layout.clone();
-    save_plan_blocking(
-        root,
-        SavePlanRequest {
-            profile_id: preview.profile_id.as_str().to_owned(),
-            repository_id: preview.repository_id.as_str().to_owned(),
-            roots: preview
-                .normalized_roots
-                .iter()
-                .map(|path| path.as_str().to_owned())
-                .collect(),
-            database_path: preview.sqlite_path.map(|path| path.as_str().to_owned()),
-        },
-        Some(source_layout),
-    )
+    let plan_id = PlanId::parse(random_id("plan")).map_err(|_| PlanFailure::internal())?;
+    let plan = FilesystemCapturePlan {
+        plan_id: plan_id.clone(),
+        version: 1,
+        profile_id: preview.profile_id,
+        repository_id: preview.repository_id,
+        roots: preview
+            .normalized_roots
+            .iter()
+            .map(|path| path.as_str().to_owned())
+            .collect(),
+        database_path: preview.sqlite_path.map(|path| path.as_str().to_owned()),
+    };
+    let stored = StoredCapturePlan::new(plan)
+        .and_then(|stored| stored.with_source_layout(preview.source_layout))
+        .map_err(|_| PlanFailure::invalid())?;
+    CapturePlanStore::at(root.join("plans"))
+        .upsert(stored)
+        .map_err(|_| PlanFailure::storage())?;
+    Ok(plan_id.as_str().to_owned())
 }
 
 fn preview_blocking(
@@ -142,90 +105,6 @@ fn docker_inventory(
     .execute(&request.profile_id)
     .map(Some)
     .map_err(|_| PlanFailure::invalid())
-}
-
-fn save_blocking(root: PathBuf, request: SavePlanRequest) -> Result<PlanSummary, PlanFailure> {
-    save_plan_blocking(root, request, None)
-}
-
-fn save_plan_blocking(
-    root: PathBuf,
-    request: SavePlanRequest,
-    source_layout: Option<guardian_core::SourceLayout>,
-) -> Result<PlanSummary, PlanFailure> {
-    let profile_id = ProfileId::parse(request.profile_id).map_err(|_| PlanFailure::invalid())?;
-    let repository_id =
-        RepositoryId::parse(request.repository_id).map_err(|_| PlanFailure::invalid())?;
-    ProfileStore::at(root.join("profiles"))
-        .get(&profile_id)
-        .map_err(|_| PlanFailure::storage())?
-        .ok_or_else(PlanFailure::invalid_reference)?;
-    RepositoryStore::at(root.join("repositories"))
-        .get(&repository_id)
-        .map_err(|_| PlanFailure::storage())?
-        .ok_or_else(PlanFailure::invalid_reference)?;
-    let plan = FilesystemCapturePlan {
-        plan_id: PlanId::parse(random_id()).map_err(|_| PlanFailure::internal())?,
-        version: 1,
-        profile_id,
-        repository_id,
-        roots: request.roots,
-        database_path: request.database_path,
-    };
-    let mut stored = StoredCapturePlan::new(plan).map_err(|_| PlanFailure::invalid())?;
-    if let Some(layout) = source_layout {
-        stored = stored
-            .with_source_layout(layout)
-            .map_err(|_| PlanFailure::invalid())?;
-    }
-    CapturePlanStore::at(root.join("plans"))
-        .upsert(stored.clone())
-        .map_err(|_| PlanFailure::storage())?;
-    Ok(PlanSummary::from(&stored))
-}
-
-fn list_blocking(root: PathBuf) -> Result<Vec<PlanSummary>, PlanFailure> {
-    let profiles = ProfileStore::at(root.join("profiles"));
-    let repositories = RepositoryStore::at(root.join("repositories"));
-    let plans = CapturePlanStore::at(root.join("plans"))
-        .list()
-        .map_err(|_| PlanFailure::storage())?;
-    for stored in &plans {
-        profiles
-            .get(&stored.plan.profile_id)
-            .map_err(|_| PlanFailure::storage())?
-            .ok_or_else(PlanFailure::invalid_reference)?;
-        repositories
-            .get(&stored.plan.repository_id)
-            .map_err(|_| PlanFailure::storage())?
-            .ok_or_else(PlanFailure::invalid_reference)?;
-    }
-    Ok(plans.iter().map(PlanSummary::from).collect())
-}
-
-fn random_id() -> String {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    format!(
-        "plan-{}",
-        bytes
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
-}
-
-impl From<&StoredCapturePlan> for PlanSummary {
-    fn from(value: &StoredCapturePlan) -> Self {
-        Self {
-            plan_id: value.plan.plan_id.as_str().to_owned(),
-            profile_id: value.plan.profile_id.as_str().to_owned(),
-            repository_id: value.plan.repository_id.as_str().to_owned(),
-            roots: value.plan.roots.clone(),
-            database_path: value.plan.database_path.clone(),
-            sha256: value.sha256.clone(),
-        }
-    }
 }
 
 impl PlanFailure {

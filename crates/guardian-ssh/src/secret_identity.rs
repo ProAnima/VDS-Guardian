@@ -108,14 +108,28 @@ impl SshIdentity {
         }))
     }
 
+    /// The kind of credential these stored bytes are, without exposing or keeping them.
+    pub fn auth_kind_of(credential: &[u8]) -> Result<guardian_core::AuthKind, SshError> {
+        Ok(match classify_secret(credential)? {
+            Classified::PrivateKey => guardian_core::AuthKind::SshKey,
+            Classified::AgentPublicKey { .. } => guardian_core::AuthKind::SshAgent,
+            Classified::Password(_) => guardian_core::AuthKind::Password,
+        })
+    }
+
     /// Encodes a login password as the marker stored under a `CredentialId`.
     pub fn encode_password(password: &str) -> Result<Vec<u8>, SshError> {
         validate_password(password.as_bytes())?;
-        Ok(format!(
-            "{PASSWORD_MARKER_HEADER}\n{}\n",
-            STANDARD.encode(password.as_bytes())
-        )
-        .into_bytes())
+        // Built in buffers sized up front so no unwiped intermediate copy of the password (or of
+        // its base64 form) is left behind by a reallocation.
+        let mut encoded = Zeroizing::new(String::with_capacity(password.len().div_ceil(3) * 4));
+        STANDARD.encode_string(password.as_bytes(), &mut encoded);
+        let mut marker = Vec::with_capacity(PASSWORD_MARKER_HEADER.len() + encoded.len() + 2);
+        marker.extend_from_slice(PASSWORD_MARKER_HEADER.as_bytes());
+        marker.push(b'\n');
+        marker.extend_from_slice(encoded.as_bytes());
+        marker.push(b'\n');
+        Ok(marker)
     }
 
     #[must_use]
@@ -127,6 +141,15 @@ impl SshIdentity {
         classify_secret(bytes).map(|_| ())
     }
 
+    /// Like [`Self::validate`] for bytes read from an operator-chosen key file: a private key or an
+    /// agent marker is accepted, a stored-password marker is not.
+    pub fn validate_key_material(bytes: &[u8]) -> Result<(), SshError> {
+        match classify_secret(bytes)? {
+            Classified::Password(_) => Err(SshError::InvalidCredential),
+            Classified::PrivateKey | Classified::AgentPublicKey { .. } => Ok(()),
+        }
+    }
+
     /// Interprets the bytes of an operator-chosen key file as the bytes to store
     /// under a `CredentialId`: a supported unencrypted private key is stored
     /// unchanged; an OpenSSH `.pub` line (`"<algorithm> <base64> [comment]"`)
@@ -136,8 +159,13 @@ impl SshIdentity {
     /// private key is always recognised first, so it can never be mistaken for
     /// a public key and silently downgraded to an agent identity.
     pub fn credential_from_key_file(bytes: &[u8]) -> Result<Vec<u8>, SshError> {
-        if Self::validate(bytes).is_ok() {
-            return Ok(bytes.to_vec());
+        match classify_secret(bytes) {
+            Ok(Classified::PrivateKey | Classified::AgentPublicKey { .. }) => {
+                return Ok(bytes.to_vec());
+            }
+            // A password is entered in the password field, never read from a file (ADR 0017).
+            Ok(Classified::Password(_)) => return Err(SshError::InvalidCredential),
+            Err(_) => {}
         }
         let text = std::str::from_utf8(bytes).map_err(|_| SshError::InvalidCredential)?;
         let mut fields = text.trim().split_ascii_whitespace();
@@ -640,6 +668,21 @@ ssh-ed25519
     }
 
     #[test]
+    fn a_stored_password_marker_is_never_accepted_from_a_key_file()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let marker = SshIdentity::encode_password("S3cret-Pass!")?;
+        assert!(SshIdentity::credential_from_key_file(&marker).is_err());
+        assert!(SshIdentity::validate_key_material(&marker).is_err());
+        assert!(
+            SshIdentity::validate(&marker).is_ok(),
+            "still a valid stored credential"
+        );
+        let agent = SshIdentity::encode_agent_identity("ssh-ed25519", &agent_public_key_blob())?;
+        assert!(SshIdentity::validate_key_material(&agent).is_ok());
+        Ok(())
+    }
+
+    #[test]
     fn unsupported_or_malformed_key_files_fail_closed() {
         let rsa = {
             let mut payload = Vec::new();
@@ -718,6 +761,31 @@ break",
         let identity = SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("helper"))?;
         assert!(identity.is_password());
         assert!(identity.key_path().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn stored_credentials_are_told_apart_by_kind_without_keeping_them()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use guardian_core::AuthKind;
+        let der = [
+            0x30, 0x09, 0x02, 0x01, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04,
+        ];
+        let pem = format!(
+            "{PEM_EC_HEADER}
+{}
+{PEM_EC_FOOTER}
+",
+            STANDARD.encode(der)
+        );
+        assert_eq!(SshIdentity::auth_kind_of(pem.as_bytes())?, AuthKind::SshKey);
+        let agent = SshIdentity::encode_agent_identity("ssh-ed25519", &agent_public_key_blob())?;
+        assert_eq!(SshIdentity::auth_kind_of(&agent)?, AuthKind::SshAgent);
+        assert_eq!(
+            SshIdentity::auth_kind_of(&SshIdentity::encode_password("hunter2")?)?,
+            AuthKind::Password
+        );
+        assert!(SshIdentity::auth_kind_of(b"not a credential").is_err());
         Ok(())
     }
 

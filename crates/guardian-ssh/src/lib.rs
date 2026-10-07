@@ -1,5 +1,6 @@
 //! Narrow system-OpenSSH adapter for pinned, read-only archive capture.
 
+mod host_key_scan;
 mod process;
 mod push;
 mod remote_browser;
@@ -24,6 +25,7 @@ use tempfile::{NamedTempFile, TempPath};
 use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
+pub use host_key_scan::{ScannedHostKey, openssh_fingerprint, scan_host_key};
 pub use push::{PushResult, ReplacementTarget, StagingTarget};
 pub use remote_browser::SshRemoteBrowserAdapter;
 pub use secret_identity::{
@@ -757,6 +759,9 @@ impl SystemOpenSsh {
 
     fn known_hosts_file(&self, host: &PinnedHost) -> Result<TempPath, SshError> {
         let mut known_hosts = NamedTempFile::new().map_err(|_| SshError::LocalIo)?;
+        if !usable_known_hosts_path(known_hosts.path()) {
+            return Err(SshError::LocalIo);
+        }
         known_hosts
             .write_all(host.known_hosts_line().as_bytes())
             .and_then(|_| known_hosts.flush())
@@ -781,7 +786,7 @@ impl SystemOpenSsh {
             "-o".into(),
             "StrictHostKeyChecking=yes".into(),
             "-o".into(),
-            format!("UserKnownHostsFile={}", known_hosts.display()).into(),
+            known_hosts_option(known_hosts).into(),
             "-o".into(),
             "GlobalKnownHostsFile=none".into(),
         ];
@@ -932,6 +937,8 @@ pub enum SshError {
     IdleTimedOut,
     #[error("SSH operation was cancelled by the operator")]
     Cancelled,
+    #[error("the server did not present a usable public host key")]
+    HostKeyUnavailable,
     #[error("SSH credential is unavailable")]
     CredentialUnavailable,
     #[error("SSH credential is not a supported SSH key, agent key or login password")]
@@ -1034,6 +1041,17 @@ fn database_server_probe_command(connection: &DatabaseConnection) -> Result<Stri
     })
 }
 
+/// `UserKnownHostsFile` is split on whitespace and `%`-expanded by OpenSSH, so the path is quoted
+/// and any path that quoting cannot carry safely is refused when the file is created.
+pub(crate) fn known_hosts_option(path: &Path) -> String {
+    format!("UserKnownHostsFile=\"{}\"", path.display())
+}
+
+pub(crate) fn usable_known_hosts_path(path: &Path) -> bool {
+    path.to_str()
+        .is_some_and(|text| !text.contains(['"', '%', '\n', '\r']))
+}
+
 fn valid_host(host: &str) -> bool {
     !host.is_empty()
         && host.len() <= 253
@@ -1070,6 +1088,21 @@ mod tests {
     /// dependency for) -- just a regression guard that the isolation flags
     /// `new_command` applies don't break ordinary spawning, since an invalid
     /// flag value would silently fail every SSH operation this crate makes.
+    #[test]
+    fn known_hosts_paths_are_quoted_and_unquotable_paths_are_refused() {
+        use std::path::Path;
+        assert_eq!(
+            super::known_hosts_option(Path::new("C:/Users/Jane Doe/known hosts")),
+            "UserKnownHostsFile=\"C:/Users/Jane Doe/known hosts\""
+        );
+        assert!(super::usable_known_hosts_path(Path::new(
+            "C:/Users/Jane Doe/AppData/kh"
+        )));
+        for bad in ["C:/a\"b", "C:/100%/kh", "/tmp/a\nb"] {
+            assert!(!super::usable_known_hosts_path(Path::new(bad)), "{bad:?}");
+        }
+    }
+
     fn environment(command: &Command) -> Vec<(String, String)> {
         command
             .get_envs()

@@ -1,3 +1,4 @@
+use crate::ids::random_id;
 use crate::{job_commands, restore_commands};
 use guardian_configuration::CapturePlanStore;
 use guardian_core::{
@@ -9,7 +10,6 @@ use guardian_docker::SshDockerInventoryAdapter;
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
 use guardian_ssh::SystemOpenSsh;
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
@@ -119,10 +119,7 @@ fn execute_blocking(
         RunId::parse(random_id("safety")).map_err(|_| ReplacementFailure::storage())?;
     let safety = job_commands::run_blocking(
         root,
-        job_commands::RunCapturePlanRequest {
-            plan_id: manifest.plan.plan_id.as_str().to_owned(),
-            run_id: safety_run.as_str().to_owned(),
-        },
+        manifest.plan.plan_id.as_str(),
         safety_run,
         handle.clone(),
     )
@@ -241,18 +238,6 @@ fn parse_run_id(request: &ReplacementRequest) -> Result<RunId, ReplacementFailur
         .as_deref()
         .ok_or_else(ReplacementFailure::storage)
         .and_then(|value| RunId::parse(value).map_err(|_| ReplacementFailure::storage()))
-}
-
-fn random_id(prefix: &str) -> String {
-    let mut bytes = [0_u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    format!(
-        "{prefix}-{}",
-        bytes
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    )
 }
 
 impl ReplacementFailure {

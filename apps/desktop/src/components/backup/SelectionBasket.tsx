@@ -29,7 +29,7 @@ export function SelectionBasket(props: SelectionBasketProps) {
       </header>
       <ul className="basket__list">
         {items.map((item) => <BasketRow item={item} key={itemKey(item)} onRemove={props.onRemove} t={t} />)}
-        {items.length === 0 && <li className="basket__empty" data-tip={t("selectionEmptyHint")}><FolderCheck size={26} aria-hidden="true" /></li>}
+        {items.length === 0 && <li className="basket__empty" data-tip={t("selectionEmptyHint")}><FolderCheck size={26} aria-hidden="true" /><span className="sr-only">{t("selectionEmptyHint")}</span></li>}
       </ul>
       <label className="basket__sqlite" data-tip={t("captureDatabaseHint")} data-tip-side="start">
         <Database size={15} aria-hidden="true" />

@@ -6,7 +6,7 @@ import { SshProfilePanel } from "./SshProfilePanel";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const commands = vi.hoisted(() => ({
-  deleteSshProfile: vi.fn(), enrollSshProfile: vi.fn(), listSshProfiles: vi.fn(), pickSshKeyPath: vi.fn(),
+  deleteSshProfile: vi.fn(), enrollSshProfile: vi.fn(), listSshProfiles: vi.fn(), pickSshKeyPath: vi.fn(), scanHostKey: vi.fn(),
 }));
 
 vi.mock("../shared/commands", async (importOriginal) => ({
@@ -40,13 +40,28 @@ describe("SSH profile loading", () => {
 
   it("keeps enrollment collapsed when a saved server exists", async () => {
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" },
     ]);
     await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
 
     await vi.waitFor(() => expect(container.textContent).toContain("VDS"));
     expect(container.querySelector(".server-form")).toBeNull();
     expect(container.querySelector('[aria-label="serversAdd"]')).not.toBeNull();
+  });
+
+  it("shows how each saved server is logged in to, marking a missing kind as unrecorded", async () => {
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "a", label: "Key", host: "a.example", port: 22, user: "backup", authKind: "ssh_key" },
+      { profileId: "b", label: "Agent", host: "b.example", port: 22, user: "backup", authKind: "ssh_agent" },
+      { profileId: "c", label: "Password", host: "c.example", port: 22, user: "root", authKind: "password" },
+      { profileId: "d", label: "Legacy", host: "d.example", port: 22, user: "backup" },
+    ]);
+    await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelectorAll(".server-row")).toHaveLength(4));
+    const kinds = [...container.querySelectorAll<HTMLElement>(".server-row__auth")].map((badge) => [badge.dataset.kind, badge.getAttribute("aria-label")]);
+    expect(kinds).toEqual([
+      ["ssh_key", "setupAuthKey"], ["ssh_agent", "serversAuthAgent"], ["password", "setupAuthPassword"], ["unknown", "serversAuthUnknown"],
+    ]);
   });
 
   it("does not show an empty state or form when the server registry cannot be read", async () => {
@@ -75,7 +90,7 @@ describe("password login enrollment", () => {
   beforeEach(async () => {
     container = document.createElement("div"); document.body.append(container); root = createRoot(container);
     commands.listSshProfiles.mockResolvedValue([]);
-    commands.enrollSshProfile.mockResolvedValue({ profileId: "p", label: "VDS", host: "vds.example", port: 22, user: "root" });
+    commands.enrollSshProfile.mockResolvedValue({ profileId: "p", label: "VDS", host: "vds.example", port: 22, user: "root", authKind: "ssh_key" });
     await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
     await vi.waitFor(() => expect(container.querySelector(".server-form")).not.toBeNull());
   });
@@ -122,7 +137,9 @@ describe("password login enrollment", () => {
     await act(async () => container.querySelector<HTMLInputElement>(".server-form__ack input")?.click());
     await act(async () => container.querySelector<HTMLFormElement>(".server-form")?.requestSubmit());
     await vi.waitFor(() => expect(commands.enrollSshProfile).toHaveBeenCalledOnce());
-    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({ authKind: "password", password: "S3cret-Pass!", user: "root" }));
+    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({
+      authKind: "password", password: "S3cret-Pass!", user: "root", hostKeyConfirmed: true, confirmedFingerprint: undefined,
+    }));
     await vi.waitFor(() => expect(container.textContent).not.toContain("S3cret-Pass!"));
     expect(JSON.stringify([...container.querySelectorAll("input")].map((input) => input.value))).not.toContain("S3cret");
   });
@@ -134,4 +151,105 @@ describe("password login enrollment", () => {
     await act(async () => mode("setupAuthPassword").click());
     expect(field("setupPassword").value).toBe("");
   });
+
+  const fetchButton = () => container.querySelector<HTMLButtonElement>('[aria-label="setupFetchHostKey"]') as HTMLButtonElement;
+  const acknowledge = () => container.querySelector<HTMLInputElement>(".server-form__ack input") as HTMLInputElement;
+  const scanned = { algorithm: "ssh-ed25519", publicKey: "AAAAC3NzaC1lZDI1NTE5AAAAIAgq", fingerprint: "SHA256:tLrx5oHgmHF9+Rj+Pvc8PH0KLLP6y3wrk/Mc4bF8Mb8" };
+
+  it("fetches the host key, shows its fingerprint and asks for a fresh confirmation", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    expect(fetchButton().disabled).toBe(true);
+    await type(field("setupHost"), "vds.example");
+    expect(fetchButton().disabled).toBe(false);
+    await act(async () => acknowledge().click());
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(field("setupHostKey").value).toBe("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgq"));
+    expect(commands.scanHostKey).toHaveBeenCalledWith("vds.example", 22);
+    expect(container.querySelector(".server-form__fingerprint")?.textContent).toContain(scanned.fingerprint);
+    expect(container.querySelector(".server-form__ack")?.textContent).toContain("setupVerifyFingerprint");
+    expect(acknowledge().checked).toBe(false);
+  });
+
+  it("forgets a fetched key when the address changes, so it can never be paired with another server", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    await type(field("setupHost"), "other.example");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+    expect(field("setupHostKey").value).toBe("");
+    expect(acknowledged()).toBe(false);
+    expect(container.querySelector(".server-form__ack")?.textContent).toContain("setupVerifyHostKey");
+  });
+
+  it("treats a manual edit as the operator's own key and drops the fingerprint and confirmation", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    await type(field("setupHostKey"), "ssh-ed25519 BBBB");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+    expect(acknowledged()).toBe(false);
+  });
+
+  it("leaves the key untouched and says so when the lookup fails", async () => {
+    commands.scanHostKey.mockRejectedValue(new Error("unreachable"));
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("setupFetchFailed"));
+    expect(field("setupHostKey").value).toBe("");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+  });
+
+  it("asks again after a second fetch even if the first key was confirmed", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    expect(acknowledged()).toBe(true);
+    commands.scanHostKey.mockResolvedValue({ ...scanned, fingerprint: "SHA256:changed" });
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")?.textContent).toContain("SHA256:changed"));
+    expect(acknowledged()).toBe(false);
+  });
+
+  it("sends the compared fingerprint with the enrollment when the key was fetched", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupLabel"), "VDS"); await type(field("setupHost"), "vds.example"); await type(field("setupUser"), "backup");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await type(field("setupKey"), "C:/keys/backup");
+    await act(async () => acknowledge().click());
+    await act(async () => container.querySelector<HTMLFormElement>(".server-form")?.requestSubmit());
+    await vi.waitFor(() => expect(commands.enrollSshProfile).toHaveBeenCalledOnce());
+    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({ hostKeyConfirmed: true, confirmedFingerprint: scanned.fingerprint }));
+  });
+
+  it("ignores a lookup that finishes after the address changed", async () => {
+    let finish!: (key: typeof scanned) => void;
+    commands.scanHostKey.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await type(field("setupHost"), "other.example");
+    await act(async () => finish(scanned));
+    expect(field("setupHostKey").value).toBe("");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+  });
+
+  it("withdraws the confirmation when a pasted key or the address is edited", async () => {
+    await type(field("setupHost"), "vds.example");
+    await type(field("setupHostKey"), "ssh-ed25519 AAAA");
+    await act(async () => acknowledge().click());
+    await type(field("setupHostKey"), "ssh-ed25519 BBBB");
+    expect(acknowledged()).toBe(false);
+    await act(async () => acknowledge().click());
+    await type(field("setupPort"), "2222");
+    expect(acknowledged()).toBe(false);
+  });
+
+  function acknowledged(): boolean { return acknowledge().checked; }
 });
+

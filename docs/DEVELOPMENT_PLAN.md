@@ -26,7 +26,9 @@ Included:
   boundary, for external tools and AI agents;
 - pinned SSH connection to a remote Linux server, initially by key/agent and
   by login password through the memory-only askpass broker of ADR 0017 (implemented
-  and drilled against a real `sshd`, including a `root` + password login);
+  and drilled against a real `sshd`, including a `root` + password login); the
+  desktop server form can fetch the host key and pins it only after the
+  operator confirms its fingerprint (ADR 0018);
 - bounded read-only remote filesystem browsing and Docker mount/group selection;
 - operator-selected data compiled to explicit absolute filesystem paths;
 - streaming tar.zst capture into a local or removable repository;

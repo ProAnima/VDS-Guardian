@@ -25,6 +25,8 @@ mod deploy_second_payload_failure;
 mod disk_exhaustion;
 #[path = "clean_room_drill/host_key_rejection.rs"]
 mod host_key_rejection;
+#[path = "clean_room_drill/host_key_scan.rs"]
+mod host_key_scan;
 #[path = "clean_room_drill/password_login.rs"]
 mod password_login;
 mod support;

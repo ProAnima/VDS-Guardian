@@ -14,8 +14,8 @@ use guardian_capture::{
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
     BackupSelection, BackupSelectionItem, CancellationHandle, CaptureSelectionPreview,
-    CaptureUseCaseError, DiscoverDockerInventoryUseCase, FilesystemCapturePlan, JobRegistry,
-    PlanId, ProfileStorePort, RunId, preview_capture_selection,
+    DiscoverDockerInventoryUseCase, FilesystemCapturePlan, JobRegistry, PlanId, ProfileStorePort,
+    RunId, preview_capture_selection,
 };
 use guardian_docker::SshDockerInventoryAdapter;
 use guardian_local_repository::LocalRepository;
@@ -26,69 +26,9 @@ use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use std::sync::Arc;
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct CaptureFailure {
-    pub code: &'static str,
-    pub message: &'static str,
-}
+mod failure;
 
-impl CaptureFailure {
-    fn plan() -> Self {
-        Self {
-            code: "capture_plan_not_ready",
-            message: "The capture plan, server, or repository is unavailable.",
-        }
-    }
-    fn signing() -> Self {
-        Self {
-            code: "signing_identity_unavailable",
-            message: "This node has no ready signing identity to verify backups with.",
-        }
-    }
-    fn repository() -> Self {
-        Self {
-            code: "repository_unavailable",
-            message: "The backup repository could not be opened.",
-        }
-    }
-    fn capture() -> Self {
-        Self {
-            code: "capture_failed",
-            message: "The backup did not pass the verified capture lifecycle.",
-        }
-    }
-    fn insufficient_space() -> Self {
-        Self {
-            code: "repository_disk_space_low",
-            message: "The repository disk does not have enough free space for this backup; free space or use a larger disk. Nothing was written.",
-        }
-    }
-    fn cancelled() -> Self {
-        Self {
-            code: "capture_cancelled",
-            message: "The capture was cancelled by the operator.",
-        }
-    }
-    fn recovery_key_required() -> Self {
-        Self {
-            code: "recovery_key_not_configured",
-            message: "This repository has no configured recovery key; run `recovery init` for it first.",
-        }
-    }
-    fn internal() -> Self {
-        Self {
-            code: "internal_error",
-            message: "The capture request could not be processed.",
-        }
-    }
-    fn selection() -> Self {
-        Self {
-            code: "capture_selection_changed",
-            message: "The selected server data changed or was not confirmed.",
-        }
-    }
-}
+pub use failure::CaptureFailure;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -190,19 +130,12 @@ pub(crate) fn run_capture(
         disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: guardian_archive::ArchiveLimits::conservative(),
     };
-    match composition.execute(requests.backup, requests.database, &identity) {
-        Ok(sealed) => Ok(CaptureJobSummary {
+    composition
+        .execute(requests.backup, requests.database, &identity)
+        .map(|sealed| CaptureJobSummary {
             backup_id: sealed.backup_id.as_str().to_owned(),
-        }),
-        Err(CaptureUseCaseError::RecoveryKeyRequired) => {
-            Err(CaptureFailure::recovery_key_required())
-        }
-        Err(CaptureUseCaseError::InsufficientRepositorySpace { .. }) => {
-            Err(CaptureFailure::insufficient_space())
-        }
-        Err(_) if handle.is_cancelled() => Err(CaptureFailure::cancelled()),
-        Err(_) => Err(CaptureFailure::capture()),
-    }
+        })
+        .map_err(|error| failure::capture_failure(&error, handle.is_cancelled()))
 }
 
 pub(crate) fn preview_selection(

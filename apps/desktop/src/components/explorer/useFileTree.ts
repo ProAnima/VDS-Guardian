@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Translate } from "../../i18n";
 import { browseRemoteDirectory, hasTauriRuntime, type RemoteBrowseEntry, type RemoteBrowsePage } from "../../shared/commands";
 import { safeErrorText } from "../../shared/safe-error";
+import { useLatest } from "../../shared/useLatest";
 
 export interface DirectoryState {
   entries: RemoteBrowseEntry[]; nextCursor?: string; truncated: boolean; loading: boolean; failure?: string;
@@ -27,6 +28,7 @@ export function useFileTree(profileId: string, t: Translate) {
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set(["/"]));
   const epoch = useRef(0);
+  const translate = useLatest(t);
   const patch = useCallback((path: string, change: (current: DirectoryState) => DirectoryState) => {
     setDirectories((all) => ({ ...all, [path]: change(all[path] ?? emptyDirectory) }));
   }, []);
@@ -42,9 +44,9 @@ export function useFileTree(profileId: string, t: Translate) {
         nextCursor: page.nextCursor, truncated: page.truncated, loading: false,
       }));
     } catch (error) {
-      if (current === epoch.current) patch(path, (state) => ({ ...state, loading: false, failure: safeErrorText(error, t("browserFailure")) }));
+      if (current === epoch.current) patch(path, (state) => ({ ...state, loading: false, failure: safeErrorText(error, translate.current("browserFailure")) }));
     }
-  }, [patch, profileId, t]);
+  }, [patch, profileId, translate]);
   useEffect(() => {
     epoch.current += 1;
     setDirectories({}); setExpanded(new Set(["/"]));

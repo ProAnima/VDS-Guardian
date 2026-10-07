@@ -26,9 +26,10 @@ verification, retention, or restore rules independently.
 The first release proves one manual path: enroll a pinned SSH server, browse a
 bounded filesystem/Docker projection, select explicit data, capture it to a
 local/removable repository, verify it, and restore to a new local or remote
-destination (ADR 0015). SQLite is the only required database-specific adapter.
-Scheduling, automatic Docker recreation, additional database engines, in-place
-recovery, and cloud storage are later capabilities.
+destination (ADR 0015) or replace the original data through the managed source
+replacement of ADR 0016. SQLite is the only required database-specific adapter.
+Scheduling, automatic Docker recreation, additional database engines, and cloud
+storage are later capabilities.
 
 ## Non-negotiable invariants
 
@@ -40,9 +41,12 @@ recovery, and cloud storage are later capabilities.
   treated as an ordinary file tree.
 - Remote input, manifests, paths, and command output are untrusted and validated.
 - SSH host keys are pinned. A changed host identity fails closed.
-- Password authentication, once implemented, preserves host pinning and never
-  exposes a password through argv, environment, shell text, config, logs, or a
-  temporary file.
+- Password authentication (ADR 0017, one-shot loopback askpass broker)
+  preserves host pinning and never exposes a password through argv,
+  environment, shell text, config, logs, or a temporary file.
+- A host key fetched for enrollment (ADR 0018) is never trusted by itself: it
+  is pinned only after the operator confirms its fingerprint, and the backend
+  rejects a confirmed fingerprint that does not belong to the submitted key.
 - Remote browsing is read-only, bounded, paginated, does not follow symlinks,
   and cannot accept an arbitrary command.
 - Private keys and passphrases never enter repository configuration or logs.

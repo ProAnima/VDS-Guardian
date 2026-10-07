@@ -71,7 +71,17 @@ The architecture decision and rejected alternatives are documented in
 ```text
 apps/desktop/          Tauri desktop shell and React UI
 crates/guardian-core/  Domain model and use cases; no UI or Tauri dependency
+crates/guardian-capture/  Verified capture pipeline and shared capture-request builder
+crates/guardian-deploy/  Composition root that pushes a sealed backup onto a VDS
+crates/guardian-ssh/   Pinned system-OpenSSH adapter, browser, host-key lookup
+crates/guardian-askpass/  One-shot SSH_ASKPASS helper and loopback password broker
+crates/guardian-docker/  Hostile-output-safe Docker inventory adapter
+crates/guardian-database/  Read-only database dump-tool discovery
+crates/guardian-archive/  Fail-closed tar.zst inspection
+crates/guardian-encryption/  Authenticated payload encryption
 crates/guardian-local-repository/  Cross-platform staging and seal adapter
+crates/guardian-configuration/  Atomic local stores for public desktop configuration
+crates/guardian-profile-store/  Atomic storage for non-secret pinned VDS profiles
 crates/guardian-signing/  Ed25519 backup-node identity lifecycle
 crates/guardian-os-keyring/  Windows/Linux secure credential-store adapter
 crates/guardian-vault/  Encrypted local file vault fallback for headless nodes
@@ -133,9 +143,10 @@ guardian-cli profile list --profiles-dir D:\VDSGuardian\profiles --json
 ```
 
 Importing a dedicated SSH key is a separate, explicit operation. The key is
-stored only in the OS credential store under the profile's credential ID; an
-existing credential is never overwritten. The current foundation accepts only
-unencrypted OpenSSH private keys, and does not yet support rotation.
+stored only in the OS credential store (or the encrypted vault selected with
+`--vault-dir`) under the profile's credential ID; an existing credential is
+never overwritten. The current foundation accepts only unencrypted OpenSSH or
+PEM (RSA, EC, PKCS#8) private keys, and does not yet support rotation.
 
 ```powershell
 guardian-cli credential import-ssh-key --credential-id credential-001 --input D:\VDSGuardian\backup.key --json
@@ -146,6 +157,9 @@ supported too: choose "Login password" in the desktop Servers form (ADR 0017).
 The password is kept only in the operating-system credential store and is sent
 to OpenSSH through a one-shot local broker, never through arguments, the
 environment or a file, and only after the server's pinned host key matches.
+Passwords can be stored only through the desktop app: the CLI has no
+password command, and `credential import-ssh-key` rejects a stored-password
+marker.
 
 A passphrase-protected key is supported instead through an already-running
 OS SSH agent (ADR 0009): register only its public key, and keep the

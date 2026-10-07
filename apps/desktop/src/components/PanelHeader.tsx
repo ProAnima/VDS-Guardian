@@ -15,7 +15,7 @@ export function PanelHeader({ id, icon: Icon, title, hint, children }: PanelHead
     <header className="panel-header">
       <Icon size={16} aria-hidden="true" />
       <h2 id={id}>{title}</h2>
-      {hint && <span className="field__hint" data-tip={hint} data-tip-side="start" role="img" aria-label={hint}><CircleHelp size={13} aria-hidden="true" /></span>}
+      {hint && <span className="field__hint" data-tip={hint} data-tip-side="start" tabIndex={0} role="img" aria-label={hint}><CircleHelp size={13} aria-hidden="true" /></span>}
       <span className="panel-header__end">{children}</span>
     </header>
   );

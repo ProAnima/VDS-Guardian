@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Translate } from "../../i18n";
 import { inspectRestoreBackup, type BackupRestoreDescription, type SshProfileSummary } from "../../shared/commands";
 import { safeErrorText } from "../../shared/safe-error";
+import { useLatest } from "../../shared/useLatest";
 
 export type RestoreMode = "separate" | "replace";
 
@@ -23,6 +24,7 @@ export function useRestoreSelection(profiles: SshProfileSummary[], repositoryId:
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [retryRevision, setRetryRevision] = useState(0);
+  const translate = useLatest(t);
   useEffect(() => {
     setDescription(undefined); setFailure(undefined);
     if (!repositoryId || !backupId) return;
@@ -36,13 +38,15 @@ export function useRestoreSelection(profiles: SshProfileSummary[], repositoryId:
         setSeparatePath(suggestRestorePath(value.roots[0]));
         if (!value.replacementAvailable || !profiles.some((item) => item.profileId === value.sourceProfileId)) setMode("separate");
       })
-      .catch((error: unknown) => { if (active) setFailure(safeErrorText(error, t("restoreErrorFallback"))); })
+      .catch((error: unknown) => { if (active) setFailure(safeErrorText(error, translate.current("restoreErrorFallback"))); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [repositoryId, backupId, profiles, retryRevision, t]);
+  }, [repositoryId, backupId, profiles, retryRevision, translate]);
   const replacementReady = Boolean(description?.replacementAvailable && profiles.some((item) => item.profileId === description.sourceProfileId));
+  // Replacing the original data always targets the server the backup came from.
+  const effectiveProfileId = mode === "replace" && description ? description.sourceProfileId : profileId;
   return {
-    description, profileId, setProfileId, mode, setMode, replacementReady, loading, failure,
+    description, profileId: effectiveProfileId, setProfileId, mode, setMode, replacementReady, loading, failure,
     targetPath: mode === "replace" ? description?.roots[0] ?? "" : separatePath,
     setTargetPath: setSeparatePath, retry: () => setRetryRevision((current) => current + 1),
   };

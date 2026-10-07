@@ -2,8 +2,9 @@
 
 Status: Milestone 1 implementation contract. Locked, journaled enrollment is
 implemented as a shared Rust service and exposed through explicit JSON CLI and
-Tauri bridge commands. The desktop setup screen shows status and offers a
-deliberate, acknowledged enrollment flow.
+Tauri bridge commands. The protection section of the desktop Backup view's
+settings drawer ("Protect backups") shows status and offers a deliberate,
+acknowledged enrollment flow.
 
 ## Purpose
 

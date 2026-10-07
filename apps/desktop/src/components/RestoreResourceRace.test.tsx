@@ -22,7 +22,7 @@ describe("restore resource races", () => {
       { repositoryId: "repo-1", label: "One", path: "D:/one", recoveryReady: true },
       { repositoryId: "repo-2", label: "Two", path: "D:/two", recoveryReady: true },
     ]);
-    commands.listSshProfiles.mockResolvedValue([{ profileId: "server-1", label: "VDS", host: "vds.example", port: 22, user: "backup" }]);
+    commands.listSshProfiles.mockResolvedValue([{ profileId: "server-1", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" }]);
   });
   afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.clearAllMocks(); });
 

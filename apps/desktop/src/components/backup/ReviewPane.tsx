@@ -18,7 +18,7 @@ export function ReviewPane({ preview, running, cancelling, onBack, onCreate, onC
     <aside className="basket review" aria-label={t("captureReviewTitle")}>
       <header className="basket__header">
         <button className="icon-button" type="button" disabled={running} onClick={onBack} {...tip(t("reviewBack"))}><ArrowLeft size={15} aria-hidden="true" /></button>
-        <ShieldCheck size={16} aria-hidden="true" data-tip={t("captureReviewSafe")} />
+        <span className="review__safe" tabIndex={0} role="img" {...tip(t("captureReviewSafe"))}><ShieldCheck size={16} aria-hidden="true" /></span>
         <strong>{t("captureReviewTitle")}</strong>
       </header>
       <div className="review__body">

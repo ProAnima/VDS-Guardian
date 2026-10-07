@@ -21,9 +21,9 @@ readable as an explicit compatibility case. A lightweight embedded-database
 single zstd-compressed file rather than a tar archive, encrypted the same way
 as the filesystem payload. A database payload can be sealed either as its own
 independent backup, or combined with a filesystem payload into one sealed
-backup from a single capture plan — the desktop's capture-plan flow now
-offers an optional database path alongside the filesystem roots and captures
-both into one manifest when set. Restore already treats both shapes
+backup from a single capture plan — the desktop Backup view's selection
+basket offers an optional SQLite database path alongside the selected roots,
+and the confirmed selection captures both into one manifest when set. Restore already treats both shapes
 identically, since the database payload was always optional and found by
 `logicalRole`, not position. Full plan/item schemas, key rotation fixtures,
 and restore compatibility evidence are still required before this contract

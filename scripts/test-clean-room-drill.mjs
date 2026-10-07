@@ -27,6 +27,9 @@ const binary = path.join(
   process.platform === "win32" ? "guardian-cli.exe" : "guardian-cli",
 );
 
+// Optional test-name filters, e.g. `npm run test:integration:drill -- password_login`.
+const filters = process.argv.slice(2);
+
 run(
   "cargo",
   [
@@ -35,6 +38,7 @@ run(
     "guardian-capture",
     "--test",
     "clean_room_drill",
+    ...filters,
     "--",
     "--ignored",
     "--nocapture",
