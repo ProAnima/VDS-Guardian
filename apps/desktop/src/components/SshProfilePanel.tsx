@@ -1,87 +1,41 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { CircleAlert, CircleCheck, KeyRound, LoaderCircle, Plus, Server, ShieldCheck, Trash2, Wifi } from "lucide-react";
-import {
-  deleteSshProfile, enrollSshProfile, hasTauriRuntime, listSshProfiles, pickSshKeyPath,
-  type SshProfileRequest, type SshProfileSummary,
-} from "../shared/commands";
-import { safeErrorText } from "../shared/safe-error";
+import { Check, CircleAlert, Plus, Server, X } from "lucide-react";
 import type { Translate } from "../i18n";
+import { tip } from "../shared/tip";
+import { EmptyNotice } from "./EmptyNotice";
 import { ResourceLoadFailure } from "./ResourceLoadFailure";
-
-const initialForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", keyPath: "" };
+import { ServerForm } from "./servers/ServerForm";
+import { ServerList } from "./servers/ServerList";
+import { useServers, type ServersModel } from "./servers/useServers";
 
 export function SshProfilePanel({ onProfilesChanged, t }: { onProfilesChanged: () => void; t: Translate }) {
-  const model = useSshProfile(onProfilesChanged, t);
-  return <section className="ssh-profile-panel" aria-labelledby="ssh-profile-title">
-    <header className="ssh-profile-panel__header"><div><p className="eyebrow"><Server size={15} aria-hidden="true" />{t("setupServerEyebrow")}</p><h1 id="ssh-profile-title">{t("serverManagerTitle")}</h1><p>{t("serversBody")}</p></div><span className="signing-state"><Wifi size={16} />SSH</span></header>
-    {model.loadFailure
-      ? <ResourceLoadFailure message={model.loadFailure} onRetry={() => void model.refresh()} retryLabel={t("readinessRefresh")} retrying={model.loading} />
-      : <><ServerCards model={model} t={t} />
-        {!model.loading && !model.formOpen && <button className="button button--secondary ssh-profile-panel__add" type="button" onClick={() => model.setFormOpen(true)}><Plus size={16} />{t("serversAdd")}</button>}
-        {!model.loading && model.formOpen && <ServerForm model={model} t={t} />}</>}
-    {model.failure && <p className="signing-panel__error" role="alert"><CircleAlert size={16} />{model.failure}</p>}
-    {model.result && <p className="ssh-profile-panel__success"><CircleCheck size={16} />{model.result}</p>}
-  </section>;
+  const model = useServers(onProfilesChanged, t);
+  const { list } = model;
+  return (
+    <div className="servers-view">
+      <div className="backup-toolbar" role="toolbar" aria-label={t("serverManagerTitle")}>
+        <button className="icon-button icon-button--large" type="button" disabled={list.loading || Boolean(list.loadFailure) || model.formOpen} onClick={() => model.setFormOpen(true)} {...tip(t("serversAdd"))}><Plus size={17} aria-hidden="true" /></button>
+      </div>
+      <div className="servers-view__body"><Body model={model} t={t} /></div>
+      <Notices model={model} t={t} />
+      {model.formOpen && !list.loading && !list.loadFailure && <ServerForm model={model} t={t} />}
+    </div>
+  );
 }
 
-function ServerCards({ model, t }: { model: SshProfileModel; t: Translate }) {
-  if (model.loading) return <p className="server-list__empty">{t("readinessLoading")}</p>;
-  if (model.profiles.length === 0) return <p className="server-list__empty">{t("serversEmpty")}</p>;
-  return <div className="server-list">{model.profiles.map((profile) => <article className="server-card" key={profile.profileId}>
-    <div className="server-card__icon"><Server size={19} /></div>
-    <div className="server-card__main"><strong>{profile.label}</strong><span>{profile.user}@{profile.host}:{profile.port}</span><small><ShieldCheck size={13} />{t("serversSshKey")}</small></div>
-    {model.confirmingId === profile.profileId
-      ? <div className="server-card__confirm"><span>{t("serversDeleteQuestion")}</span><button type="button" onClick={() => model.setConfirmingId(undefined)}>{t("serversCancel")}</button><button className="server-card__delete-confirm" disabled={model.deletingId === profile.profileId} type="button" onClick={() => void model.remove(profile)}>{model.deletingId === profile.profileId ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}{t("serversDelete")}</button></div>
-      : <button className="server-card__trash" aria-label={`${t("serversDelete")} ${profile.label}`} type="button" onClick={() => model.setConfirmingId(profile.profileId)}><Trash2 size={16} /></button>}
-  </article>)}</div>;
+function Body({ model, t }: { model: ServersModel; t: Translate }) {
+  const { list } = model;
+  if (list.loadFailure) return <ResourceLoadFailure message={list.loadFailure} onRetry={() => void list.refresh()} retryLabel={t("readinessRefresh")} retrying={list.loading} />;
+  if (list.loading) return <p className="empty-notice">{t("readinessLoading")}</p>;
+  if (list.profiles.length === 0) return <EmptyNotice icon={Server} message={t("serversEmpty")} />;
+  return <ServerList model={model} t={t} />;
 }
 
-function ServerForm({ model, t }: { model: SshProfileModel; t: Translate }) {
-  return <form className="ssh-profile-form" onSubmit={(event) => void model.submit(event)}>
-    <div className="ssh-profile-form__title"><strong>{t("setupServerTitle")}</strong>{model.profiles.length > 0 && <button type="button" onClick={() => model.setFormOpen(false)}>{t("serversCancel")}</button>}</div>
-    <label><span>{t("setupLabel")}</span><input value={model.form.label} onChange={(event) => model.setForm({ ...model.form, label: event.target.value })} required maxLength={128} /></label>
-    <label><span>{t("setupHost")}</span><input value={model.form.host} onChange={(event) => model.setForm({ ...model.form, host: event.target.value })} placeholder="vds.example.com" required /></label>
-    <label><span>{t("setupUser")}</span><input value={model.form.user} onChange={(event) => model.setForm({ ...model.form, user: event.target.value })} placeholder="backup" required /></label>
-    <label><span>{t("setupPort")}</span><input value={model.form.port} onChange={(event) => model.setForm({ ...model.form, port: Number(event.target.value) })} type="number" min={1} max={65535} required /></label>
-    <label className="ssh-profile-form__wide"><span>{t("setupHostKey")}</span><small>{t("setupHostKeyHint")}</small><input value={model.form.hostKey} onChange={(event) => model.setForm({ ...model.form, hostKey: event.target.value })} placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI…" required /></label>
-    <label className="ssh-profile-form__wide"><span>{t("setupKey")}</span><small>{t("setupKeyHint")}</small><span className="path-picker"><input value={model.form.keyPath} onChange={(event) => model.setForm({ ...model.form, keyPath: event.target.value })} placeholder={t("setupKeyPlaceholder")} required /><button type="button" onClick={() => void pickSshKeyPath().then((path) => path && model.setForm({ ...model.form, keyPath: path }))}>{t("setupBrowse")}</button></span></label>
-    <label className="ssh-profile-form__ack"><input checked={model.acknowledged} onChange={(event) => model.setAcknowledged(event.target.checked)} type="checkbox" />{t("setupVerifyHostKey")}</label>
-    <div className="ssh-profile-form__actions"><button className="button button--primary" disabled={!model.acknowledged || model.working || !hasTauriRuntime()} type="submit">{model.working ? <LoaderCircle className="spin" size={16} /> : <KeyRound size={16} />}{model.working ? t("setupSaving") : t("serverAddCheck")}</button>{!hasTauriRuntime() && <span className="signing-panel__desktop">{t("setupDesktopOnly")}</span>}</div>
-  </form>;
+function Notices({ model, t }: { model: ServersModel; t: Translate }) {
+  if (!model.result && !model.failure) return null;
+  return (
+    <div className="backup-feedback">
+      {model.result && <p className="backup-feedback__ok" role="status"><Check size={15} aria-hidden="true" />{model.result}<button className="icon-button" type="button" onClick={model.dismiss} {...tip(t("dismiss"))}><X size={13} aria-hidden="true" /></button></p>}
+      {model.failure && <p className="servers-view__error" role="alert"><CircleAlert size={15} aria-hidden="true" />{model.failure}</p>}
+    </div>
+  );
 }
-
-function useSshProfile(onProfilesChanged: () => void, t: Translate) {
-  const [profiles, setProfiles] = useState<SshProfileSummary[]>([]);
-  const [form, setForm] = useState(initialForm);
-  const [formOpen, setFormOpen] = useState(false);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const [working, setWorking] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<string>();
-  const [confirmingId, setConfirmingId] = useState<string>();
-  const [result, setResult] = useState<string>();
-  const [failure, setFailure] = useState<string>();
-  const [loadFailure, setLoadFailure] = useState<string>();
-  const refresh = useCallback(async () => {
-    setLoading(true); setLoadFailure(undefined);
-    try { const next = await listSshProfiles(); setProfiles(next); setFormOpen((current) => current || next.length === 0); }
-    catch (error) { setLoadFailure(errorText(error, t)); } finally { setLoading(false); }
-  }, [t]);
-  useEffect(() => { void refresh(); }, [refresh]);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); if (!acknowledged || !hasTauriRuntime()) return;
-    setWorking(true); setFailure(undefined); setResult(undefined);
-    try { const profile = await enrollSshProfile(form); setProfiles((current) => [...current, profile]); onProfilesChanged(); setForm(initialForm); setAcknowledged(false); setFormOpen(false); setResult(`${t("setupServerCreated")} ${profile.label}`); }
-    catch (error) { setFailure(errorText(error, t)); } finally { setWorking(false); }
-  };
-  const remove = async (profile: SshProfileSummary) => {
-    setDeletingId(profile.profileId); setFailure(undefined); setResult(undefined);
-    try { await deleteSshProfile(profile.profileId); await refresh(); setConfirmingId(undefined); onProfilesChanged(); setResult(`${t("serversDeleted")} ${profile.label}`); }
-    catch (error) { setFailure(errorText(error, t)); } finally { setDeletingId(undefined); }
-  };
-  return { profiles, form, formOpen, acknowledged, working, loading, loadFailure, deletingId, confirmingId, result, failure, setForm, setFormOpen, setAcknowledged, setConfirmingId, refresh, submit, remove };
-}
-
-type SshProfileModel = ReturnType<typeof useSshProfile>;
-
-function errorText(error: unknown, t: Translate): string { return safeErrorText(error, t("setupServerError")); }

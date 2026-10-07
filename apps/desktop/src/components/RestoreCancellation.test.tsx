@@ -68,7 +68,7 @@ describe("restore cancellation", () => {
 
   it("cancels the exact in-flight restore run", async () => {
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
-    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-1"]')).not.toBeNull());
     await act(async () => change(
       container.querySelector<HTMLInputElement>('input[placeholder="deployTargetPathHint"]'),
       "/srv/restored",
@@ -93,7 +93,7 @@ describe("restore cancellation", () => {
   it("rejects an existing remote destination before confirmation", async () => {
     commands.previewDeploy.mockRejectedValueOnce(new Error("target exists"));
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
-    await vi.waitFor(() => expect(container.querySelector('option[value="backup-1"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[data-backup-id="backup-1"]')).not.toBeNull());
     await act(async () => change(
       container.querySelector<HTMLInputElement>('input[placeholder="deployTargetPathHint"]'),
       "/srv/restored",
@@ -106,7 +106,7 @@ describe("restore cancellation", () => {
 
   it("shows live replacement conflicts and keeps execution disabled", async () => {
     await act(async () => root.render(<RestorePanel t={(key) => key} />));
-    await vi.waitFor(() => expect(container.textContent).toContain("restoreModeReplace"));
+    await vi.waitFor(() => expect(container.querySelector('[aria-label="restoreModeReplace"]')).not.toBeNull());
     await act(async () => button("restoreModeReplace").click());
     await act(async () => container.querySelector("form")?.requestSubmit());
     await vi.waitFor(() => expect(container.textContent).toContain("restoreFailureChanged: app"));
@@ -134,7 +134,7 @@ describe("restore cancellation", () => {
 
   function button(label: string): HTMLButtonElement {
     const match = [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent?.includes(label));
+      .find((candidate) => candidate.textContent?.includes(label) || candidate.getAttribute("aria-label") === label);
     if (!match) throw new Error(`missing button: ${label}`);
     return match;
   }

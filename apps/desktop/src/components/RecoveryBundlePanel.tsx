@@ -6,6 +6,7 @@ import {
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import type { Translate } from "../i18n";
+import { PanelHeader } from "./PanelHeader";
 
 export function RecoveryBundlePanel({ resourcesRevision, t }: { resourcesRevision: number; t: Translate }) {
   const [repositories, setRepositories] = useState<RepositorySummary[]>([]);
@@ -29,7 +30,7 @@ export function RecoveryBundlePanel({ resourcesRevision, t }: { resourcesRevisio
     } catch (reason) { setError(errorText(reason, t)); } finally { setWorking(false); }
   };
   return <section className="repository-panel" aria-labelledby="recovery-bundle-title">
-    <header className="repository-panel__header"><div><p className="eyebrow"><KeyRound size={15} />{t("recoveryExportEyebrow")}</p><h2 id="recovery-bundle-title">{t("recoveryExportTitle")}</h2><p>{t("recoveryExportBody")}</p></div></header>
+    <PanelHeader id="recovery-bundle-title" icon={KeyRound} title={t("recoveryExportTitle")} hint={t("recoveryExportBody")} />
     <form className="repository-form" onSubmit={(event) => void submit(event)}>
       <label><span>{t("setupStorage")}</span><select value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)} required>{repositories.map((item) => <option key={item.repositoryId} value={item.repositoryId}>{item.label}</option>)}</select></label>
       <label><span>{t("recoveryPassphrase")}</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} autoComplete="new-password" required /></label>

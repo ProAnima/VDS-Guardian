@@ -14,6 +14,8 @@ export function App() {
   const preferences = usePreferences();
   const [status, setStatus] = useState<FoundationStatus>(previewStatus);
   const [view, setView] = useState<ViewId>("overview");
+  const [setupTarget, setSetupTarget] = useState<"protection" | "storage">();
+  const navigate = (next: ViewId) => { setSetupTarget(undefined); setView(next); };
 
   useEffect(() => {
     void getFoundationStatus().then(setStatus);
@@ -21,23 +23,24 @@ export function App() {
 
   return (
     <div className="app-frame">
-      <AppSidebar t={preferences.t} activeView={view} onNavigate={setView} />
+      <AppSidebar t={preferences.t} activeView={view} onNavigate={navigate} />
       <div className="app-workspace">
         <AppHeader preferences={preferences} />
         {view === "overview" ? (
           <Dashboard
             status={status}
             t={preferences.t}
-            onAddServer={() => setView("servers")}
-            onRunBackup={() => setView("backup")}
-            onRestore={() => setView("restore")}
+            onAddServer={() => navigate("servers")}
+            onRunBackup={() => navigate("backup")}
+            onRestore={() => navigate("restore")}
+            onOpenSetup={(target) => { setSetupTarget(target); setView("backup"); }}
           />
         ) : view === "servers" ? (
           <ServersPanel t={preferences.t} />
         ) : view === "backup" ? (
-          <SetupPanel onManageServers={() => setView("servers")} t={preferences.t} />
+          <SetupPanel onManageServers={() => navigate("servers")} initialTarget={setupTarget} t={preferences.t} />
         ) : (
-          <RestorePanel onManageBackups={() => setView("backup")} onManageServers={() => setView("servers")} t={preferences.t} />
+          <RestorePanel onManageBackups={() => navigate("backup")} onManageServers={() => navigate("servers")} t={preferences.t} />
         )}
       </div>
     </div>

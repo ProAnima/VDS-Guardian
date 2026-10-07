@@ -24,3 +24,17 @@ function identityItem(identity: SigningIdentityStatus | undefined, t: Translate)
 function repositoryItem(repositories: RepositorySummary[] | undefined, ready: number, t: Translate): SetupStatusItem { return item(t("backupStorage"), Boolean(repositories?.length) && ready === repositories?.length, repositories ? repositoryDetail(repositories.length, ready, t) : t("readinessCheckFailed"), "storage"); }
 function profileItem(profiles: SshProfileSummary[] | undefined, t: Translate): SetupStatusItem { return item(t("backupServer"), Boolean(profiles?.length), profiles ? profiles.length > 0 ? `${t("readinessReady")}: ${profiles.length}` : t("readinessAddServer") : t("readinessCheckFailed"), "servers"); }
 function repositoryDetail(total: number, ready: number, t: Translate): string { return total === 0 ? t("backupStorageAction") : `${t("backupStorageReady")} ${ready}/${total}.`; }
+
+export type OverviewReadiness =
+  | { state: "loading" | "ready" | "attention"; title: string; body: string };
+
+interface OverviewInput { resources?: SetupResources; failureCount: number; loading: boolean; }
+
+/** Overview verdict derived from real setup state; never reports "ready" while any step is open or unchecked. */
+export function evaluateOverviewReadiness(input: OverviewInput, t: Translate): OverviewReadiness {
+  if (input.loading && !input.resources) return { state: "loading", title: t("statusInProgress"), body: t("readinessLoading") };
+  if (!input.resources || input.failureCount > 0) return { state: "attention", title: t("readinessTitle"), body: t("readinessCheckFailed") };
+  const open = evaluateSetupReadiness(input.resources, t).filter((entry) => entry.readiness !== "ready");
+  if (open.length === 0) return { state: "ready", title: t("statusReady"), body: t("securityBody") };
+  return { state: "attention", title: t("readinessTitle"), body: open.map((entry) => `${entry.label}: ${entry.detail}`).join(" · ") };
+}

@@ -5,11 +5,12 @@ import {
 } from "../shared/commands";
 import { safeErrorText } from "../shared/safe-error";
 import type { Translate } from "../i18n";
+import { PanelHeader } from "./PanelHeader";
 
 export function RecoveryImportPanel({ onRepositoriesChanged, t }: { onRepositoriesChanged: () => void; t: Translate }) {
   const model = useImportModel(onRepositoriesChanged, t);
   return <section className="repository-panel" aria-labelledby="recovery-import-title">
-    <header className="repository-panel__header"><div><p className="eyebrow"><KeyRound size={15} />{t("recoveryImportEyebrow")}</p><h2 id="recovery-import-title">{t("recoveryImportTitle")}</h2><p>{t("recoveryImportBody")}</p></div></header>
+    <PanelHeader id="recovery-import-title" icon={KeyRound} title={t("recoveryImportTitle")} hint={t("recoveryImportBody")} />
     <form className="repository-form" onSubmit={(event) => void model.submit(event)}>
       <label><span>{t("recoveryRepositoryId")}</span><input value={model.repositoryId} onChange={(event) => model.setRepositoryId(event.target.value)} required /></label>
       <PathField label={t("recoveryRepositoryFolder")} value={model.repositoryPath} onChange={model.setRepositoryPath} pick={pickRepositoryPath} t={t} />
