@@ -205,11 +205,15 @@ clean-room restore drill described above.
 
 Gate: the same fixture plan produces the same sealed backup and restore result
 when triggered through the desktop app and the API layer. Met at the
-composition-root level (see above); no automated test yet drives the
-literal desktop code path and the `guardian-mcp` code path side by side for
-byte-identical comparison — `guardian-mcp`'s own tests cover its tool
-surface and a real (in-memory transport) MCP protocol round trip
-independently.
+composition-root level (see above). The request a capture executes
+(manifest, source identity, plan reference, roots, payload names, optional
+SQLite request) is now assembled in one function,
+`guardian_capture::build_capture_requests`, which desktop and `guardian-mcp`
+both call instead of carrying duplicate copies; it is pure, so its
+determinism, plan/profile mismatch rejection, and timestamp formatting (leap
+days included) are unit-tested. A live side-by-side drill through both
+adapters remains open; `guardian-mcp`'s own tests cover its tool surface and
+a real (in-memory transport) MCP protocol round trip independently.
 
 ### 4. Complete the operator path
 
@@ -289,6 +293,19 @@ independently.
   packaging-smoke matrix passed on Windows and Linux for commit `43661a7` in CI
   run `29591493609` (2026-07-17); actual signed release evidence remains open.
 - Documentation and UI use the same release status and terminology.
+- Desktop UI density and accessibility pass. Closed: the shell is an icon rail
+  with localized tooltips that double as accessible names, so explanatory
+  captions no longer sit beside controls; Backups is one workspace whose tree
+  has Docker (Compose projects, containers, mounts) and Files as roots with
+  type-coloured icons, plus a selection basket and in-place review; Restore,
+  Servers, Overview and the setup panels follow the same pattern. Overview
+  reports real readiness instead of a constant, light/dark tokens meet WCAG AA
+  contrast, and touch targets enlarge on coarse pointers. This changes
+  presentation only; the operator contracts above are unchanged. Open: confirm
+  it in the release-candidate desktop usability drill on a real window.
+- A repository disk shortage is a typed capture failure
+  (`repository_disk_space_low`) that reports free and required bytes and
+  states that nothing was written, instead of a generic storage failure.
 
 Gate: a non-technical operator can configure one server, create one backup,
 verify it, and restore it to a new destination without editing JSON or reading

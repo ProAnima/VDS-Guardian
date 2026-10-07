@@ -2,6 +2,7 @@
 
 mod disk_space;
 mod embedded_database;
+mod request;
 
 use guardian_archive::{ArchiveLimits, TarZstdInspector, ZstdFileInspector};
 use guardian_core::{
@@ -21,6 +22,10 @@ use std::path::Path;
 pub use disk_space::{DiskSpacePort, SYSTEM_DISK_SPACE};
 pub use embedded_database::{EmbeddedDatabaseCaptureComposition, MAX_DATABASE_SNAPSHOT_BYTES};
 use embedded_database::{probe_remote_disk_budget, remote_disk_budget_is_sufficient};
+pub use request::{
+    CaptureBuildError, CaptureInput, CaptureRequests, build_capture_requests, current_timestamp,
+    new_backup_id,
+};
 
 pub const MAX_CAPTURE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 pub const MINIMUM_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;

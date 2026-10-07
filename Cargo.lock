@@ -1697,6 +1697,7 @@ dependencies = [
  "guardian-signing",
  "guardian-ssh",
  "guardian-vault",
+ "rand_core",
  "rusqlite",
  "serde",
  "serde_json",

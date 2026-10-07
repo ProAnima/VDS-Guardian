@@ -51,7 +51,8 @@ the security tests in `SECURITY_MODEL.md` exist.
 ### Backups
 
 The Backups view starts with a server picker and a visual, read-only explorer.
-It combines two discoverable sources without pretending they are the same:
+It combines two discoverable sources, shown as two roots (Docker and Files) of
+one tree, without pretending they are the same:
 
 - a remote filesystem tree with folders, regular files, sizes, and bounded
   metadata;

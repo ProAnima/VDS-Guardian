@@ -7,14 +7,15 @@
 
 use crate::config::ServerConfig;
 use crate::secret_store::resolve_store;
-use guardian_capture::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
+use guardian_capture::{
+    CaptureInput, FilesystemCaptureComposition, SYSTEM_DISK_SPACE, build_capture_requests,
+    current_timestamp, new_backup_id,
+};
 use guardian_configuration::{CapturePlanStore, RepositoryStore};
 use guardian_core::{
-    BackupId, BackupSelection, BackupSelectionItem, CancellationHandle, CaptureSelectionPreview,
-    CaptureUseCaseError, DiscoverDockerInventoryUseCase, EmbeddedDatabaseCaptureRequest,
-    FilesystemBackupRequest, FilesystemCapturePlan, FilesystemCaptureRequest, JobRegistry,
-    Manifest, PayloadPath, PlanId, PlanReference, Producer, ProfileStorePort, RunId,
-    SourceIdentity, Timestamp, preview_capture_selection,
+    BackupSelection, BackupSelectionItem, CancellationHandle, CaptureSelectionPreview,
+    CaptureUseCaseError, DiscoverDockerInventoryUseCase, FilesystemCapturePlan, JobRegistry,
+    PlanId, ProfileStorePort, RunId, preview_capture_selection,
 };
 use guardian_docker::SshDockerInventoryAdapter;
 use guardian_local_repository::LocalRepository;
@@ -24,7 +25,6 @@ use guardian_ssh::SystemOpenSsh;
 use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -169,52 +169,16 @@ pub(crate) fn run_capture(
         .map_err(|_| CaptureFailure::signing())?
         .load_ready(&secrets)
         .map_err(|_| CaptureFailure::signing())?;
-    let backup_id = BackupId::parse(random_id("backup")).map_err(|_| CaptureFailure::internal())?;
-    let created_at = now_timestamp()?;
-    let mut manifest = Manifest::new(
-        backup_id.clone(),
-        run_id.clone(),
-        created_at.clone(),
-        Producer {
-            name: "VDS Guardian".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            platform: std::env::consts::OS.to_owned(),
-        },
-        SourceIdentity {
-            profile_id: profile.profile_id.clone(),
-            host_key_fingerprint: guardian_core::host_key_fingerprint(
-                &profile.endpoint.host_pin.public_key_base64,
-            ),
-        },
-        PlanReference {
-            plan_id: stored.plan.plan_id.clone(),
-            version: stored.plan.version,
-            sha256: stored.sha256,
-        },
-    );
-    manifest.source_layout = stored.source_layout;
-    let database_path = stored.plan.database_path;
-    let request = FilesystemBackupRequest {
-        capture: FilesystemCaptureRequest {
-            run_id: run_id.clone(),
-            profile_id: profile.profile_id.clone(),
-            roots: stored.plan.roots,
-            payload_path: PayloadPath::parse("payload/filesystem-000.tar.zst.enc")
-                .map_err(|_| CaptureFailure::internal())?,
-        },
-        manifest,
-        sealed_at: created_at,
-    };
-    let database = match database_path {
-        Some(database_path) => Some(EmbeddedDatabaseCaptureRequest {
-            run_id: run_id.clone(),
-            profile_id: profile.profile_id.clone(),
-            database_path,
-            payload_path: PayloadPath::parse("payload/database-000.sqlite.zst.enc")
-                .map_err(|_| CaptureFailure::internal())?,
-        }),
-        None => None,
-    };
+    let requests = build_capture_requests(CaptureInput {
+        plan: &stored.plan,
+        plan_sha256: &stored.sha256,
+        source_layout: stored.source_layout,
+        profile: &profile,
+        run_id: &run_id,
+        backup_id: new_backup_id().map_err(|_| CaptureFailure::internal())?,
+        created_at: current_timestamp().map_err(|_| CaptureFailure::internal())?,
+    })
+    .map_err(|_| CaptureFailure::plan())?;
     let audit = NoopAudit;
     let ssh = SystemOpenSsh::default().with_cancellation(handle.clone());
     let composition = FilesystemCaptureComposition {
@@ -226,7 +190,7 @@ pub(crate) fn run_capture(
         disk_space: &SYSTEM_DISK_SPACE,
         archive_limits: guardian_archive::ArchiveLimits::conservative(),
     };
-    match composition.execute(request, database, &identity) {
+    match composition.execute(requests.backup, requests.database, &identity) {
         Ok(sealed) => Ok(CaptureJobSummary {
             backup_id: sealed.backup_id.as_str().to_owned(),
         }),
@@ -338,38 +302,6 @@ fn random_id(prefix: &str) -> String {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>()
-    )
-}
-
-fn now_timestamp() -> Result<Timestamp, CaptureFailure> {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| CaptureFailure::internal())?
-        .as_secs();
-    let days = i64::try_from(seconds / 86_400).map_err(|_| CaptureFailure::internal())?;
-    let (year, month, day) = civil_date(days);
-    let day_seconds = seconds % 86_400;
-    Timestamp::parse(format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        day_seconds / 3_600,
-        (day_seconds / 60) % 60,
-        day_seconds % 60
-    ))
-    .map_err(|_| CaptureFailure::internal())
-}
-
-fn civil_date(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    (
-        y + i64::from(mp >= 10),
-        u32::try_from(mp + if mp < 10 { 3 } else { -9 }).unwrap_or(1),
-        u32::try_from(doy - (153 * mp + 2) / 5 + 1).unwrap_or(1),
     )
 }
 
