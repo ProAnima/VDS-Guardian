@@ -86,8 +86,50 @@ impl HostKeyFailure {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostKeyFailure, map_error};
+    use super::{HostKeyFailure, ScanHostKeyRequest, map_error, scan};
     use guardian_ssh::SshError;
+
+    fn scan_code(host: &str, port: u16) -> Option<&'static str> {
+        let request = ScanHostKeyRequest {
+            host: host.to_owned(),
+            port,
+        };
+        tauri::async_runtime::block_on(scan(request))
+            .err()
+            .map(|failure| failure.code)
+    }
+
+    /// Each of these would reach OpenSSH as an option, a second argument, a `%` token or a
+    /// different destination. They are refused as an invalid address, which only the up-front
+    /// validation produces; a launched `ssh` could only end in `host_key_unavailable` or
+    /// `ssh_client_missing` (that no process is started is proven in guardian-ssh).
+    #[test]
+    fn hostile_addresses_are_refused_before_anything_is_started() {
+        let overlong = format!("{}.example", "a".repeat(250));
+        for hostile in [
+            "-oProxyCommand=calc.exe",
+            "-oProxyCommand=sh -c 'id>/tmp/pwned'",
+            "vds.example -oProxyCommand=calc",
+            "vds example",
+            "vds.example\n-oProxyCommand=calc",
+            "vds.example\r",
+            "\tvds.example",
+            "%h.example",
+            "vds%n",
+            "user@vds.example",
+            "vds.example:22",
+            "vds.example;calc",
+            "",
+            overlong.as_str(),
+        ] {
+            assert_eq!(
+                scan_code(hostile, 22),
+                Some("invalid_server_address"),
+                "{hostile:?}"
+            );
+        }
+        assert_eq!(scan_code("vds.example", 0), Some("invalid_server_address"));
+    }
 
     #[test]
     fn errors_are_mapped_to_safe_codes_without_internal_detail() {

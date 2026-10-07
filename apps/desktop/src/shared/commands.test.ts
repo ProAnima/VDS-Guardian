@@ -5,7 +5,6 @@ import {
   deleteSshProfile,
   browseRemoteDirectory,
   executeDeploy,
-  executeRestore,
   getFoundationStatus,
   getSigningIdentityStatus,
   listBackups,
@@ -13,7 +12,6 @@ import {
   previewDeploy,
   previewCaptureSelection,
   runCaptureSelection,
-  previewRestore,
 } from "./commands";
 
 describe("foundation bridge", () => {
@@ -48,11 +46,8 @@ describe("foundation bridge", () => {
     await expect(browseRemoteDirectory("profile-001", "/srv")).rejects.toThrow("desktop runtime");
   });
 
-  it("never previews or restores a backup from the browser preview", async () => {
+  it("lists no backups from the browser preview", async () => {
     await expect(listBackups("repository-001")).resolves.toEqual([]);
-    const request = { repositoryId: "repository-001", backupId: "backup-001", destination: "C:/restore" };
-    await expect(previewRestore(request)).rejects.toThrow("desktop runtime");
-    await expect(executeRestore(request)).rejects.toThrow("desktop runtime");
   });
 
   it("never previews or deploys a backup from the browser preview", async () => {

@@ -20,12 +20,14 @@ pub struct VdsProfile {
     pub endpoint: SshEndpoint,
     pub credential_id: CredentialId,
     /// How this server is logged in to; recorded so the UI can say so without reading any secret.
-    /// Absent in profiles saved before it existed, which are key logins.
+    /// `None` means "not recorded" (the profile was saved before the kind was tracked); it must
+    /// not be presented as any particular kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_kind: Option<AuthKind>,
 }
 
 /// The kind of credential stored under a profile's credential id (never the secret itself).
+/// A profile without one has an unrecorded kind, never an implied key login.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthKind {

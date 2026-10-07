@@ -17,13 +17,6 @@ use tauri::Manager;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RunCapturePlanRequest {
-    pub(crate) plan_id: String,
-    pub(crate) run_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RunCaptureSelectionRequest {
     selection: BackupSelection,
     confirmation: String,
@@ -44,27 +37,6 @@ pub struct CaptureJobFailure {
     pub remediation: Cow<'static, str>,
 }
 
-pub async fn run(
-    app: tauri::AppHandle,
-    request: RunCapturePlanRequest,
-) -> Result<CaptureJobSummary, CaptureJobFailure> {
-    let root = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| CaptureJobFailure::storage())?;
-    let run_id = RunId::parse(&request.run_id).map_err(|_| CaptureJobFailure::internal())?;
-    let handle = CancellationHandle::new();
-    // Registered here, before `spawn_blocking`, specifically so a
-    // concurrent `cancel_job` call fired while this job is still running
-    // can find it -- registering inside `run_blocking` itself would be too
-    // late for that race.
-    let registry = app.state::<JobRegistry>();
-    let _registration = registry.register(run_id.clone(), handle.clone());
-    tauri::async_runtime::spawn_blocking(move || run_blocking(root, request, run_id, handle))
-        .await
-        .map_err(|_| CaptureJobFailure::internal())?
-}
-
 pub async fn run_selection(
     app: tauri::AppHandle,
     request: RunCaptureSelectionRequest,
@@ -78,7 +50,7 @@ pub async fn run_selection(
     let registry = app.state::<JobRegistry>();
     let _registration = registry.register(run_id.clone(), handle.clone());
     tauri::async_runtime::spawn_blocking(move || {
-        let plan = crate::plan_commands::save_confirmed_selection_blocking(
+        let plan_id = crate::plan_commands::save_confirmed_selection_blocking(
             root.clone(),
             request.selection,
             &request.confirmation,
@@ -90,15 +62,7 @@ pub async fn run_selection(
             "plan_storage_unavailable" => CaptureJobFailure::storage(),
             _ => CaptureJobFailure::plan(),
         })?;
-        run_blocking(
-            root,
-            RunCapturePlanRequest {
-                plan_id: plan.plan_id,
-                run_id: request.run_id,
-            },
-            run_id,
-            handle,
-        )
+        run_blocking(root, &plan_id, run_id, handle)
     })
     .await
     .map_err(|_| CaptureJobFailure::internal())?
@@ -106,7 +70,7 @@ pub async fn run_selection(
 
 pub(crate) fn run_blocking(
     root: PathBuf,
-    request: RunCapturePlanRequest,
+    plan_id: &str,
     run_id: RunId,
     handle: CancellationHandle,
 ) -> Result<CaptureJobSummary, CaptureJobFailure> {
@@ -114,7 +78,7 @@ pub(crate) fn run_blocking(
         .list()
         .map_err(|_| CaptureJobFailure::storage())?
         .into_iter()
-        .find(|stored| stored.plan.plan_id.as_str() == request.plan_id)
+        .find(|stored| stored.plan.plan_id.as_str() == plan_id)
         .ok_or_else(CaptureJobFailure::plan)?;
     let profile = ProfileStore::at(root.join("profiles"))
         .get(&plan.plan.profile_id)
@@ -233,8 +197,10 @@ impl CaptureJobFailure {
     fn recovery_key_required() -> Self {
         Self {
             code: "recovery_key_not_configured",
-            message: "This repository has no configured recovery key.".into(),
-            remediation: "Run `guardian-cli recovery init` for this repository before capturing."
+            message: "This backup storage has no recovery key yet.".into(),
+            remediation: "In Backups, open \"Backup setup and recovery\" (the settings button), \
+                          choose \"Prepare recovery\" for this storage under \"Backup storage\", \
+                          then start the backup again."
                 .into(),
         }
     }
@@ -280,6 +246,21 @@ mod tests {
         assert!(failure.message.contains("12.7 GiB"));
         assert!(failure.message.contains("45.0 GiB"));
         assert!(failure.remediation.contains("Nothing was written"));
+    }
+
+    #[test]
+    fn a_missing_recovery_key_points_to_the_backup_settings_not_the_cli() {
+        let failure = CaptureJobFailure::recovery_key_required();
+        assert_eq!(failure.code, "recovery_key_not_configured");
+        for label in [
+            "Backups",
+            "Backup setup and recovery",
+            "Backup storage",
+            "Prepare recovery",
+        ] {
+            assert!(failure.remediation.contains(label), "{label}");
+        }
+        assert!(!failure.remediation.contains("guardian-cli"));
     }
 
     #[test]

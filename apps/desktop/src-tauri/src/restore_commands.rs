@@ -1,27 +1,15 @@
 use guardian_configuration::RepositoryStore;
-use guardian_core::{
-    BackupId, CancellationHandle, JobRegistry, RepositoryId, RestoreImpactPreview, RunId,
-};
+use guardian_core::RepositoryId;
 use guardian_local_repository::{LocalRepository, TrustedBackup};
 use guardian_os_keyring::OsCredentialStore;
 use guardian_signing::{PortableVerificationKey, SigningIdentityManager, VerificationIdentity};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 mod inspection;
 
 pub use inspection::{BackupRestoreDescription, InspectBackupRequest, inspect_backup};
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreRequest {
-    repository_id: String,
-    backup_id: String,
-    destination: String,
-    confirmation: Option<String>,
-    run_id: Option<String>,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,82 +61,6 @@ fn list_blocking(
         .map_err(|_| RestoreFailure::rejected())
 }
 
-pub async fn preview(
-    app: tauri::AppHandle,
-    request: RestoreRequest,
-) -> Result<RestoreImpactPreview, RestoreFailure> {
-    let root = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| RestoreFailure::storage())?;
-    tauri::async_runtime::spawn_blocking(move || plan(root, request))
-        .await
-        .map_err(|_| RestoreFailure::storage())?
-}
-
-pub async fn execute(
-    app: tauri::AppHandle,
-    request: RestoreRequest,
-) -> Result<RestoreImpactPreview, RestoreFailure> {
-    let root = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| RestoreFailure::storage())?;
-    let run_id = request
-        .run_id
-        .as_deref()
-        .ok_or_else(RestoreFailure::storage)
-        .and_then(|value| RunId::parse(value).map_err(|_| RestoreFailure::storage()))?;
-    let handle = CancellationHandle::new();
-    let registry = app.state::<JobRegistry>();
-    let _registration = registry.register(run_id, handle.clone());
-    tauri::async_runtime::spawn_blocking(move || execute_blocking(root, request, handle))
-        .await
-        .map_err(|_| RestoreFailure::storage())?
-}
-
-fn plan(root: PathBuf, request: RestoreRequest) -> Result<RestoreImpactPreview, RestoreFailure> {
-    let (repository, backup_id, identity) = resolve(root, &request)?;
-    let plan = repository
-        .plan_restore(&backup_id, &request.destination, &identity)
-        .map_err(|_| RestoreFailure::rejected())?;
-    Ok(plan.impact)
-}
-
-fn execute_blocking(
-    root: PathBuf,
-    request: RestoreRequest,
-    handle: CancellationHandle,
-) -> Result<RestoreImpactPreview, RestoreFailure> {
-    let confirmation = request
-        .confirmation
-        .as_deref()
-        .ok_or_else(RestoreFailure::confirmation)?;
-    let (repository, backup_id, identity) = resolve(root, &request)?;
-    let result = repository.execute_restore_with_cancellation(
-        &backup_id,
-        &request.destination,
-        confirmation,
-        &identity,
-        &OsCredentialStore,
-        &handle,
-    );
-    match result {
-        Ok(plan) => Ok(plan.impact),
-        Err(_) if handle.is_cancelled() => Err(RestoreFailure::cancelled()),
-        Err(_) => Err(RestoreFailure::rejected()),
-    }
-}
-
-fn resolve(
-    root: PathBuf,
-    request: &RestoreRequest,
-) -> Result<(LocalRepository, BackupId, VerificationIdentity), RestoreFailure> {
-    let backup_id = BackupId::parse(&request.backup_id).map_err(|_| RestoreFailure::rejected())?;
-    let (repository, identity) = resolve_repository(&root, &request.repository_id)?;
-    Ok((repository, backup_id, identity))
-}
-
 pub(crate) fn resolve_repository(
     root: &Path,
     repository_id: &str,
@@ -182,20 +94,6 @@ impl RestoreFailure {
             code: "restore_rejected",
             message: "The restore preview could not be verified safely.",
             remediation: "Use a sealed backup, a new absolute target folder, and the exact confirmation phrase.",
-        }
-    }
-    fn confirmation() -> Self {
-        Self {
-            code: "restore_confirmation_required",
-            message: "Exact restore confirmation is required.",
-            remediation: "Copy the confirmation phrase from the preview before restoring.",
-        }
-    }
-    fn cancelled() -> Self {
-        Self {
-            code: "restore_cancelled",
-            message: "The restore was cancelled by the operator.",
-            remediation: "The destination was not published. Review the backup and start a new restore when ready.",
         }
     }
     fn storage() -> Self {

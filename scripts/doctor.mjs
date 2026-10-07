@@ -22,8 +22,27 @@ if (npmEntry) {
 commandCheck("Rust compiler", "rustc", ["--version"]);
 commandCheck("Cargo", "cargo", ["--version"]);
 commandCheck("Git", "git", ["--version"]);
-commandCheck("Docker (future integration tests)", "docker", ["version", "--format", "{{.Server.Version}}"], false);
-commandCheck("OpenSSH client (future adapter spike)", "ssh", ["-V"], false);
+commandCheck("Docker (clean-room drill)", "docker", ["version", "--format", "{{.Server.Version}}"], false);
+openSshCheck();
+
+/**
+ * OpenSSH is the SSH transport. Password logins rely on SSH_ASKPASS_REQUIRE=force, which
+ * OpenSSH only honours from 8.4 on; key and agent logins work with older clients.
+ */
+function openSshCheck() {
+  const name = "OpenSSH client 8.4+ (SSH transport; password login needs SSH_ASKPASS_REQUIRE)";
+  const result = spawnSync("ssh", ["-V"], { encoding: "utf8", shell: false });
+  const banner = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim().split(/\r?\n/u)[0] ?? "";
+  if (result.status !== 0) {
+    checks.push({ name, ok: false, required: false, detail: result.error?.message ?? (banner || "not available") });
+    return;
+  }
+  const version = /OpenSSH[^\d]*(\d+)\.(\d+)/u.exec(banner);
+  const major = Number(version?.[1] ?? 0);
+  const minor = Number(version?.[2] ?? 0);
+  const ok = major > 8 || (major === 8 && minor >= 4);
+  checks.push({ name, ok, required: false, detail: ok ? banner : `${banner || "unknown version"} (password login unavailable before 8.4)` });
+}
 
 try {
   accessSync(process.cwd(), constants.R_OK | constants.W_OK);

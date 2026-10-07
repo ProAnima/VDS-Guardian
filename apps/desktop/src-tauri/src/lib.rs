@@ -1,6 +1,7 @@
 mod deploy_commands;
 mod docker_commands;
 mod host_key_commands;
+mod ids;
 mod job_commands;
 mod plan_commands;
 mod profile_commands;
@@ -65,22 +66,6 @@ async fn scan_host_key(
 }
 
 #[tauri::command]
-async fn test_ssh_profile(
-    app: tauri::AppHandle,
-    profile_id: String,
-) -> Result<(), profile_commands::ProfileCommandFailure> {
-    profile_commands::test(app, profile_id).await
-}
-
-#[tauri::command]
-async fn preflight_ssh_profile(
-    app: tauri::AppHandle,
-    profile_id: String,
-) -> Result<profile_commands::SshPreflightSummary, profile_commands::ProfileCommandFailure> {
-    profile_commands::preflight(app, profile_id).await
-}
-
-#[tauri::command]
 async fn register_repository(
     app: tauri::AppHandle,
     request: repository_commands::RegisterRepositoryRequest,
@@ -139,34 +124,11 @@ async fn import_recovery_bundle(
 }
 
 #[tauri::command]
-async fn save_capture_plan(
-    app: tauri::AppHandle,
-    request: plan_commands::SavePlanRequest,
-) -> Result<plan_commands::PlanSummary, plan_commands::PlanFailure> {
-    plan_commands::save(app, request).await
-}
-
-#[tauri::command]
 async fn preview_capture_selection(
     app: tauri::AppHandle,
     request: guardian_core::BackupSelection,
 ) -> Result<guardian_core::CaptureSelectionPreview, plan_commands::PlanFailure> {
     plan_commands::preview(app, request).await
-}
-
-#[tauri::command]
-async fn list_capture_plans(
-    app: tauri::AppHandle,
-) -> Result<Vec<plan_commands::PlanSummary>, plan_commands::PlanFailure> {
-    plan_commands::list(app).await
-}
-
-#[tauri::command]
-async fn run_capture_plan(
-    app: tauri::AppHandle,
-    request: job_commands::RunCapturePlanRequest,
-) -> Result<job_commands::CaptureJobSummary, job_commands::CaptureJobFailure> {
-    job_commands::run(app, request).await
 }
 
 #[tauri::command]
@@ -191,22 +153,6 @@ async fn inspect_restore_backup(
     request: restore_commands::InspectBackupRequest,
 ) -> Result<restore_commands::BackupRestoreDescription, restore_commands::RestoreFailure> {
     restore_commands::inspect_backup(app, request).await
-}
-
-#[tauri::command]
-async fn preview_restore(
-    app: tauri::AppHandle,
-    request: restore_commands::RestoreRequest,
-) -> Result<guardian_core::RestoreImpactPreview, restore_commands::RestoreFailure> {
-    restore_commands::preview(app, request).await
-}
-
-#[tauri::command]
-async fn execute_restore(
-    app: tauri::AppHandle,
-    request: restore_commands::RestoreRequest,
-) -> Result<guardian_core::RestoreImpactPreview, restore_commands::RestoreFailure> {
-    restore_commands::execute(app, request).await
 }
 
 #[tauri::command]
@@ -257,7 +203,7 @@ async fn execute_source_replacement(
     replacement_commands::execute(app, request).await
 }
 
-/// Signals cancellation for a still-running capture, restore, or deploy job, if one is
+/// Signals cancellation for a still-running capture, deploy, or source-replacement job, if one is
 /// registered under this run id. Synchronous and near-instant (a lock plus a
 /// flag store) — no `spawn_blocking` needed, unlike the long-running jobs it
 /// cancels. Returns whether a matching job was found, not whether it has
@@ -283,8 +229,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             list_ssh_profiles,
             delete_ssh_profile,
             scan_host_key,
-            test_ssh_profile,
-            preflight_ssh_profile,
             register_repository,
             list_repositories,
             update_repository_path,
@@ -292,15 +236,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             initialize_repository_recovery,
             export_recovery_bundle,
             import_recovery_bundle,
-            save_capture_plan,
             preview_capture_selection,
-            list_capture_plans,
-            run_capture_plan,
             run_capture_selection,
             list_backups,
             inspect_restore_backup,
-            preview_restore,
-            execute_restore,
             preview_deploy,
             execute_deploy,
             preview_source_replacement,

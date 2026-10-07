@@ -130,7 +130,7 @@ fn scan_arguments(host: &str, port: u16, timeout: Duration, known_hosts: &Path) 
     arguments
 }
 
-/// Picks the most preferred valid key from `ssh-keyscan` output (`<host> <algorithm> <base64>`).
+/// Picks the most preferred valid key from the throwaway `known_hosts` lines (`<host> <algorithm> <base64>`).
 pub(crate) fn parse_scan_output(output: &str) -> Result<ScannedHostKey, SshError> {
     let mut best: Option<(usize, ScannedHostKey)> = None;
     for line in output
@@ -239,24 +239,26 @@ mod tests {
 
     #[test]
     fn a_host_that_could_act_as_an_option_is_never_passed_to_the_program() {
+        // Launching this missing program fails as `LaunchFailed`: `InvalidHostPin` means unlaunched.
+        let scan = |host: &str, port| {
+            scan_host_key_with("guardian-no-such-ssh", host, port, Duration::from_secs(1))
+        };
         for bad in [
             "-oProxyCommand=calc",
             "",
             "host name",
+            "host\n-oX=y",
+            "\thost",
+            "host%h",
             "host;rm",
             "a..b",
             ".leading",
         ] {
-            assert_eq!(
-                scan_host_key(bad, 22, Duration::from_secs(1)),
-                Err(SshError::InvalidHostPin),
-                "{bad:?}"
-            );
+            assert_eq!(scan(bad, 22), Err(SshError::InvalidHostPin), "{bad:?}");
         }
-        assert_eq!(
-            scan_host_key("vds.example", 0, Duration::from_secs(1)),
-            Err(SshError::InvalidHostPin)
-        );
+        assert_eq!(scan("vds.example", 0), Err(SshError::InvalidHostPin));
+        assert_eq!(scan(&"a".repeat(254), 22), Err(SshError::InvalidHostPin));
+        assert_eq!(scan("vds.example", 22), Err(SshError::LaunchFailed));
     }
 
     #[test]

@@ -18,51 +18,11 @@ use guardian_ssh::{SshRemoteBrowserAdapter, SystemOpenSsh};
 use serde::Serialize;
 use std::time::Duration;
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct DiscoveryFailure {
-    pub code: &'static str,
-    pub message: &'static str,
-}
+mod failure;
+#[cfg(test)]
+mod tests;
 
-impl DiscoveryFailure {
-    fn storage() -> Self {
-        Self {
-            code: "storage_unavailable",
-            message: "Local application storage could not be read.",
-        }
-    }
-    fn not_found() -> Self {
-        Self {
-            code: "not_found",
-            message: "The requested profile or repository was not found.",
-        }
-    }
-    fn signing() -> Self {
-        Self {
-            code: "signing_identity_unavailable",
-            message: "This node has no ready signing identity to verify backups with.",
-        }
-    }
-    fn inspection_failed() -> Self {
-        Self {
-            code: "docker_inspection_failed",
-            message: "Could not read Docker containers from this server.",
-        }
-    }
-    fn browse_failed() -> Self {
-        Self {
-            code: "remote_browser_unavailable",
-            message: "The requested server directory could not be read safely.",
-        }
-    }
-    fn rejected() -> Self {
-        Self {
-            code: "listing_rejected",
-            message: "The repository's sealed backups could not be verified safely.",
-        }
-    }
-}
+pub use failure::DiscoveryFailure;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +32,10 @@ pub struct SshProfileSummary {
     pub host: String,
     pub port: u16,
     pub user: String,
+    /// How the server is logged in to, exactly as the desktop reports it; absent when the
+    /// profile was saved before the kind was recorded (never guessed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_kind: Option<guardian_core::AuthKind>,
 }
 
 impl From<&guardian_core::VdsProfile> for SshProfileSummary {
@@ -82,6 +46,7 @@ impl From<&guardian_core::VdsProfile> for SshProfileSummary {
             host: profile.endpoint.host.clone(),
             port: profile.endpoint.port,
             user: profile.endpoint.user.clone(),
+            auth_kind: profile.auth_kind,
         }
     }
 }
