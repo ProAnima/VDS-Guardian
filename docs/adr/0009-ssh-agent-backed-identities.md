@@ -149,3 +149,17 @@ fails closed automatically via existing machinery.
   and CLI-command unit tests. A follow-up could extend the clean-room
   drill's disposable fixture with a real `ssh-agent`/`ssh-add` step for
   full end-to-end coverage.
+
+## Addendum: desktop enrollment (2026-10)
+
+The desktop server form now enrolls an agent-backed profile. Choosing a
+`.pub` file instead of a private key stores the same `AGENT-IDENTITY-V1`
+marker through the shared `SshIdentity::credential_from_key_file`, so the
+desktop and CLI cannot disagree about what a key file means. The method tries
+to recognise a supported unencrypted private key first, so a private key can
+never be mistaken for a public key and downgraded; anything it cannot
+classify (encrypted private key, `ssh-rsa`, malformed text, non-UTF-8) fails
+closed with the existing `InvalidCredential` error, surfaced to the operator
+as `invalid_ssh_key` with remediation. The pinned capability preflight still
+runs before the profile becomes selectable. The live ssh-agent round-trip gap
+above is unchanged.

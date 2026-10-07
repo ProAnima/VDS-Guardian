@@ -64,7 +64,7 @@ export const ko = {
   restoreImpactAdds: "추가 예정", restoreImpactReplaces: "교체 예정",
   restoreImpactWorkloads: "백업 내용", dashboardStartTitle: "여기서 시작하세요", backupSettingsTitle: "백업 설정 및 복구", backupProtection: "백업 보호", backupProtectionAction: "첫 번째 백업 전에 보호를 준비하십시오.",
   backupStorage: "백업 스토리지", backupServer: "서버", backupChooseDataTitle: "백업할 항목 선택", backupReadyTitle: "백업을 만들 준비가 되었습니다.", backupReview: "백업 검토", backupCreate: "백업 만들기",
-  backupCreating: "생성 및 확인 중…", setupHostKeyHint: "공급자 또는 다른 신뢰할 수 있는 채널을 통해 확인된 서버 공개 호스트 키를 붙여넣습니다.", setupKeyHint: "이 서버에서 백업 데이터를 읽는 데 사용되는 개인 SSH 키를 선택하세요.",
+  backupCreating: "생성 및 확인 중…", setupHostKeyHint: "공급자 또는 다른 신뢰할 수 있는 채널을 통해 확인된 서버 공개 호스트 키를 붙여넣습니다.", setupKeyHint: "개인 SSH 키 또는 SSH 에이전트에 로드된 키의 .pub 파일(ed25519 또는 ECDSA)을 선택하세요.",
   serverAddCheck: "서버 추가 및 확인", backupChecklistTitle: "백업할 준비가 되셨나요?", backupStorageAction: "백업 폴더를 선택하고 복구 키를 준비하세요.", backupStorageReady: "복구 준비됨:",
   repositoryChangeFolder: "폴더 변경", repositorySaveFolder: "폴더 저장", repositoryCancel: "취소",
   repositoryDelete: "앱에서 제거", repositoryDeleteQuestion: "이 저장소를 앱에서 제거하시겠습니까?", repositoryDeleteWarning: "디스크의 백업은 그대로 유지됩니다.",

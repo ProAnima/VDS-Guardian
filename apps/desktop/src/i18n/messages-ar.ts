@@ -64,7 +64,7 @@ export const ar = {
   restoreImpactAdds: "سيتم إضافتها", restoreImpactReplaces: "سيتم استبداله",
   restoreImpactWorkloads: "محتويات النسخ الاحتياطي", dashboardStartTitle: "ابدأ هنا", backupSettingsTitle: "إعداد النسخ الاحتياطي والاسترداد", backupProtection: "حماية النسخ الاحتياطي", backupProtectionAction: "قم بإعداد الحماية قبل النسخ الاحتياطي الأول.",
   backupStorage: "تخزين النسخ الاحتياطية", backupServer: "الخادم", backupChooseDataTitle: "اختر ما تريد نسخه احتياطيًا", backupReadyTitle: "جاهز لإنشاء نسخة احتياطية", backupReview: "مراجعة النسخة الاحتياطية", backupCreate: "إنشاء نسخة احتياطية",
-  backupCreating: "الإنشاء والتحقق…", setupHostKeyHint: "الصق مفتاح المضيف العام للخادم الذي تم التحقق منه من خلال المزود الخاص بك أو قناة أخرى موثوقة.", setupKeyHint: "اختر مفتاح SSH الخاص المستخدم لقراءة بيانات النسخ الاحتياطي من هذا الخادم.",
+  backupCreating: "الإنشاء والتحقق…", setupHostKeyHint: "الصق مفتاح المضيف العام للخادم الذي تم التحقق منه من خلال المزود الخاص بك أو قناة أخرى موثوقة.", setupKeyHint: "اختر مفتاح SSH خاصاً، أو ملف .pub لمفتاح محمّل في وكيل SSH لديك (ed25519 أو ECDSA).",
   serverAddCheck: "إضافة والتحقق من الخادم", backupChecklistTitle: "هل أنت مستعد لعمل نسخة احتياطية؟", backupStorageAction: "اختر مجلد النسخ الاحتياطي وقم بإعداد مفتاح الاسترداد الخاص به.", backupStorageReady: "الاسترداد جاهز:",
   repositoryChangeFolder: "تغيير المجلد", repositorySaveFolder: "حفظ المجلد", repositoryCancel: "إلغاء",
   repositoryDelete: "إزالة من التطبيق", repositoryDeleteQuestion: "هل تريد إزالة مساحة التخزين هذه من التطبيق؟", repositoryDeleteWarning: "ستبقى النسخ الاحتياطية على القرص دون تغيير.",

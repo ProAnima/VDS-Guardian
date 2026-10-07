@@ -113,8 +113,11 @@ fn enroll_blocking(
     profile
         .validate()
         .map_err(|_| ProfileCommandFailure::invalid_profile())?;
+    // A private key is stored as-is; a `.pub` file becomes an SSH-agent identity marker.
     let key = read_key(Path::new(&request.key_path))?;
-    SshIdentity::validate(key.expose()).map_err(|_| ProfileCommandFailure::invalid_key())?;
+    let key = SshIdentity::credential_from_key_file(key.expose())
+        .map(SecretValue::new)
+        .map_err(|_| ProfileCommandFailure::invalid_key())?;
     let profiles = ProfileStore::at(root);
     let credentials = OsCredentialStore;
     let ssh = SystemOpenSsh::default();
@@ -267,8 +270,8 @@ impl ProfileCommandFailure {
     fn invalid_key() -> Self {
         Self {
             code: "invalid_ssh_key",
-            message: "The SSH key is not a supported unencrypted private key.",
-            remediation: "Use a dedicated unencrypted OpenSSH or PEM private key protected by the operating-system credential store.",
+            message: "The SSH key file is not a supported key.",
+            remediation: "Choose a dedicated unencrypted OpenSSH or PEM private key, or the .pub file of an ed25519 or ECDSA key that is loaded in your SSH agent.",
         }
     }
     fn credential_store() -> Self {

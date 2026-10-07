@@ -64,7 +64,7 @@ export const ja = {
   restoreImpactAdds: "追加されます", restoreImpactReplaces: "交換されます",
   restoreImpactWorkloads: "バックアップ内容", dashboardStartTitle: "ここから始めましょう", backupSettingsTitle: "バックアップのセットアップとリカバリ", backupProtection: "バックアップ保護", backupProtectionAction: "最初のバックアップの前に保護を準備します。",
   backupStorage: "バックアップストレージ", backupServer: "サーバー", backupChooseDataTitle: "何をバックアップするかを選択してください", backupReadyTitle: "バックアップを作成する準備ができました", backupReview: "バックアップを確認する", backupCreate: "バックアップの作成",
-  backupCreating: "作成と検証中…", setupHostKeyHint: "プロバイダーまたは別の信頼できるチャネルを通じて検証されたサーバーの公開ホスト キーを貼り付けます。", setupKeyHint: "このサーバーからバックアップ データを読み取るために使用される秘密 SSH キーを選択します。",
+  backupCreating: "作成と検証中…", setupHostKeyHint: "プロバイダーまたは別の信頼できるチャネルを通じて検証されたサーバーの公開ホスト キーを貼り付けます。", setupKeyHint: "秘密鍵、または SSH エージェントに読み込まれた鍵の .pub ファイル（ed25519 または ECDSA）を選択します。",
   serverAddCheck: "サーバーを追加して確認する", backupChecklistTitle: "バックアップの準備はできましたか?", backupStorageAction: "バックアップフォルダーを選択し、その回復キーを準備します。", backupStorageReady: "回復準備完了:",
   repositoryChangeFolder: "フォルダーを変更", repositorySaveFolder: "フォルダーを保存", repositoryCancel: "キャンセル",
   repositoryDelete: "アプリから削除", repositoryDeleteQuestion: "このストレージをアプリから削除しますか？", repositoryDeleteWarning: "ディスク上のバックアップは変更されません。",

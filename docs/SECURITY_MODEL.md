@@ -196,8 +196,11 @@ agent (or, on Windows, the OpenSSH Authentication Agent service) to hold
 the decrypted key and perform the signature. VDS Guardian never prompts
 for, stores, or otherwise sees the passphrase. Limited today to
 `ssh-ed25519`/`ecdsa-sha2-nistp256/384/521` identities, registered only
-through `guardian-cli credential register-agent-key`; desktop enrollment
-UI is not wired up yet. Operator-triggered cancellation (ADR 0010) now
+through `guardian-cli credential register-agent-key` or by choosing the
+`.pub` file in the desktop server form (one shared parser,
+`SshIdentity::credential_from_key_file`: a supported private key is always
+recognised first and stored unchanged, a `.pub` line becomes the marker, and
+an encrypted private key, `ssh-rsa` or malformed text fails closed). Operator-triggered cancellation (ADR 0010) now
 covers capture, deploy, and desktop local restore: the CLI installs a Ctrl+C
 handler for deploy and the desktop app exposes a Cancel affordance backed by a
 per-job registry, both

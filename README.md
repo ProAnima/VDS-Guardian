@@ -145,8 +145,8 @@ A passphrase-protected key is supported instead through an already-running
 OS SSH agent (ADR 0009): register only its public key, and keep the
 matching private key loaded in the agent at connection time. VDS Guardian
 never sees the passphrase. Limited to `ssh-ed25519`/`ecdsa-sha2-
-nistp256/384/521` identities for now; there is no desktop UI for this path
-yet.
+nistp256/384/521` identities for now. The desktop Servers form accepts the
+same thing: choose the key's `.pub` file instead of a private key.
 
 ```powershell
 guardian-cli credential register-agent-key --credential-id credential-002 --public-key-file D:\VDSGuardian\backup.pub --json

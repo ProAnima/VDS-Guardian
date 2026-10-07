@@ -64,7 +64,7 @@ export const zhCn = {
   restoreImpactAdds: "将会添加", restoreImpactReplaces: "将被替换",
   restoreImpactWorkloads: "备份内容", dashboardStartTitle: "从这里开始", backupSettingsTitle: "备份设置和恢复", backupProtection: "备份保护", backupProtectionAction: "在第一次备份之前准备好保护。",
   backupStorage: "备份存储", backupServer: "服务器", backupChooseDataTitle: "选择要备份的内容", backupReadyTitle: "准备创建备份", backupReview: "查看备份", backupCreate: "创建备份",
-  backupCreating: "创建并验证...", setupHostKeyHint: "粘贴通过您的提供商或其他可信渠道验证的服务器公共主机密钥。", setupKeyHint: "选择用于从此服务器读取备份数据的私有 SSH 密钥。",
+  backupCreating: "创建并验证...", setupHostKeyHint: "粘贴通过您的提供商或其他可信渠道验证的服务器公共主机密钥。", setupKeyHint: "选择私有 SSH 密钥，或已加载到 SSH 代理中的密钥的 .pub 文件（ed25519 或 ECDSA）。",
   serverAddCheck: "添加并验证服务器", backupChecklistTitle: "准备好备份了吗？", backupStorageAction: "选择一个备份文件夹并准备其恢复密钥。", backupStorageReady: "恢复准备就绪：",
   repositoryChangeFolder: "更改文件夹", repositorySaveFolder: "保存文件夹", repositoryCancel: "取消",
   repositoryDelete: "从应用中移除", repositoryDeleteQuestion: "从应用中移除此存储？", repositoryDeleteWarning: "磁盘上的备份将保持不变。",

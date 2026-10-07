@@ -67,6 +67,28 @@ impl SshIdentity {
         classify_secret(bytes).map(|_| ())
     }
 
+    /// Interprets the bytes of an operator-chosen key file as the bytes to store
+    /// under a `CredentialId`: a supported unencrypted private key is stored
+    /// unchanged; an OpenSSH `.pub` line (`"<algorithm> <base64> [comment]"`)
+    /// becomes an agent-identity marker, so a passphrase-protected key held by
+    /// an SSH agent can be enrolled by choosing its public file. Anything else
+    /// (an encrypted private key, `ssh-rsa`, malformed text) fails closed. A
+    /// private key is always recognised first, so it can never be mistaken for
+    /// a public key and silently downgraded to an agent identity.
+    pub fn credential_from_key_file(bytes: &[u8]) -> Result<Vec<u8>, SshError> {
+        if Self::validate(bytes).is_ok() {
+            return Ok(bytes.to_vec());
+        }
+        let text = std::str::from_utf8(bytes).map_err(|_| SshError::InvalidCredential)?;
+        let mut fields = text.trim().split_ascii_whitespace();
+        match (fields.next(), fields.next()) {
+            (Some(algorithm), Some(public_key_base64)) => {
+                Self::encode_agent_identity(algorithm, public_key_base64)
+            }
+            _ => Err(SshError::InvalidCredential),
+        }
+    }
+
     /// Encodes a validated agent-identity marker for storage under a
     /// `CredentialId`, exactly as `from_store` later expects to read it —
     /// the only public entry point that produces marker bytes, so callers
@@ -434,6 +456,85 @@ mod tests {
             agent_public_key_blob()
         );
         assert!(classify_secret(too_many.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn a_public_key_file_becomes_an_agent_marker_and_ignores_the_comment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let line = format!(
+            "ssh-ed25519 {} backup@laptop
+",
+            agent_public_key_blob()
+        );
+        let stored = SshIdentity::credential_from_key_file(line.as_bytes())?;
+        assert_eq!(
+            stored,
+            format!(
+                "AGENT-IDENTITY-V1
+ssh-ed25519
+{}
+",
+                agent_public_key_blob()
+            )
+            .into_bytes()
+        );
+        assert!(classify_secret(&stored).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn an_unencrypted_private_key_is_stored_unchanged_and_never_downgraded()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let der = [
+            0x30, 0x09, 0x02, 0x01, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04,
+        ];
+        let pem = format!(
+            "{PEM_EC_HEADER}
+{}
+{PEM_EC_FOOTER}
+",
+            STANDARD.encode(der)
+        );
+        assert_eq!(
+            SshIdentity::credential_from_key_file(pem.as_bytes())?,
+            pem.as_bytes()
+        );
+        let envelope = envelope(b"none", b"none", b"");
+        assert_eq!(SshIdentity::credential_from_key_file(&envelope)?, envelope);
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_or_malformed_key_files_fail_closed() {
+        let rsa = {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&7_u32.to_be_bytes());
+            payload.extend_from_slice(b"ssh-rsa");
+            payload.push(1);
+            format!(
+                "ssh-rsa {}
+",
+                STANDARD.encode(payload)
+            )
+        };
+        for bad in [
+            rsa.as_str(),
+            "",
+            "ssh-ed25519
+",
+            "ssh-ed25519 not-base64!!
+",
+            "-----BEGIN ENCRYPTED PRIVATE KEY-----
+AAAA
+-----END ENCRYPTED PRIVATE KEY-----
+",
+        ] {
+            assert!(
+                SshIdentity::credential_from_key_file(bad.as_bytes()).is_err(),
+                "{bad:?}"
+            );
+        }
+        assert!(SshIdentity::credential_from_key_file(&[0xff, 0xfe, 0xfd]).is_err());
     }
 
     fn agent_public_key_blob() -> String {

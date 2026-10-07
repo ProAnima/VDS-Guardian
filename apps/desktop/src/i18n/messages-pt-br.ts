@@ -64,7 +64,7 @@ export const ptBr = {
   restoreImpactAdds: "Será adicionado", restoreImpactReplaces: "Será substituído",
   restoreImpactWorkloads: "Conteúdo de backup", dashboardStartTitle: "Comece aqui", backupSettingsTitle: "Configuração e recuperação de backup", backupProtection: "Proteção de backup", backupProtectionAction: "Prepare a proteção antes do primeiro backup.",
   backupStorage: "Armazenamento de backup", backupServer: "Servidor", backupChooseDataTitle: "Escolha o que fazer backup", backupReadyTitle: "Pronto para criar um backup", backupReview: "Revise o backup", backupCreate: "Criar backup",
-  backupCreating: "Criando e verificando…", setupHostKeyHint: "Cole a chave pública do host do servidor verificada pelo seu provedor ou outro canal confiável.", setupKeyHint: "Escolha a chave privada SSH usada para ler os dados de backup deste servidor.",
+  backupCreating: "Criando e verificando…", setupHostKeyHint: "Cole a chave pública do host do servidor verificada pelo seu provedor ou outro canal confiável.", setupKeyHint: "Escolha uma chave SSH privada ou o arquivo .pub de uma chave carregada no seu agente SSH (ed25519 ou ECDSA).",
   serverAddCheck: "Adicionar e verificar servidor", backupChecklistTitle: "Pronto para fazer backup?", backupStorageAction: "Escolha uma pasta de backup e prepare sua chave de recuperação.", backupStorageReady: "Pronto para recuperação:",
   repositoryChangeFolder: "Alterar pasta", repositorySaveFolder: "Salvar pasta", repositoryCancel: "Cancelar",
   repositoryDelete: "Remover do aplicativo", repositoryDeleteQuestion: "Remover este armazenamento do aplicativo?", repositoryDeleteWarning: "Os backups no disco permanecerão intactos.",
