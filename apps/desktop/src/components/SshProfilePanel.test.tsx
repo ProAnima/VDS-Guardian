@@ -6,7 +6,7 @@ import { SshProfilePanel } from "./SshProfilePanel";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const commands = vi.hoisted(() => ({
-  deleteSshProfile: vi.fn(), enrollSshProfile: vi.fn(), listSshProfiles: vi.fn(), pickSshKeyPath: vi.fn(),
+  deleteSshProfile: vi.fn(), enrollSshProfile: vi.fn(), listSshProfiles: vi.fn(), pickSshKeyPath: vi.fn(), scanHostKey: vi.fn(),
 }));
 
 vi.mock("../shared/commands", async (importOriginal) => ({
@@ -134,4 +134,71 @@ describe("password login enrollment", () => {
     await act(async () => mode("setupAuthPassword").click());
     expect(field("setupPassword").value).toBe("");
   });
+
+  const fetchButton = () => container.querySelector<HTMLButtonElement>('[aria-label="setupFetchHostKey"]') as HTMLButtonElement;
+  const acknowledge = () => container.querySelector<HTMLInputElement>(".server-form__ack input") as HTMLInputElement;
+  const scanned = { algorithm: "ssh-ed25519", publicKey: "AAAAC3NzaC1lZDI1NTE5AAAAIAgq", fingerprint: "SHA256:tLrx5oHgmHF9+Rj+Pvc8PH0KLLP6y3wrk/Mc4bF8Mb8" };
+
+  it("fetches the host key, shows its fingerprint and asks for a fresh confirmation", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    expect(fetchButton().disabled).toBe(true);
+    await type(field("setupHost"), "vds.example");
+    expect(fetchButton().disabled).toBe(false);
+    await act(async () => acknowledge().click());
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(field("setupHostKey").value).toBe("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgq"));
+    expect(commands.scanHostKey).toHaveBeenCalledWith("vds.example", 22);
+    expect(container.querySelector(".server-form__fingerprint")?.textContent).toContain(scanned.fingerprint);
+    expect(container.querySelector(".server-form__ack")?.textContent).toContain("setupVerifyFingerprint");
+    expect(acknowledge().checked).toBe(false);
+  });
+
+  it("forgets a fetched key when the address changes, so it can never be paired with another server", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    await type(field("setupHost"), "other.example");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+    expect(field("setupHostKey").value).toBe("");
+    expect(acknowledged()).toBe(false);
+    expect(container.querySelector(".server-form__ack")?.textContent).toContain("setupVerifyHostKey");
+  });
+
+  it("treats a manual edit as the operator's own key and drops the fingerprint and confirmation", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    await type(field("setupHostKey"), "ssh-ed25519 BBBB");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+    expect(acknowledged()).toBe(false);
+  });
+
+  it("leaves the key untouched and says so when the lookup fails", async () => {
+    commands.scanHostKey.mockRejectedValue(new Error("unreachable"));
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("setupFetchFailed"));
+    expect(field("setupHostKey").value).toBe("");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+  });
+
+  it("asks again after a second fetch even if the first key was confirmed", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await act(async () => acknowledge().click());
+    expect(acknowledged()).toBe(true);
+    commands.scanHostKey.mockResolvedValue({ ...scanned, fingerprint: "SHA256:changed" });
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")?.textContent).toContain("SHA256:changed"));
+    expect(acknowledged()).toBe(false);
+  });
+
+  function acknowledged(): boolean { return acknowledge().checked; }
 });
+

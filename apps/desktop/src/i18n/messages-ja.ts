@@ -71,4 +71,5 @@ export const ja = {
   repositoryDeleted: "ストレージをアプリから削除しました：", repositoryPathUpdated: "ストレージフォルダーを変更しました：", repositoryPathHint: "同じストレージの既存フォルダーを選択してください。ファイルは移動されません。",
   explorerFiles: "ファイル", explorerDocker: "Docker", explorerExpand: "展開", explorerCollapse: "折りたたむ", dockerNotPersistent: "一時マウント（永続データではありません）", dockerUnresolved: "ホストパスを解決できません", reviewBack: "選択に戻る", dismiss: "閉じる",
   setupAuthKey: "SSH 鍵", setupAuthPassword: "ログインパスワード", setupPassword: "パスワード", setupPasswordHint: "OS の資格情報ストアにのみ保存され、サーバーの検証済みホスト鍵が一致した後にのみ送信されます。", setupPasswordShow: "パスワードを表示", setupPasswordHide: "パスワードを非表示", setupRootWarning: "root とパスワードでのログインは可能ですが、専用のバックアップユーザーの方が安全です。",
+  setupFetchHostKey: "サーバーのホスト鍵を取得", setupFingerprint: "フィンガープリント", setupFingerprintHint: "確認する前に、プロバイダーのパネルまたは ssh-keygen -l の出力のフィンガープリントと照合してください。", setupVerifyFingerprint: "このフィンガープリントをプロバイダーまたは他の信頼できる経路のものと照合しました。", setupFetchFailed: "サーバーのホスト鍵を読み取れませんでした。アドレスとポートを確認するか、鍵を手動で貼り付けてください。",
 } satisfies Record<MessageKey, string>;

@@ -50,6 +50,14 @@ export interface SshProfileRequest {
   password: string;
 }
 
+export interface ScannedHostKey {
+  algorithm: string;
+  /** Base64 public key, as the Servers form stores it after the algorithm. */
+  publicKey: string;
+  /** Standard OpenSSH SHA-256 fingerprint, comparable with a provider panel or `ssh-keygen -l`. */
+  fingerprint: string;
+}
+
 export interface SshProfileSummary {
   profileId: string;
   label: string;
@@ -182,6 +190,11 @@ export async function enrollSigningIdentity(): Promise<SigningIdentityEnrollment
   }
 
   return invoke<SigningIdentityEnrollment>("enroll_signing_identity");
+}
+
+export async function scanHostKey(host: string, port: number): Promise<ScannedHostKey> {
+  requireTauriRuntime();
+  return invoke<ScannedHostKey>("scan_host_key", { request: { host, port } });
 }
 
 export async function enrollSshProfile(request: SshProfileRequest): Promise<SshProfileSummary> {

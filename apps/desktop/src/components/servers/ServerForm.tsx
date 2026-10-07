@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { CircleAlert, CircleHelp, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, LockKeyhole, Server, X } from "lucide-react";
+import { CircleAlert, CircleHelp, Eye, EyeOff, FolderOpen, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, ScanSearch, Server, X } from "lucide-react";
 import type { Translate } from "../../i18n";
 import { hasTauriRuntime, pickSshKeyPath, type SshProfileRequest } from "../../shared/commands";
 import { tip } from "../../shared/tip";
+import { useHostKeyLookup, type HostKeyLookup } from "./useHostKeyLookup";
 import type { ServersModel } from "./useServers";
 
 export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) {
   const { enrollment, list } = model;
   const { form, setForm } = enrollment;
+  const lookup = useHostKeyLookup(form, setForm, enrollment.setAcknowledged, t);
   // Closing the form must not leave a typed password behind in memory.
   const close = () => { setForm({ ...form, password: "" }); model.setFormOpen(false); };
   return (
@@ -19,13 +21,13 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
       <form className="server-form" onSubmit={(event) => void enrollment.submit(event)}>
         <Field label={t("setupLabel")}><input value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} required maxLength={128} /></Field>
         <div className="server-form__pair">
-          <Field label={t("setupHost")}><input value={form.host} onChange={(event) => setForm({ ...form, host: event.target.value })} placeholder="vds.example.com" required spellCheck={false} /></Field>
-          <Field label={t("setupPort")} narrow><input value={form.port} onChange={(event) => setForm({ ...form, port: Number(event.target.value) })} type="number" min={1} max={65535} required /></Field>
+          <Field label={t("setupHost")}><input value={form.host} onChange={(event) => lookup.editAddress({ host: event.target.value })} placeholder="vds.example.com" required spellCheck={false} /></Field>
+          <Field label={t("setupPort")} narrow><input value={form.port} onChange={(event) => lookup.editAddress({ port: Number(event.target.value) })} type="number" min={1} max={65535} required /></Field>
         </div>
         <Field label={t("setupUser")}><input value={form.user} onChange={(event) => setForm({ ...form, user: event.target.value })} placeholder="backup" required spellCheck={false} /></Field>
-        <Field label={t("setupHostKey")} hint={t("setupHostKeyHint")}><input value={form.hostKey} onChange={(event) => setForm({ ...form, hostKey: event.target.value })} placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI…" required spellCheck={false} /></Field>
+        <HostKeyField form={form} lookup={lookup} t={t} />
         <AuthFields form={form} setForm={setForm} t={t} />
-        <label className="server-form__ack"><input checked={enrollment.acknowledged} onChange={(event) => enrollment.setAcknowledged(event.target.checked)} type="checkbox" />{t("setupVerifyHostKey")}</label>
+        <label className="server-form__ack"><input checked={enrollment.acknowledged} onChange={(event) => enrollment.setAcknowledged(event.target.checked)} type="checkbox" />{t(lookup.fetched ? "setupVerifyFingerprint" : "setupVerifyHostKey")}</label>
         <button className="button button--primary" disabled={!enrollment.acknowledged || enrollment.working || !hasTauriRuntime()} type="submit">
           {enrollment.working ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <KeyRound size={16} aria-hidden="true" />}
           {enrollment.working ? t("setupSaving") : t("serverAddCheck")}
@@ -33,6 +35,27 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
         {!hasTauriRuntime() && <p className="server-form__note">{t("setupDesktopOnly")}</p>}
       </form>
     </aside>
+  );
+}
+
+function HostKeyField({ form, lookup, t }: { form: SshProfileRequest; lookup: HostKeyLookup; t: Translate }) {
+  return (
+    <>
+      <Field label={t("setupHostKey")} hint={t("setupHostKeyHint")}>
+        <span className="server-form__picker">
+          <input value={form.hostKey} onChange={(event) => lookup.editHostKey(event.target.value)} placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI…" required spellCheck={false} />
+          <button className="icon-button icon-button--large" type="button" disabled={!form.host.trim() || lookup.busy || !hasTauriRuntime()} onClick={() => void lookup.lookup()} {...tip(t("setupFetchHostKey"))}>
+            {lookup.busy ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <ScanSearch size={16} aria-hidden="true" />}
+          </button>
+        </span>
+      </Field>
+      {lookup.fetched && (
+        <p className="server-form__fingerprint" data-tip={t("setupFingerprintHint")} data-tip-side="start">
+          <Fingerprint size={15} aria-hidden="true" /><span>{t("setupFingerprint")}</span><code>{lookup.fetched.fingerprint}</code>
+        </p>
+      )}
+      {lookup.failure && <p className="server-form__warning" role="alert"><CircleAlert size={14} aria-hidden="true" />{lookup.failure}</p>}
+    </>
   );
 }
 

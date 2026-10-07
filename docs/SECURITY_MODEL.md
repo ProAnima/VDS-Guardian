@@ -170,7 +170,11 @@ inspection after decryption and before a restore destination is published.
 
 ### SSH
 
-- First connection shows the fingerprint and requires explicit trust.
+- First connection shows the fingerprint and requires explicit trust. The desktop
+  Servers form can fetch the key the server presents (ADR 0018) and shows its
+  standard OpenSSH fingerprint; this is retrieval only, the operator's
+  acknowledgement that they compared the fingerprint out of band remains
+  mandatory and is reset by every new key, and the lookup is not exposed to MCP.
 - Later fingerprint changes fail closed and require a separate re-enrollment
   workflow; no accept-new fallback in scheduled jobs.
 - Use timeouts, keepalive, cancellation, output caps, and strict argument

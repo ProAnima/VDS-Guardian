@@ -38,6 +38,8 @@ The Servers view contains only server management:
 1. saved servers appear as readable cards with name, address, user,
    authentication kind, last verified state, and concise actions;
 2. adding a server is one short form followed by a real pinned-host preflight;
+   the form can fetch the host key and shows its fingerprint to compare, so the
+   operator never has to paste a key by hand (ADR 0018);
 3. supported authentication choices are SSH key/agent and login password (a
    `root` + password login works; the form recommends a dedicated backup user);
 4. deleting a server is a two-click, explicitly confirmed operation;

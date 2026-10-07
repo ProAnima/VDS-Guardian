@@ -71,4 +71,5 @@ export const zhCn = {
   repositoryDeleted: "已从应用中移除存储：", repositoryPathUpdated: "存储文件夹已更改：", repositoryPathHint: "请选择同一存储的现有文件夹。文件不会被移动。",
   explorerFiles: "文件", explorerDocker: "Docker", explorerExpand: "展开", explorerCollapse: "折叠", dockerNotPersistent: "临时挂载，非持久数据", dockerUnresolved: "无法解析主机路径", reviewBack: "返回选择", dismiss: "关闭",
   setupAuthKey: "SSH 密钥", setupAuthPassword: "登录密码", setupPassword: "密码", setupPasswordHint: "仅保存在操作系统的凭据存储中，并且只有在服务器已验证的主机密钥匹配后才会发送。", setupPasswordShow: "显示密码", setupPasswordHide: "隐藏密码", setupRootWarning: "使用 root 和密码登录可行，但使用专用备份用户更安全。",
+  setupFetchHostKey: "获取服务器主机密钥", setupFingerprint: "指纹", setupFingerprintHint: "确认前，请将其与服务商面板中的指纹或 ssh-keygen -l 的输出进行比对。", setupVerifyFingerprint: "我已将此指纹与服务商或其他可信渠道提供的指纹进行比对。", setupFetchFailed: "无法读取服务器的主机密钥。请检查地址和端口，或手动粘贴密钥。",
 } satisfies Record<MessageKey, string>;

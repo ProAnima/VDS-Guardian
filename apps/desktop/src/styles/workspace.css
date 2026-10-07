@@ -251,3 +251,5 @@
 .server-form__modes button[data-active] { color: var(--accent); background: var(--accent-soft); }
 .server-form__warning { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--amber); font-size: .72rem; line-height: 1.4; }
 .server-form__warning svg { flex: none; margin-block-start: 2px; }
+.server-form__fingerprint { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text-secondary); background: var(--surface); font-size: .72rem; }
+.server-form__fingerprint code { overflow-wrap: anywhere; color: var(--text); font: .72rem var(--font-mono); user-select: all; }

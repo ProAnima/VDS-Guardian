@@ -1,5 +1,6 @@
 mod deploy_commands;
 mod docker_commands;
+mod host_key_commands;
 mod job_commands;
 mod plan_commands;
 mod profile_commands;
@@ -54,6 +55,13 @@ async fn delete_ssh_profile(
     request: profile_delete::DeleteProfileRequest,
 ) -> Result<(), profile_delete::DeleteProfileFailure> {
     profile_delete::delete(app, request).await
+}
+
+#[tauri::command]
+async fn scan_host_key(
+    request: host_key_commands::ScanHostKeyRequest,
+) -> Result<host_key_commands::HostKeySummary, host_key_commands::HostKeyFailure> {
+    host_key_commands::scan(request).await
 }
 
 #[tauri::command]
@@ -274,6 +282,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             enroll_ssh_profile,
             list_ssh_profiles,
             delete_ssh_profile,
+            scan_host_key,
             test_ssh_profile,
             preflight_ssh_profile,
             register_repository,

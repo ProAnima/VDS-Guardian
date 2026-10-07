@@ -1,5 +1,6 @@
 //! Narrow system-OpenSSH adapter for pinned, read-only archive capture.
 
+mod host_key_scan;
 mod process;
 mod push;
 mod remote_browser;
@@ -24,6 +25,7 @@ use tempfile::{NamedTempFile, TempPath};
 use thiserror::Error;
 
 pub use guardian_core::CancellationHandle;
+pub use host_key_scan::{ScannedHostKey, openssh_fingerprint, scan_host_key};
 pub use push::{PushResult, ReplacementTarget, StagingTarget};
 pub use remote_browser::SshRemoteBrowserAdapter;
 pub use secret_identity::{
@@ -932,6 +934,8 @@ pub enum SshError {
     IdleTimedOut,
     #[error("SSH operation was cancelled by the operator")]
     Cancelled,
+    #[error("the server did not present a usable public host key")]
+    HostKeyUnavailable,
     #[error("SSH credential is unavailable")]
     CredentialUnavailable,
     #[error("SSH credential is not a supported SSH key, agent key or login password")]
