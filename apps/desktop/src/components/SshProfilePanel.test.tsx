@@ -137,7 +137,9 @@ describe("password login enrollment", () => {
     await act(async () => container.querySelector<HTMLInputElement>(".server-form__ack input")?.click());
     await act(async () => container.querySelector<HTMLFormElement>(".server-form")?.requestSubmit());
     await vi.waitFor(() => expect(commands.enrollSshProfile).toHaveBeenCalledOnce());
-    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({ authKind: "password", password: "S3cret-Pass!", user: "root" }));
+    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({
+      authKind: "password", password: "S3cret-Pass!", user: "root", hostKeyConfirmed: true, confirmedFingerprint: undefined,
+    }));
     await vi.waitFor(() => expect(container.textContent).not.toContain("S3cret-Pass!"));
     expect(JSON.stringify([...container.querySelectorAll("input")].map((input) => input.value))).not.toContain("S3cret");
   });
@@ -211,6 +213,40 @@ describe("password login enrollment", () => {
     commands.scanHostKey.mockResolvedValue({ ...scanned, fingerprint: "SHA256:changed" });
     await act(async () => fetchButton().click());
     await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")?.textContent).toContain("SHA256:changed"));
+    expect(acknowledged()).toBe(false);
+  });
+
+  it("sends the compared fingerprint with the enrollment when the key was fetched", async () => {
+    commands.scanHostKey.mockResolvedValue(scanned);
+    await type(field("setupLabel"), "VDS"); await type(field("setupHost"), "vds.example"); await type(field("setupUser"), "backup");
+    await act(async () => fetchButton().click());
+    await vi.waitFor(() => expect(container.querySelector(".server-form__fingerprint")).not.toBeNull());
+    await type(field("setupKey"), "C:/keys/backup");
+    await act(async () => acknowledge().click());
+    await act(async () => container.querySelector<HTMLFormElement>(".server-form")?.requestSubmit());
+    await vi.waitFor(() => expect(commands.enrollSshProfile).toHaveBeenCalledOnce());
+    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({ hostKeyConfirmed: true, confirmedFingerprint: scanned.fingerprint }));
+  });
+
+  it("ignores a lookup that finishes after the address changed", async () => {
+    let finish!: (key: typeof scanned) => void;
+    commands.scanHostKey.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await type(field("setupHost"), "vds.example");
+    await act(async () => fetchButton().click());
+    await type(field("setupHost"), "other.example");
+    await act(async () => finish(scanned));
+    expect(field("setupHostKey").value).toBe("");
+    expect(container.querySelector(".server-form__fingerprint")).toBeNull();
+  });
+
+  it("withdraws the confirmation when a pasted key or the address is edited", async () => {
+    await type(field("setupHost"), "vds.example");
+    await type(field("setupHostKey"), "ssh-ed25519 AAAA");
+    await act(async () => acknowledge().click());
+    await type(field("setupHostKey"), "ssh-ed25519 BBBB");
+    expect(acknowledged()).toBe(false);
+    await act(async () => acknowledge().click());
+    await type(field("setupPort"), "2222");
     expect(acknowledged()).toBe(false);
   });
 

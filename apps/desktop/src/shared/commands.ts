@@ -50,6 +50,13 @@ export interface SshProfileRequest {
   password: string;
 }
 
+/** What is sent to enroll a server: the form plus the operator's host-key decision. */
+export interface SshEnrollment extends SshProfileRequest {
+  hostKeyConfirmed: boolean;
+  /** Present when the key was fetched: the fingerprint the operator compared. */
+  confirmedFingerprint?: string;
+}
+
 export interface ScannedHostKey {
   algorithm: string;
   /** Base64 public key, as the Servers form stores it after the algorithm. */
@@ -200,7 +207,7 @@ export async function scanHostKey(host: string, port: number): Promise<ScannedHo
   return invoke<ScannedHostKey>("scan_host_key", { request: { host, port } });
 }
 
-export async function enrollSshProfile(request: SshProfileRequest): Promise<SshProfileSummary> {
+export async function enrollSshProfile(request: SshEnrollment): Promise<SshProfileSummary> {
   requireTauriRuntime();
   return invoke<SshProfileSummary>("enroll_ssh_profile", { request });
 }

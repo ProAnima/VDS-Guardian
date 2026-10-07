@@ -5,7 +5,7 @@ use guardian_core::{
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
 use guardian_ssh::{
-    PinnedHost, PinnedSshCapabilityProbe, SshIdentity, SshUser, SystemOpenSsh,
+    PinnedHost, PinnedSshCapabilityProbe, SshIdentity, SshUser, SystemOpenSsh, openssh_fingerprint,
     password_logins_available,
 };
 use rand_core::{OsRng, RngCore};
@@ -33,6 +33,12 @@ pub struct EnrollSshProfileRequest {
     key_path: String,
     #[serde(default)]
     password: LoginPassword,
+    /// The operator's explicit statement that the host key was verified out of band.
+    #[serde(default)]
+    host_key_confirmed: bool,
+    /// When the key was fetched, the fingerprint the operator compared; it must be this key's.
+    #[serde(default)]
+    confirmed_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
@@ -129,6 +135,7 @@ fn enroll_blocking(
     request: EnrollSshProfileRequest,
 ) -> Result<ProfileSummary, ProfileCommandFailure> {
     let (algorithm, public_key_base64) = split_host_key(&request.host_key)?;
+    require_host_key_confirmation(&request, public_key_base64)?;
     let key = credential_secret(&request)?;
     let auth_kind = SshIdentity::auth_kind_of(key.expose())
         .map_err(|_| ProfileCommandFailure::invalid_key())?;
@@ -167,6 +174,26 @@ fn enroll_blocking(
     .execute(profile.clone(), &key)
     .map_err(map_enrollment_error)?;
     Ok(ProfileSummary::from(&profile))
+}
+
+/// Trust in a host key is the operator's decision, so it is enforced here and not only by the
+/// form: without the confirmation nothing is pinned, and a confirmed fingerprint must be the
+/// fingerprint of exactly the key being pinned (ADR 0018).
+fn require_host_key_confirmation(
+    request: &EnrollSshProfileRequest,
+    public_key_base64: &str,
+) -> Result<(), ProfileCommandFailure> {
+    if !request.host_key_confirmed {
+        return Err(ProfileCommandFailure::host_key_unconfirmed());
+    }
+    match &request.confirmed_fingerprint {
+        None => Ok(()),
+        Some(confirmed) => openssh_fingerprint(public_key_base64)
+            .ok()
+            .filter(|actual| actual == confirmed)
+            .map(|_| ())
+            .ok_or_else(ProfileCommandFailure::host_key_mismatch),
+    }
 }
 
 /// The bytes stored under the profile's credential id: a private key as-is, a `.pub` file as an
@@ -336,6 +363,20 @@ impl ProfileCommandFailure {
             remediation: "Choose a dedicated unencrypted OpenSSH or PEM private key, or the .pub file of an ed25519 or ECDSA key that is loaded in your SSH agent.",
         }
     }
+    fn host_key_unconfirmed() -> Self {
+        Self {
+            code: "host_key_unconfirmed",
+            message: "The server's host key was not confirmed.",
+            remediation: "Compare the host key or its fingerprint with a trusted source, then confirm it.",
+        }
+    }
+    fn host_key_mismatch() -> Self {
+        Self {
+            code: "host_key_fingerprint_mismatch",
+            message: "The confirmed fingerprint does not belong to this host key.",
+            remediation: "Fetch the host key again and compare the fingerprint that is shown.",
+        }
+    }
     fn invalid_password() -> Self {
         Self {
             code: "invalid_login_password",
@@ -396,7 +437,48 @@ impl ProfileCommandFailure {
 
 #[cfg(test)]
 mod tests {
-    use super::{EnrollSshProfileRequest, LoginMode, password_secret};
+    use super::{
+        EnrollSshProfileRequest, LoginMode, password_secret, require_host_key_confirmation,
+    };
+
+    const KEY: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIAgqcoUnCQ7+eoqxrmBwksjYpoBztPS3lYA3OqOZvZ+K";
+    const KEY_FINGERPRINT: &str = "SHA256:tLrx5oHgmHF9+Rj+Pvc8PH0KLLP6y3wrk/Mc4bF8Mb8";
+
+    fn confirmation(extra: &str) -> Result<EnrollSshProfileRequest, serde_json::Error> {
+        request(&format!(
+            r#"{{"label":"a","host":"h","port":22,"user":"u","hostKey":"ssh-ed25519 {KEY}"{extra}}}"#
+        ))
+    }
+
+    #[test]
+    fn nothing_is_pinned_without_the_operators_confirmation() -> Result<(), serde_json::Error> {
+        let missing = require_host_key_confirmation(&confirmation("")?, KEY)
+            .err()
+            .map(|failure| failure.code);
+        assert_eq!(missing, Some("host_key_unconfirmed"));
+        let refused =
+            require_host_key_confirmation(&confirmation(r#","hostKeyConfirmed":false"#)?, KEY);
+        assert!(refused.is_err());
+        assert!(
+            require_host_key_confirmation(&confirmation(r#","hostKeyConfirmed":true"#)?, KEY)
+                .is_ok()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_confirmed_fingerprint_must_belong_to_the_pinned_key() -> Result<(), serde_json::Error> {
+        let matching =
+            format!(r#","hostKeyConfirmed":true,"confirmedFingerprint":"{KEY_FINGERPRINT}""#);
+        assert!(require_host_key_confirmation(&confirmation(&matching)?, KEY).is_ok());
+        let other =
+            r#","hostKeyConfirmed":true,"confirmedFingerprint":"SHA256:somebody-elses-key""#;
+        let failure = require_host_key_confirmation(&confirmation(other)?, KEY)
+            .err()
+            .map(|failure| failure.code);
+        assert_eq!(failure, Some("host_key_fingerprint_mismatch"));
+        Ok(())
+    }
 
     fn request(json: &str) -> Result<EnrollSshProfileRequest, serde_json::Error> {
         serde_json::from_str(json)

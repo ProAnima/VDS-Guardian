@@ -10,15 +10,18 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
   const { enrollment, list } = model;
   const { form, setForm } = enrollment;
   const lookup = useHostKeyLookup(form, setForm, enrollment.setAcknowledged, t);
-  // Closing the form must not leave a typed password behind in memory.
-  const close = () => { setForm({ ...form, password: "" }); model.setFormOpen(false); };
+  // Closing the form must not leave a typed password or a pending decision behind.
+  const close = () => {
+    lookup.reset(); enrollment.setAcknowledged(false);
+    setForm((current) => ({ ...current, password: "" })); model.setFormOpen(false);
+  };
   return (
     <aside className="drawer" role="dialog" aria-label={t("setupServerTitle")}>
       <header className="drawer__header">
         <Server size={16} aria-hidden="true" /><strong>{t("setupServerTitle")}</strong>
         {list.profiles.length > 0 && <button className="icon-button" type="button" onClick={close} {...tip(t("dismiss"))}><X size={15} aria-hidden="true" /></button>}
       </header>
-      <form className="server-form" onSubmit={(event) => void enrollment.submit(event)}>
+      <form className="server-form" onSubmit={(event) => void enrollment.submit(event, lookup.fetched?.fingerprint)}>
         <Field label={t("setupLabel")}><input value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} required maxLength={128} /></Field>
         <div className="server-form__pair">
           <Field label={t("setupHost")}><input value={form.host} onChange={(event) => lookup.editAddress({ host: event.target.value })} placeholder="vds.example.com" required spellCheck={false} /></Field>

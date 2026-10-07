@@ -38,12 +38,12 @@ function useServerEnrollment(t: Translate, onEnrolled: (profile: SshProfileSumma
   const [form, setForm] = useState(initialServerForm);
   const [acknowledged, setAcknowledged] = useState(false);
   const [working, setWorking] = useState(false);
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: FormEvent, confirmedFingerprint?: string) => {
     event.preventDefault();
-    if (!acknowledged || !hasTauriRuntime()) return;
+    if (!acknowledged || working || !hasTauriRuntime()) return;
     setWorking(true);
     try {
-      const profile = await enrollSshProfile(form);
+      const profile = await enrollSshProfile({ ...form, hostKeyConfirmed: acknowledged, confirmedFingerprint });
       onEnrolled(profile); setForm(initialServerForm); setAcknowledged(false);
       notify({ result: `${t("setupServerCreated")} ${profile.label}` });
     } catch (error) { notify({ failure: safeErrorText(error, t("setupServerError")) }); }
