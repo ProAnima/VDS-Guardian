@@ -195,6 +195,11 @@ pub enum CaptureUseCaseError {
     Capture(#[source] CapturePortError),
     #[error("capture storage failed")]
     Storage(#[source] crate::StoragePortError),
+    #[error("repository disk has {available_bytes} bytes free but {required_bytes} are required")]
+    InsufficientRepositorySpace {
+        available_bytes: u64,
+        required_bytes: u64,
+    },
     #[error("captured archive violates inspection policy")]
     Archive,
     #[error("backup manifest could not be finalized")]

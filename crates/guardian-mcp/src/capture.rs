@@ -58,6 +58,12 @@ impl CaptureFailure {
             message: "The backup did not pass the verified capture lifecycle.",
         }
     }
+    fn insufficient_space() -> Self {
+        Self {
+            code: "repository_disk_space_low",
+            message: "The repository disk does not have enough free space for this backup; free space or use a larger disk. Nothing was written.",
+        }
+    }
     fn cancelled() -> Self {
         Self {
             code: "capture_cancelled",
@@ -226,6 +232,9 @@ pub(crate) fn run_capture(
         }),
         Err(CaptureUseCaseError::RecoveryKeyRequired) => {
             Err(CaptureFailure::recovery_key_required())
+        }
+        Err(CaptureUseCaseError::InsufficientRepositorySpace { .. }) => {
+            Err(CaptureFailure::insufficient_space())
         }
         Err(_) if handle.is_cancelled() => Err(CaptureFailure::cancelled()),
         Err(_) => Err(CaptureFailure::capture()),

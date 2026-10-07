@@ -357,15 +357,28 @@ impl FilesystemCaptureComposition<'_> {
         if include_database {
             required = required.saturating_add(MAX_DATABASE_SNAPSHOT_BYTES);
         }
-        (available >= required)
-            .then_some(())
-            .ok_or(CaptureUseCaseError::Storage(StoragePortError::Unavailable))
+        check_space(available, required)
     }
+}
+
+/// Distinguishes "the disk could not be read" (`Storage(Unavailable)`) from
+/// "the disk is readable but too full", so the operator is told the exact
+/// numbers instead of a generic storage failure.
+pub(crate) fn check_space(available: u64, required: u64) -> Result<(), CaptureUseCaseError> {
+    (available >= required)
+        .then_some(())
+        .ok_or(CaptureUseCaseError::InsufficientRepositorySpace {
+            available_bytes: available,
+            required_bytes: required,
+        })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FilesystemCaptureComposition, SYSTEM_DISK_SPACE};
+    use super::{
+        DiskSpacePort, FilesystemCaptureComposition, MAX_CAPTURE_BYTES,
+        MAX_DATABASE_SNAPSHOT_BYTES, MINIMUM_FREE_BYTES, SYSTEM_DISK_SPACE,
+    };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use guardian_archive::ArchiveLimits;
     use guardian_core::{
@@ -508,6 +521,104 @@ mod tests {
             composition.require_recovery_key(),
             Err(CaptureUseCaseError::RecoveryKeyRequired)
         ));
+        Ok(())
+    }
+
+    struct FixedSpace(u64);
+
+    impl DiskSpacePort for FixedSpace {
+        fn available_space(
+            &self,
+            _: &std::path::Path,
+        ) -> Result<u64, guardian_core::StoragePortError> {
+            Ok(self.0)
+        }
+    }
+
+    struct UnreadableDisk;
+
+    impl DiskSpacePort for UnreadableDisk {
+        fn available_space(
+            &self,
+            _: &std::path::Path,
+        ) -> Result<u64, guardian_core::StoragePortError> {
+            Err(guardian_core::StoragePortError::Unavailable)
+        }
+    }
+
+    fn composition_with<'a>(
+        repository: &'a LocalRepository,
+        profile: &'a VdsProfile,
+        ssh: &'a SystemOpenSsh,
+        audit: &'a NoopAudit,
+        disk_space: &'a dyn DiskSpacePort,
+    ) -> FilesystemCaptureComposition<'a> {
+        FilesystemCaptureComposition {
+            repository,
+            ssh,
+            profile,
+            credentials: &NoopCredentialStore,
+            audit,
+            disk_space,
+            archive_limits: ArchiveLimits::conservative(),
+        }
+    }
+
+    #[test]
+    fn a_full_repository_disk_reports_exact_available_and_required_bytes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-full")?)?;
+        let profile = profile()?;
+        let (ssh, audit) = (SystemOpenSsh::default(), NoopAudit);
+        let disk = FixedSpace(MINIMUM_FREE_BYTES);
+        let composition = composition_with(&repository, &profile, &ssh, &audit, &disk);
+        assert_eq!(
+            composition.require_disk_budget(false),
+            Err(CaptureUseCaseError::InsufficientRepositorySpace {
+                available_bytes: MINIMUM_FREE_BYTES,
+                required_bytes: MINIMUM_FREE_BYTES + MAX_CAPTURE_BYTES,
+            })
+        );
+        assert_eq!(
+            composition.require_disk_budget(true),
+            Err(CaptureUseCaseError::InsufficientRepositorySpace {
+                available_bytes: MINIMUM_FREE_BYTES,
+                required_bytes: MINIMUM_FREE_BYTES
+                    + MAX_CAPTURE_BYTES
+                    + MAX_DATABASE_SNAPSHOT_BYTES,
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn exactly_the_required_free_space_is_accepted() -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository = LocalRepository::open(root.path(), RepositoryId::parse("repo-edge")?)?;
+        let profile = profile()?;
+        let (ssh, audit) = (SystemOpenSsh::default(), NoopAudit);
+        let disk = FixedSpace(MINIMUM_FREE_BYTES + MAX_CAPTURE_BYTES);
+        let composition = composition_with(&repository, &profile, &ssh, &audit, &disk);
+        assert_eq!(composition.require_disk_budget(false), Ok(()));
+        Ok(())
+    }
+
+    #[test]
+    fn an_unreadable_disk_stays_a_storage_failure_not_a_space_shortage()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let repository =
+            LocalRepository::open(root.path(), RepositoryId::parse("repo-unreadable")?)?;
+        let profile = profile()?;
+        let (ssh, audit) = (SystemOpenSsh::default(), NoopAudit);
+        let composition = composition_with(&repository, &profile, &ssh, &audit, &UnreadableDisk);
+        assert_eq!(
+            composition.require_disk_budget(false),
+            Err(CaptureUseCaseError::Storage(
+                guardian_core::StoragePortError::Unavailable
+            ))
+        );
         Ok(())
     }
 
