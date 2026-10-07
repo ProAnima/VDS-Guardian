@@ -212,6 +212,43 @@ fn answer(mut stream: TcpStream, token: &str, password: &[u8]) -> bool {
         .is_ok()
 }
 
+/// Entry point for any binary that can act as the `SSH_ASKPASS` program. Call it first thing in
+/// `main`: OpenSSH starts the program with the prompt as `argv[1]` and the port and token in the
+/// environment, and when those are present this answers (or refuses) and returns the exit code
+/// the process must end with. Without them it returns `None` and the program starts normally.
+#[must_use]
+pub fn run_if_requested() -> Option<i32> {
+    let (port, token) = (
+        std::env::var(PORT_VARIABLE).ok()?,
+        std::env::var(TOKEN_VARIABLE).ok()?,
+    );
+    let prompt = std::env::args().nth(1).unwrap_or_default();
+    Some(answer_openssh(
+        &prompt,
+        &port,
+        &token,
+        &mut io::stdout().lock(),
+    ))
+}
+
+fn answer_openssh(prompt: &str, port: &str, token: &str, output: &mut impl Write) -> i32 {
+    let Ok(password) = request_password(prompt, port, token) else {
+        eprintln!("guardian-askpass: password request refused");
+        return 1;
+    };
+    let mut line = Zeroizing::new(password.to_vec());
+    line.push(b'\n');
+    if output
+        .write_all(&line)
+        .and_then(|()| output.flush())
+        .is_ok()
+    {
+        0
+    } else {
+        1
+    }
+}
+
 /// Helper side: ask the broker for the password after checking the prompt.
 pub fn request_password(
     prompt: &str,

@@ -26,7 +26,10 @@ use thiserror::Error;
 pub use guardian_core::CancellationHandle;
 pub use push::{PushResult, ReplacementTarget, StagingTarget};
 pub use remote_browser::SshRemoteBrowserAdapter;
-pub use secret_identity::SshIdentity;
+pub use secret_identity::{
+    SshIdentity, init_password_helper, password_logins_available,
+    register_current_executable_as_password_helper, register_password_helper,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedHost {

@@ -4,7 +4,10 @@ use guardian_core::{
 };
 use guardian_os_keyring::OsCredentialStore;
 use guardian_profile_store::ProfileStore;
-use guardian_ssh::{PinnedHost, PinnedSshCapabilityProbe, SshIdentity, SshUser, SystemOpenSsh};
+use guardian_ssh::{
+    PinnedHost, PinnedSshCapabilityProbe, SshIdentity, SshUser, SystemOpenSsh,
+    password_logins_available,
+};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,6 +15,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tauri::Manager;
+use zeroize::Zeroize;
 
 const MAX_KEY_BYTES: u64 = 64 * 1024;
 
@@ -23,7 +27,37 @@ pub struct EnrollSshProfileRequest {
     port: u16,
     user: String,
     host_key: String,
+    #[serde(default)]
+    auth_kind: AuthKind,
+    #[serde(default)]
     key_path: String,
+    #[serde(default)]
+    password: LoginPassword,
+}
+
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum AuthKind {
+    #[default]
+    Key,
+    Password,
+}
+
+/// A login password received from the WebView: wiped when dropped and never printed.
+#[derive(Default, Deserialize)]
+#[serde(transparent)]
+struct LoginPassword(String);
+
+impl Drop for LoginPassword {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl std::fmt::Debug for LoginPassword {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("<redacted>")
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +128,7 @@ fn enroll_blocking(
     request: EnrollSshProfileRequest,
 ) -> Result<ProfileSummary, ProfileCommandFailure> {
     let (algorithm, public_key_base64) = split_host_key(&request.host_key)?;
+    let key = credential_secret(&request)?;
     let profile_id =
         ProfileId::parse(random_id("profile")).map_err(|_| ProfileCommandFailure::internal())?;
     let credential_id = CredentialId::parse(random_id("credential"))
@@ -113,11 +148,6 @@ fn enroll_blocking(
     profile
         .validate()
         .map_err(|_| ProfileCommandFailure::invalid_profile())?;
-    // A private key is stored as-is; a `.pub` file becomes an SSH-agent identity marker.
-    let key = read_key(Path::new(&request.key_path))?;
-    let key = SshIdentity::credential_from_key_file(key.expose())
-        .map(SecretValue::new)
-        .map_err(|_| ProfileCommandFailure::invalid_key())?;
     let profiles = ProfileStore::at(root);
     let credentials = OsCredentialStore;
     let ssh = SystemOpenSsh::default();
@@ -133,6 +163,33 @@ fn enroll_blocking(
     .execute(profile.clone(), &key)
     .map_err(map_enrollment_error)?;
     Ok(ProfileSummary::from(&profile))
+}
+
+/// The bytes stored under the profile's credential id: a private key as-is, a `.pub` file as an
+/// SSH-agent marker, or a login password as a `PASSWORD-V1` marker.
+fn credential_secret(
+    request: &EnrollSshProfileRequest,
+) -> Result<SecretValue, ProfileCommandFailure> {
+    match request.auth_kind {
+        AuthKind::Key => {
+            let key = read_key(Path::new(&request.key_path))?;
+            SshIdentity::credential_from_key_file(key.expose())
+                .map(SecretValue::new)
+                .map_err(|_| ProfileCommandFailure::invalid_key())
+        }
+        AuthKind::Password => {
+            if !password_logins_available() {
+                return Err(ProfileCommandFailure::password_unavailable());
+            }
+            password_secret(&request.password.0)
+        }
+    }
+}
+
+fn password_secret(password: &str) -> Result<SecretValue, ProfileCommandFailure> {
+    SshIdentity::encode_password(password)
+        .map(SecretValue::new)
+        .map_err(|_| ProfileCommandFailure::invalid_password())
 }
 
 fn map_enrollment_error(error: EnrollVerifiedProfileError) -> ProfileCommandFailure {
@@ -274,6 +331,20 @@ impl ProfileCommandFailure {
             remediation: "Choose a dedicated unencrypted OpenSSH or PEM private key, or the .pub file of an ed25519 or ECDSA key that is loaded in your SSH agent.",
         }
     }
+    fn invalid_password() -> Self {
+        Self {
+            code: "invalid_login_password",
+            message: "The login password cannot be used.",
+            remediation: "Use 1 to 256 characters without line breaks.",
+        }
+    }
+    fn password_unavailable() -> Self {
+        Self {
+            code: "password_login_unavailable",
+            message: "Password logins are not available in this installation.",
+            remediation: "Reinstall the application, or use an SSH key instead.",
+        }
+    }
     fn credential_store() -> Self {
         Self {
             code: "credential_store_unavailable",
@@ -314,6 +385,45 @@ impl ProfileCommandFailure {
             code: "internal_error",
             message: "The desktop command did not complete.",
             remediation: "Try again and export redacted diagnostics if the problem persists.",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthKind, EnrollSshProfileRequest, password_secret};
+
+    fn request(json: &str) -> Result<EnrollSshProfileRequest, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+
+    #[test]
+    fn a_request_without_an_auth_kind_is_a_key_login() -> Result<(), serde_json::Error> {
+        let parsed = request(
+            r#"{"label":"a","host":"h","port":22,"user":"u","hostKey":"k","keyPath":"/k"}"#,
+        )?;
+        assert_eq!(parsed.auth_kind, AuthKind::Key);
+        Ok(())
+    }
+
+    #[test]
+    fn the_password_is_redacted_from_debug_output() -> Result<(), serde_json::Error> {
+        let parsed = request(
+            r#"{"label":"a","host":"h","port":22,"user":"root","hostKey":"k","authKind":"password","password":"S3cret-Pass!"}"#,
+        )?;
+        assert_eq!(parsed.auth_kind, AuthKind::Password);
+        let rendered = format!("{parsed:?}");
+        assert!(!rendered.contains("S3cret"), "{rendered}");
+        assert!(rendered.contains("<redacted>"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_usable_password_becomes_a_marker_and_an_unusable_one_is_rejected() {
+        assert!(password_secret("pässw0rd").is_ok());
+        for bad in ["", "two\nlines", "nul\0", &"x".repeat(257)] {
+            let failure = password_secret(bad).err().map(|failure| failure.code);
+            assert_eq!(failure, Some("invalid_login_password"), "{bad:?}");
         }
     }
 }

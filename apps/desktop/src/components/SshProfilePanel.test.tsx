@@ -67,3 +67,71 @@ function retryButton(container: HTMLElement): HTMLButtonElement {
   if (!(button instanceof HTMLButtonElement)) throw new Error("Retry button not found");
   return button;
 }
+
+describe("password login enrollment", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(async () => {
+    container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+    commands.listSshProfiles.mockResolvedValue([]);
+    commands.enrollSshProfile.mockResolvedValue({ profileId: "p", label: "VDS", host: "vds.example", port: 22, user: "root" });
+    await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelector(".server-form")).not.toBeNull());
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount()); container.remove(); vi.clearAllMocks();
+  });
+
+  const field = (label: string): HTMLInputElement => {
+    const match = [...container.querySelectorAll("label.field")].find((item) => item.querySelector(".field__label")?.textContent?.startsWith(label));
+    const input = match?.querySelector("input");
+    if (!input) throw new Error(`Field not found: ${label}`);
+    return input;
+  };
+  const type = async (input: HTMLInputElement, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const mode = (label: string) => container.querySelector<HTMLButtonElement>(`.server-form__modes [aria-label="${label}"]`) as HTMLButtonElement;
+
+  it("offers a masked password field instead of a key file once password login is chosen", async () => {
+    expect(() => field("setupKey")).not.toThrow();
+    await act(async () => mode("setupAuthPassword").click());
+    expect(() => field("setupKey")).toThrow();
+    const password = field("setupPassword");
+    expect(password.type).toBe("password");
+    expect(password.autocomplete).toBe("off");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="setupPasswordShow"]')?.click());
+    expect(field("setupPassword").type).toBe("text");
+  });
+
+  it("warns when logging in as root but still allows it", async () => {
+    await act(async () => mode("setupAuthPassword").click());
+    expect(container.querySelector(".server-form__warning")).toBeNull();
+    await type(field("setupUser"), "root");
+    expect(container.querySelector(".server-form__warning")?.textContent).toContain("setupRootWarning");
+  });
+
+  it("sends the password once, then wipes it from the form", async () => {
+    await type(field("setupLabel"), "VDS"); await type(field("setupHost"), "vds.example"); await type(field("setupUser"), "root");
+    await type(field("setupHostKey"), "ssh-ed25519 AAAA");
+    await act(async () => mode("setupAuthPassword").click());
+    await type(field("setupPassword"), "S3cret-Pass!");
+    await act(async () => container.querySelector<HTMLInputElement>(".server-form__ack input")?.click());
+    await act(async () => container.querySelector<HTMLFormElement>(".server-form")?.requestSubmit());
+    await vi.waitFor(() => expect(commands.enrollSshProfile).toHaveBeenCalledOnce());
+    expect(commands.enrollSshProfile).toHaveBeenCalledWith(expect.objectContaining({ authKind: "password", password: "S3cret-Pass!", user: "root" }));
+    await vi.waitFor(() => expect(container.textContent).not.toContain("S3cret-Pass!"));
+    expect(JSON.stringify([...container.querySelectorAll("input")].map((input) => input.value))).not.toContain("S3cret");
+  });
+
+  it("drops a typed password when switching back to a key", async () => {
+    await act(async () => mode("setupAuthPassword").click());
+    await type(field("setupPassword"), "typed-secret");
+    await act(async () => mode("setupAuthKey").click());
+    await act(async () => mode("setupAuthPassword").click());
+    expect(field("setupPassword").value).toBe("");
+  });
+});

@@ -28,6 +28,7 @@ guardian-signing = { path = "../../../crates/guardian-signing" }
 guardian-ssh.workspace = true
 fs2.workspace = true
 rand_core.workspace = true
+zeroize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }

@@ -70,4 +70,5 @@ export const ko = {
   repositoryDelete: "앱에서 제거", repositoryDeleteQuestion: "이 저장소를 앱에서 제거하시겠습니까?", repositoryDeleteWarning: "디스크의 백업은 그대로 유지됩니다.",
   repositoryDeleted: "앱에서 저장소 제거됨:", repositoryPathUpdated: "저장소 폴더 변경됨:", repositoryPathHint: "동일한 저장소의 기존 폴더를 선택하세요. 파일은 이동되지 않습니다.",
   explorerFiles: "파일", explorerDocker: "Docker", explorerExpand: "펼치기", explorerCollapse: "접기", dockerNotPersistent: "임시 마운트이며 영구 데이터가 아닙니다", dockerUnresolved: "호스트 경로를 확인할 수 없습니다", reviewBack: "선택으로 돌아가기", dismiss: "닫기",
+  setupAuthKey: "SSH 키", setupAuthPassword: "로그인 비밀번호", setupPassword: "비밀번호", setupPasswordHint: "운영 체제 자격 증명 저장소에만 저장되며 서버의 검증된 호스트 키가 일치한 후에만 전송됩니다.", setupPasswordShow: "비밀번호 표시", setupPasswordHide: "비밀번호 숨기기", setupRootWarning: "root와 비밀번호로 로그인할 수 있지만 전용 백업 사용자가 더 안전합니다.",
 } satisfies Record<MessageKey, string>;

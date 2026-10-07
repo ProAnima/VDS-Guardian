@@ -70,4 +70,5 @@ export const ja = {
   repositoryDelete: "アプリから削除", repositoryDeleteQuestion: "このストレージをアプリから削除しますか？", repositoryDeleteWarning: "ディスク上のバックアップは変更されません。",
   repositoryDeleted: "ストレージをアプリから削除しました：", repositoryPathUpdated: "ストレージフォルダーを変更しました：", repositoryPathHint: "同じストレージの既存フォルダーを選択してください。ファイルは移動されません。",
   explorerFiles: "ファイル", explorerDocker: "Docker", explorerExpand: "展開", explorerCollapse: "折りたたむ", dockerNotPersistent: "一時マウント（永続データではありません）", dockerUnresolved: "ホストパスを解決できません", reviewBack: "選択に戻る", dismiss: "閉じる",
+  setupAuthKey: "SSH 鍵", setupAuthPassword: "ログインパスワード", setupPassword: "パスワード", setupPasswordHint: "OS の資格情報ストアにのみ保存され、サーバーの検証済みホスト鍵が一致した後にのみ送信されます。", setupPasswordShow: "パスワードを表示", setupPasswordHide: "パスワードを非表示", setupRootWarning: "root とパスワードでのログインは可能ですが、専用のバックアップユーザーの方が安全です。",
 } satisfies Record<MessageKey, string>;

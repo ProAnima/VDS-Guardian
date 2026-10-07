@@ -70,4 +70,5 @@ export const ar = {
   repositoryDelete: "إزالة من التطبيق", repositoryDeleteQuestion: "هل تريد إزالة مساحة التخزين هذه من التطبيق؟", repositoryDeleteWarning: "ستبقى النسخ الاحتياطية على القرص دون تغيير.",
   repositoryDeleted: "تمت إزالة مساحة التخزين من التطبيق:", repositoryPathUpdated: "تم تغيير مجلد التخزين:", repositoryPathHint: "اختر مجلداً موجوداً لمساحة التخزين نفسها. لن يتم نقل الملفات.",
   explorerFiles: "الملفات", explorerDocker: "Docker", explorerExpand: "توسيع", explorerCollapse: "طي", dockerNotPersistent: "وحدة مؤقتة وليست بيانات دائمة", dockerUnresolved: "تعذر تحديد مسار المضيف", reviewBack: "العودة إلى التحديد", dismiss: "إغلاق",
+  setupAuthKey: "مفتاح SSH", setupAuthPassword: "كلمة مرور الدخول", setupPassword: "كلمة المرور", setupPasswordHint: "تُحفظ في مخزن بيانات اعتماد نظام التشغيل فقط وتُرسل فقط بعد تطابق مفتاح المضيف الموثّق للخادم.", setupPasswordShow: "إظهار كلمة المرور", setupPasswordHide: "إخفاء كلمة المرور", setupRootWarning: "تسجيل الدخول بحساب root وكلمة مرور ممكن، لكن مستخدم نسخ احتياطي مخصص أكثر أماناً.",
 } satisfies Record<MessageKey, string>;

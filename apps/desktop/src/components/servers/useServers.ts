@@ -6,7 +6,7 @@ import {
 } from "../../shared/commands";
 import { safeErrorText } from "../../shared/safe-error";
 
-export const initialServerForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", keyPath: "" };
+export const initialServerForm: SshProfileRequest = { label: "", host: "", port: 22, user: "", hostKey: "", authKind: "key", keyPath: "", password: "" };
 
 /** Saved servers: loading, retry and confirmed removal. */
 function useServerList(t: Translate, notify: (message: { result?: string; failure?: string }) => void, onChanged: () => void) {

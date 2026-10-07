@@ -21,8 +21,30 @@ struct Outcome {
     _workdir: tempfile::TempDir,
 }
 
+/// Registers the program OpenSSH runs as `SSH_ASKPASS`: the stand-alone helper built beside the
+/// test binaries, or the executable named by `GUARDIAN_DRILL_ASKPASS` (used to prove that the
+/// real, windowed desktop executable works as the helper).
+fn register_helper() -> Result<(), Box<dyn Error>> {
+    static REGISTERED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    REGISTERED
+        .get_or_init(|| {
+            let program = std::env::var_os("GUARDIAN_DRILL_ASKPASS")
+                .map(PathBuf::from)
+                .or_else(|| {
+                    let executable = std::env::current_exe().ok()?;
+                    let name = format!("guardian-askpass{}", std::env::consts::EXE_SUFFIX);
+                    Some(executable.parent()?.parent()?.join(name))
+                })
+                .ok_or("cannot locate the askpass helper")?;
+            guardian_ssh::register_password_helper(program).map_err(|error| error.to_string())
+        })
+        .clone()
+        .map_err(Into::into)
+}
+
 /// Starts the fixture and waits until its sshd answers, using the key route only for readiness.
 fn start_ready() -> Result<(support::Container, String), Box<dyn Error>> {
+    register_helper()?;
     let image = support::fixture_image()?;
     let container = support::Container::start(image)?;
     let workdir = tempfile::tempdir()?;

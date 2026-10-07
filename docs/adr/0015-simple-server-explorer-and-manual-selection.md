@@ -56,7 +56,7 @@ environment variables, shell text, repository/config documents, logs, and
 temporary files. `sshpass`, interactive terminal scraping, and disabling
 `BatchMode` without such a broker are rejected alternatives. Until this adapter
 and its adversarial tests exist, the UI must not advertise password mode as
-available.
+available. ADR 0017 now provides the adapter and its tests.
 
 ## Consequences
 

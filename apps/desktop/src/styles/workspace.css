@@ -246,3 +246,8 @@
   .backup-list__row { min-height: 38px; }
 }
 @media (max-width: 760px) { .destination .button, .destination .picker { flex: 1 1 100%; justify-content: center; } .destination__path { flex-basis: 100%; } }
+.server-form__modes { display: inline-flex; width: fit-content; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface); }
+.server-form__modes button { display: grid; width: 34px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 5px; color: var(--text-muted); background: transparent; cursor: pointer; }
+.server-form__modes button[data-active] { color: var(--accent); background: var(--accent-soft); }
+.server-form__warning { display: flex; align-items: flex-start; gap: 7px; margin: 0; color: var(--amber); font-size: .72rem; line-height: 1.4; }
+.server-form__warning svg { flex: none; margin-block-start: 2px; }

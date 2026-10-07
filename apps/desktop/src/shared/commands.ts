@@ -44,7 +44,10 @@ export interface SshProfileRequest {
   port: number;
   user: string;
   hostKey: string;
+  authKind: "key" | "password";
   keyPath: string;
+  /** Kept in memory only for the single enrollment call, then cleared by the form. */
+  password: string;
 }
 
 export interface SshProfileSummary {

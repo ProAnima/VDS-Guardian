@@ -6,6 +6,7 @@ use std::fs;
 use std::{
     io::Write,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 use tempfile::{Builder, NamedTempFile, TempPath};
 use zeroize::Zeroizing;
@@ -86,7 +87,10 @@ impl SshIdentity {
             } => materialize_agent_identity(&algorithm, &public_key_base64),
             Classified::Password(password) => Ok(Self::Password(PasswordLogin {
                 password,
-                askpass_program: default_askpass_program()?,
+                askpass_program: PASSWORD_HELPER
+                    .get()
+                    .cloned()
+                    .ok_or(SshError::AskpassUnavailable)?,
             })),
         }
     }
@@ -354,24 +358,49 @@ fn validate_password(password: &[u8]) -> Result<(), SshError> {
     valid.then_some(()).ok_or(SshError::InvalidCredential)
 }
 
-/// The helper must sit beside the running executable (or one directory up from a cargo
-/// `deps` directory, which is where test binaries live) — never found through `PATH`, and
-/// never a symlink — so a planted program cannot receive the password.
-fn default_askpass_program() -> Result<PathBuf, SshError> {
-    let executable = std::env::current_exe().map_err(|_| SshError::AskpassUnavailable)?;
-    let directory = executable.parent().ok_or(SshError::AskpassUnavailable)?;
-    let name = format!("guardian-askpass{}", std::env::consts::EXE_SUFFIX);
-    let mut candidates = vec![directory.join(&name)];
-    if directory.file_name().is_some_and(|value| value == "deps") {
-        candidates.extend(directory.parent().map(|parent| parent.join(&name)));
+static PASSWORD_HELPER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Registers the program OpenSSH runs as `SSH_ASKPASS` for password logins. Until a program is
+/// registered every password identity fails closed with `AskpassUnavailable`, so a binary that
+/// forgot to answer the askpass call (and would instead start up normally when OpenSSH runs it)
+/// can never be used by mistake. The path must be an absolute, regular, non-symlink file and
+/// can be registered once per process.
+pub fn register_password_helper(program: PathBuf) -> Result<(), SshError> {
+    let usable = program.is_absolute()
+        && std::fs::symlink_metadata(&program)
+            .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink());
+    if !usable {
+        return Err(SshError::AskpassUnavailable);
     }
-    candidates
-        .into_iter()
-        .find(|candidate| {
-            std::fs::symlink_metadata(candidate)
-                .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
-        })
-        .ok_or(SshError::AskpassUnavailable)
+    match PASSWORD_HELPER.set(program.clone()) {
+        Ok(()) => Ok(()),
+        Err(_) if PASSWORD_HELPER.get() == Some(&program) => Ok(()),
+        Err(_) => Err(SshError::AskpassUnavailable),
+    }
+}
+
+/// Whether a helper is registered, i.e. whether a password login can be used in this process.
+#[must_use]
+pub fn password_logins_available() -> bool {
+    PASSWORD_HELPER.get().is_some()
+}
+
+/// Registers the running executable as the helper. Only valid for a binary whose `main` starts
+/// with [`init_password_helper`], which answers OpenSSH's askpass invocation itself.
+pub fn register_current_executable_as_password_helper() -> Result<(), SshError> {
+    register_password_helper(std::env::current_exe().map_err(|_| SshError::AskpassUnavailable)?)
+}
+
+/// Call first in `main` of every binary that can use password logins. When OpenSSH has started
+/// this very executable as its `SSH_ASKPASS` program, this answers the request and returns the
+/// exit code to end with; otherwise it registers the executable as the helper and returns `None`.
+#[must_use]
+pub fn init_password_helper() -> Option<i32> {
+    if let Some(code) = guardian_askpass::run_if_requested() {
+        return Some(code);
+    }
+    let _ = register_current_executable_as_password_helper();
+    None
 }
 
 pub(crate) fn restrict_permissions(path: &Path) -> Result<(), SshError> {

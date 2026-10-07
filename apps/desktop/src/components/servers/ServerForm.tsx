@@ -1,18 +1,20 @@
-import type { ReactNode } from "react";
-import { CircleHelp, FolderOpen, KeyRound, LoaderCircle, Server, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { CircleAlert, CircleHelp, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, LockKeyhole, Server, X } from "lucide-react";
 import type { Translate } from "../../i18n";
-import { hasTauriRuntime, pickSshKeyPath } from "../../shared/commands";
+import { hasTauriRuntime, pickSshKeyPath, type SshProfileRequest } from "../../shared/commands";
 import { tip } from "../../shared/tip";
 import type { ServersModel } from "./useServers";
 
 export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) {
   const { enrollment, list } = model;
   const { form, setForm } = enrollment;
+  // Closing the form must not leave a typed password behind in memory.
+  const close = () => { setForm({ ...form, password: "" }); model.setFormOpen(false); };
   return (
     <aside className="drawer" role="dialog" aria-label={t("setupServerTitle")}>
       <header className="drawer__header">
         <Server size={16} aria-hidden="true" /><strong>{t("setupServerTitle")}</strong>
-        {list.profiles.length > 0 && <button className="icon-button" type="button" onClick={() => model.setFormOpen(false)} {...tip(t("dismiss"))}><X size={15} aria-hidden="true" /></button>}
+        {list.profiles.length > 0 && <button className="icon-button" type="button" onClick={close} {...tip(t("dismiss"))}><X size={15} aria-hidden="true" /></button>}
       </header>
       <form className="server-form" onSubmit={(event) => void enrollment.submit(event)}>
         <Field label={t("setupLabel")}><input value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} required maxLength={128} /></Field>
@@ -22,12 +24,7 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
         </div>
         <Field label={t("setupUser")}><input value={form.user} onChange={(event) => setForm({ ...form, user: event.target.value })} placeholder="backup" required spellCheck={false} /></Field>
         <Field label={t("setupHostKey")} hint={t("setupHostKeyHint")}><input value={form.hostKey} onChange={(event) => setForm({ ...form, hostKey: event.target.value })} placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI…" required spellCheck={false} /></Field>
-        <Field label={t("setupKey")} hint={t("setupKeyHint")}>
-          <span className="server-form__picker">
-            <input value={form.keyPath} onChange={(event) => setForm({ ...form, keyPath: event.target.value })} placeholder={t("setupKeyPlaceholder")} required spellCheck={false} />
-            <button className="icon-button icon-button--large" type="button" onClick={() => void pickSshKeyPath().then((path) => path && setForm({ ...form, keyPath: path }))} {...tip(t("setupBrowse"))}><FolderOpen size={16} aria-hidden="true" /></button>
-          </span>
-        </Field>
+        <AuthFields form={form} setForm={setForm} t={t} />
         <label className="server-form__ack"><input checked={enrollment.acknowledged} onChange={(event) => enrollment.setAcknowledged(event.target.checked)} type="checkbox" />{t("setupVerifyHostKey")}</label>
         <button className="button button--primary" disabled={!enrollment.acknowledged || enrollment.working || !hasTauriRuntime()} type="submit">
           {enrollment.working ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <KeyRound size={16} aria-hidden="true" />}
@@ -36,6 +33,51 @@ export function ServerForm({ model, t }: { model: ServersModel; t: Translate }) 
         {!hasTauriRuntime() && <p className="server-form__note">{t("setupDesktopOnly")}</p>}
       </form>
     </aside>
+  );
+}
+
+interface AuthFieldsProps { form: SshProfileRequest; setForm: (form: SshProfileRequest) => void; t: Translate }
+
+/** Choose how to log in: a key file (or the `.pub` of an agent key), or the account password. */
+function AuthFields({ form, setForm, t }: AuthFieldsProps) {
+  const password = form.authKind === "password";
+  const choose = (authKind: SshProfileRequest["authKind"]) => setForm({ ...form, authKind, password: "" });
+  return (
+    <>
+      <div className="server-form__modes" role="radiogroup" aria-label={t("setupServerTitle")}>
+        <button type="button" role="radio" aria-checked={!password} data-active={!password || undefined} onClick={() => choose("key")} {...tip(t("setupAuthKey"))}><KeyRound size={16} aria-hidden="true" /></button>
+        <button type="button" role="radio" aria-checked={password} data-active={password || undefined} onClick={() => choose("password")} {...tip(t("setupAuthPassword"))}><LockKeyhole size={16} aria-hidden="true" /></button>
+      </div>
+      {password ? <PasswordField form={form} setForm={setForm} t={t} /> : <KeyField form={form} setForm={setForm} t={t} />}
+    </>
+  );
+}
+
+function KeyField({ form, setForm, t }: AuthFieldsProps) {
+  return (
+    <Field label={t("setupKey")} hint={t("setupKeyHint")}>
+      <span className="server-form__picker">
+        <input value={form.keyPath} onChange={(event) => setForm({ ...form, keyPath: event.target.value })} placeholder={t("setupKeyPlaceholder")} required spellCheck={false} />
+        <button className="icon-button icon-button--large" type="button" onClick={() => void pickSshKeyPath().then((path) => path && setForm({ ...form, keyPath: path }))} {...tip(t("setupBrowse"))}><FolderOpen size={16} aria-hidden="true" /></button>
+      </span>
+    </Field>
+  );
+}
+
+function PasswordField({ form, setForm, t }: AuthFieldsProps) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <>
+      <Field label={t("setupPassword")} hint={t("setupPasswordHint")}>
+        <span className="server-form__picker">
+          <input type={visible ? "text" : "password"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} maxLength={256} required />
+          <button className="icon-button icon-button--large" type="button" aria-pressed={visible} onClick={() => setVisible(!visible)} {...tip(t(visible ? "setupPasswordHide" : "setupPasswordShow"))}>
+            {visible ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
+        </span>
+      </Field>
+      {form.user.trim() === "root" && <p className="server-form__warning" role="note"><CircleAlert size={14} aria-hidden="true" />{t("setupRootWarning")}</p>}
+    </>
   );
 }
 
