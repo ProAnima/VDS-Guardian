@@ -1,6 +1,8 @@
-import { Archive, ArrowUpRight, LockKeyhole, RotateCcw, Server, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Archive, ArrowUpRight, CircleAlert, LoaderCircle, LockKeyhole, RotateCcw, Server, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { Translate } from "../i18n";
 import type { FoundationStatus } from "../shared/commands";
+import { evaluateOverviewReadiness } from "./setup-readiness";
+import { useSetupStatus } from "./use-setup-status";
 
 interface DashboardProps {
   status: FoundationStatus;
@@ -38,12 +40,15 @@ export function Dashboard(props: DashboardProps) {
 }
 
 function SafetyStatus({ status, t }: Pick<DashboardProps, "status" | "t">) {
-  const ready = status.liveOperationsEnabled;
-  const Icon = ready ? ShieldCheck : LockKeyhole;
+  const setup = useSetupStatus(0, t);
+  const locked = !status.liveOperationsEnabled;
+  const verdict = evaluateOverviewReadiness({ resources: setup.resources, failureCount: setup.failures.length, loading: setup.loading }, t);
+  const state = locked ? "locked" : verdict.state;
+  const Icon = { locked: LockKeyhole, ready: ShieldCheck, attention: CircleAlert, loading: LoaderCircle }[state];
   return (
-    <aside className="overview-status" data-ready={ready || undefined}>
-      <span><Icon size={20} aria-hidden="true" /></span>
-      <div><strong>{t(ready ? "statusReady" : "lockedTitle")}</strong><p>{t(ready ? "securityBody" : "lockedBody")}</p></div>
+    <aside className="overview-status" data-ready={state === "ready" || undefined} data-state={state} aria-live="polite">
+      <span><Icon className={state === "loading" ? "spin" : undefined} size={20} aria-hidden="true" /></span>
+      <div><strong>{locked ? t("lockedTitle") : verdict.title}</strong><p>{locked ? t("lockedBody") : verdict.body}</p></div>
     </aside>
   );
 }
