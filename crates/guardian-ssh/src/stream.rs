@@ -261,6 +261,11 @@ mod tests {
         time::Duration,
     };
 
+    /// Safety-net deadline for tests that spawn `powershell.exe`/`sh`: each of them ends
+    /// as soon as the child finishes or the pump fails, so this only has to outlast a
+    /// cold process start on a slow CI runner.
+    const DEADLINE: Duration = Duration::from_secs(30);
+
     #[test]
     fn idle_deadline_kills_a_silent_process() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = sleeper();
@@ -353,8 +358,8 @@ mod tests {
         let pump = PushPump::start(Box::new(source), stdin, payload.len() as u64);
         let status = wait_for_stream(
             child,
-            Duration::from_secs(2),
-            Duration::from_secs(2),
+            DEADLINE,
+            DEADLINE,
             pump.activity(),
             pump.failed(),
             &CancellationHandle::new(),
@@ -378,8 +383,8 @@ mod tests {
         let pump = PushPump::start(Box::new(source), stdin, 1_000);
         let _ = wait_for_stream(
             child,
-            Duration::from_secs(2),
-            Duration::from_secs(2),
+            DEADLINE,
+            DEADLINE,
             pump.activity(),
             pump.failed(),
             &CancellationHandle::new(),
@@ -402,8 +407,8 @@ mod tests {
         let pump = PushPump::start(Box::new(source), stdin, 4);
         let _ = wait_for_stream(
             child,
-            Duration::from_secs(2),
-            Duration::from_secs(2),
+            DEADLINE,
+            DEADLINE,
             pump.activity(),
             pump.failed(),
             &CancellationHandle::new(),
