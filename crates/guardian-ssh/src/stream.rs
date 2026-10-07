@@ -320,11 +320,14 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("missing child stdout"))?;
         let output = tempfile::NamedTempFile::new()?.reopen()?;
         let pump = CapturePump::start_limited(stdout, output, 1);
+        // The deadlines are only a safety net: the byte limit ends this run as soon
+        // as the child writes. They must outlast a cold PowerShell start on a slow
+        // CI runner, otherwise the deadline fires first and the limit is never tested.
         assert_eq!(
             wait_for_stream(
                 child,
-                Duration::from_secs(1),
-                Duration::from_secs(1),
+                Duration::from_secs(30),
+                Duration::from_secs(30),
                 pump.activity(),
                 pump.failed(),
                 &CancellationHandle::new(),
