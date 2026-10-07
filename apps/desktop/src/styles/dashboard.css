@@ -1,6 +1,6 @@
 .dashboard { width: min(1480px, 100%); margin: 0 auto; padding: 44px clamp(22px, 4vw, 52px) 28px; }
 .button { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 16px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700; }
-.button--primary { border: 1px solid transparent; color: #092018; background: var(--accent); }
+.button--primary { border: 1px solid transparent; color: var(--on-accent); background: var(--accent); }
 .button--secondary { border: 1px solid var(--border); color: var(--text-secondary); background: var(--surface); }
 .button:disabled { opacity: 0.5; }
 
