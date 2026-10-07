@@ -22,7 +22,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -35,7 +35,12 @@ pub const TOKEN_VARIABLE: &str = "GUARDIAN_ASKPASS_TOKEN";
 /// Longest accepted password (bytes); the same bound is enforced when it is stored.
 pub const MAX_PASSWORD_BYTES: usize = 256;
 const TOKEN_HEX_LENGTH: usize = 64;
-const IO_TIMEOUT: Duration = Duration::from_secs(2);
+/// Helper-side timeout for connecting and for each read and write.
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Total time one connection may take on the broker side, however slowly it trickles bytes.
+const CONNECTION_BUDGET: Duration = Duration::from_millis(1500);
+/// Connections handled at once; further ones are closed immediately.
+const MAX_IN_FLIGHT: usize = 8;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MAX_PROMPT_BYTES: usize = 512;
 
@@ -64,9 +69,10 @@ impl std::fmt::Display for AskpassError {
 
 impl std::error::Error for AskpassError {}
 
-/// Only the plain login prompt qualifies: `<user>@<host>'s password:` or `Password:`.
-/// Anything else (a key passphrase, a host-key question, `(current) UNIX password:`,
-/// `New password:`) is refused so the stored password is never typed into the wrong place.
+/// Only the plain login prompt qualifies: `<user>@<host>'s password:`. Anything else (a key
+/// passphrase, a host-key question, a keyboard-interactive `Password:` (disabled for our logins),
+/// `(current) UNIX password:`, `New password:`) is refused so the stored password is never typed
+/// into the wrong place.
 #[must_use]
 pub fn is_login_password_prompt(prompt: &str) -> bool {
     if prompt.len() > MAX_PROMPT_BYTES {
@@ -76,11 +82,8 @@ pub fn is_login_password_prompt(prompt: &str) -> bool {
     if prompt.chars().any(char::is_control) {
         return false;
     }
-    let lower = prompt.to_ascii_lowercase();
-    if lower == "password:" {
-        return true;
-    }
-    lower
+    prompt
+        .to_ascii_lowercase()
         .strip_suffix("'s password:")
         .is_some_and(|target| target.contains('@') && !target.contains(char::is_whitespace))
 }
@@ -102,16 +105,34 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
             == 0
 }
 
+/// State shared by the accept loop and the short-lived connection workers.
+struct Shared {
+    token: String,
+    password: Zeroizing<Vec<u8>>,
+    expires: Instant,
+    served: AtomicBool,
+    stopped: AtomicBool,
+    in_flight: AtomicUsize,
+}
+
+impl Shared {
+    fn open(&self) -> bool {
+        !self.served.load(Ordering::SeqCst)
+            && !self.stopped.load(Ordering::SeqCst)
+            && Instant::now() < self.expires
+    }
+}
+
 /// Serves one password to one authenticated local request.
 pub struct Broker {
     port: u16,
     token: String,
-    stop: Arc<AtomicBool>,
+    shared: Arc<Shared>,
     join: Option<JoinHandle<()>>,
 }
 
 impl Broker {
-    /// Starts listening immediately; `lifetime` bounds how long the password stays in memory.
+    /// Starts listening immediately; `lifetime` bounds how long the password can be handed out.
     pub fn start(password: &[u8], lifetime: Duration) -> io::Result<Self> {
         if password.is_empty() || password.len() > MAX_PASSWORD_BYTES {
             return Err(io::Error::new(
@@ -123,15 +144,22 @@ impl Broker {
         listener.set_nonblocking(true)?;
         let port = listener.local_addr()?.port();
         let token = random_token();
-        let stop = Arc::new(AtomicBool::new(false));
-        let secret = Zeroizing::new(password.to_vec());
-        let expected = token.clone();
-        let stopping = Arc::clone(&stop);
-        let join = thread::spawn(move || serve(&listener, &expected, &secret, lifetime, &stopping));
+        let shared = Arc::new(Shared {
+            token: token.clone(),
+            password: Zeroizing::new(password.to_vec()),
+            expires: Instant::now() + lifetime,
+            served: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
+            in_flight: AtomicUsize::new(0),
+        });
+        let accepting = Arc::clone(&shared);
+        let join = thread::Builder::new()
+            .name("guardian-askpass-broker".to_owned())
+            .spawn(move || serve(&listener, &accepting))?;
         Ok(Self {
             port,
             token,
-            stop,
+            shared,
             join: Some(join),
         })
     }
@@ -149,8 +177,10 @@ impl Broker {
 }
 
 impl Drop for Broker {
+    /// Stops accepting at once. The accept loop polls, so joining it is quick; connection workers
+    /// still running end within their budget and refuse to serve once stopped.
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        self.shared.stopped.store(true, Ordering::SeqCst);
         if let Some(join) = self.join.take() {
             let _ = join.join();
         }
@@ -163,68 +193,95 @@ fn random_token() -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn serve(
-    listener: &TcpListener,
-    token: &str,
-    password: &[u8],
-    lifetime: Duration,
-    stop: &AtomicBool,
-) {
-    let deadline = Instant::now() + lifetime;
-    while !stop.load(Ordering::Relaxed) && Instant::now() < deadline {
+/// Accepts until the password is served, the broker is dropped or it expires. A slow or hostile
+/// local client only occupies its own worker for at most `CONNECTION_BUDGET`, and transient
+/// accept errors never end the broker early.
+fn serve(listener: &TcpListener, shared: &Arc<Shared>) {
+    while shared.open() {
         match listener.accept() {
-            Ok((stream, peer)) => {
-                if peer.ip().is_loopback() && answer(stream, token, password) {
-                    return;
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => thread::sleep(POLL_INTERVAL),
-            Err(_) => return,
+            Ok((stream, peer)) if peer.ip().is_loopback() => dispatch(stream, shared),
+            Ok(_) => {}
+            Err(_) => thread::sleep(POLL_INTERVAL),
         }
     }
 }
 
-/// `true` only after the password was handed to a connection that proved the token.
-fn answer(mut stream: TcpStream, token: &str, password: &[u8]) -> bool {
-    if stream.set_nonblocking(false).is_err()
-        || stream.set_read_timeout(Some(IO_TIMEOUT)).is_err()
-        || stream.set_write_timeout(Some(IO_TIMEOUT)).is_err()
-    {
-        return false;
+fn dispatch(stream: TcpStream, shared: &Arc<Shared>) {
+    if shared.in_flight.fetch_add(1, Ordering::SeqCst) >= MAX_IN_FLIGHT {
+        shared.in_flight.fetch_sub(1, Ordering::SeqCst);
+        return;
+    }
+    let worker = Arc::clone(shared);
+    let spawned = thread::Builder::new().spawn(move || {
+        answer(stream, &worker);
+        worker.in_flight.fetch_sub(1, Ordering::SeqCst);
+    });
+    if spawned.is_err() {
+        shared.in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Reads the token within one overall budget, then hands the password over at most once.
+fn answer(mut stream: TcpStream, shared: &Shared) {
+    let deadline = Instant::now() + CONNECTION_BUDGET;
+    if stream.set_nonblocking(false).is_err() {
+        return;
     }
     let mut presented = [0_u8; TOKEN_HEX_LENGTH];
-    if stream.read_exact(&mut presented).is_err()
-        || !constant_time_equal(&presented, token.as_bytes())
-    {
-        let _ = stream.write_all(&[STATUS_DENIED]);
-        return false;
+    let mut filled = 0;
+    while filled < TOKEN_HEX_LENGTH {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || stream.set_read_timeout(Some(remaining)).is_err() {
+            return;
+        }
+        match stream.read(&mut presented[filled..]) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => filled += read,
+        }
     }
-    let Ok(length) = u16::try_from(password.len()) else {
-        return false;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() || stream.set_write_timeout(Some(remaining)).is_err() {
+        return;
+    }
+    let granted = constant_time_equal(&presented, shared.token.as_bytes())
+        && shared.open()
+        && shared
+            .served
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok();
+    if !granted {
+        let _ = stream.write_all(&[STATUS_DENIED]);
+        return;
+    }
+    let Ok(length) = u16::try_from(shared.password.len()) else {
+        return;
     };
-    let mut response = Zeroizing::new(Vec::with_capacity(3 + password.len()));
+    let mut response = Zeroizing::new(Vec::with_capacity(3 + shared.password.len()));
     response.push(STATUS_OK);
     response.extend_from_slice(&length.to_be_bytes());
-    response.extend_from_slice(password);
-    stream
-        .write_all(&response)
-        .and_then(|()| stream.flush())
-        .is_ok()
+    response.extend_from_slice(&shared.password);
+    let _ = stream.write_all(&response).and_then(|()| stream.flush());
 }
 
 /// Entry point for any binary that can act as the `SSH_ASKPASS` program. Call it first thing in
-/// `main`: OpenSSH starts the program with the prompt as `argv[1]` and the port and token in the
-/// environment, and when those are present this answers (or refuses) and returns the exit code
-/// the process must end with. Without them it returns `None` and the program starts normally.
+/// `main`. It answers only when started exactly the way OpenSSH starts an askpass program: one
+/// prompt argument, `SSH_ASKPASS_REQUIRE` set, and the broker port and token in the environment.
+/// Then it returns the exit code the process must end with; otherwise `None` (stray variables in
+/// a user's environment are ignored and the program starts normally).
 #[must_use]
 pub fn run_if_requested() -> Option<i32> {
     let (port, token) = (
         std::env::var(PORT_VARIABLE).ok()?,
         std::env::var(TOKEN_VARIABLE).ok()?,
     );
-    let prompt = std::env::args().nth(1).unwrap_or_default();
+    std::env::var_os("SSH_ASKPASS_REQUIRE")?;
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let [_, prompt] = arguments.as_slice() else {
+        return None;
+    };
+    let prompt = prompt.to_str().unwrap_or_default();
     Some(answer_openssh(
-        &prompt,
+        prompt,
         &port,
         &token,
         &mut io::stdout().lock(),
@@ -236,7 +293,9 @@ fn answer_openssh(prompt: &str, port: &str, token: &str, output: &mut impl Write
         eprintln!("guardian-askpass: password request refused");
         return 1;
     };
-    let mut line = Zeroizing::new(password.to_vec());
+    // Sized up front so appending the newline never reallocates and leaves an unwiped copy.
+    let mut line = Zeroizing::new(Vec::with_capacity(password.len() + 1));
+    line.extend_from_slice(&password);
     line.push(b'\n');
     if output
         .write_all(&line)
@@ -266,10 +325,10 @@ pub fn request_password(
     }
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
     let mut stream =
-        TcpStream::connect_timeout(&address, IO_TIMEOUT).map_err(|_| AskpassError::Io)?;
+        TcpStream::connect_timeout(&address, CLIENT_TIMEOUT).map_err(|_| AskpassError::Io)?;
     stream
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .and_then(|()| stream.set_write_timeout(Some(IO_TIMEOUT)))
+        .set_read_timeout(Some(CLIENT_TIMEOUT))
+        .and_then(|()| stream.set_write_timeout(Some(CLIENT_TIMEOUT)))
         .map_err(|_| AskpassError::Io)?;
     stream
         .write_all(token.as_bytes())
@@ -313,8 +372,6 @@ mod tests {
         for accepted in [
             "backup@vds.example's password: ",
             "root@10.0.0.1's password:",
-            "Password: ",
-            "password:",
         ] {
             assert!(is_login_password_prompt(accepted), "{accepted:?}");
         }
@@ -327,6 +384,8 @@ mod tests {
             "Verification code: ",
             "",
             "password",
+            "Password: ",
+            "password:",
         ] {
             assert!(!is_login_password_prompt(refused), "{refused:?}");
         }
@@ -345,7 +404,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let broker = Broker::start(b"secret", Duration::from_secs(10))?;
         let wrong = "0".repeat(TOKEN_HEX_LENGTH);
-        let denied = request_password("Password:", &broker.port().to_string(), &wrong);
+        let denied = request_password("u@h's password:", &broker.port().to_string(), &wrong);
         assert_eq!(denied, Err(AskpassError::Refused));
         assert_eq!(fetch(&broker)?.as_slice(), b"secret");
         Ok(())
@@ -365,7 +424,7 @@ mod tests {
         let broker = Broker::start(b"secret", Duration::from_secs(10))?;
         let (port, token) = (broker.port().to_string(), broker.token().to_owned());
         drop(broker);
-        assert!(request_password("Password:", &port, &token).is_err());
+        assert!(request_password("u@h's password:", &port, &token).is_err());
         Ok(())
     }
 
@@ -387,6 +446,40 @@ mod tests {
         );
         assert_eq!(result, Err(AskpassError::UnexpectedPrompt));
         assert_eq!(fetch(&broker)?.as_slice(), b"secret");
+        Ok(())
+    }
+
+    #[test]
+    fn a_slow_local_client_cannot_block_the_legitimate_request()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let broker = Broker::start(b"secret", Duration::from_secs(10))?;
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), broker.port());
+        let mut stalls = Vec::new();
+        for _ in 0..3 {
+            let mut stall = TcpStream::connect(address)?;
+            stall.write_all(b"0")?;
+            stalls.push(stall);
+        }
+        let started = Instant::now();
+        assert_eq!(fetch(&broker)?.as_slice(), b"secret");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "served while other clients stalled"
+        );
+        drop(stalls);
+        Ok(())
+    }
+
+    #[test]
+    fn dropping_the_broker_returns_promptly_even_with_a_stalled_client()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let broker = Broker::start(b"secret", Duration::from_secs(10))?;
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), broker.port());
+        let _stall = TcpStream::connect(address)?;
+        thread::sleep(Duration::from_millis(50));
+        let started = Instant::now();
+        drop(broker);
+        assert!(started.elapsed() < Duration::from_millis(500));
         Ok(())
     }
 

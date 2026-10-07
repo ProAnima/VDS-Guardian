@@ -71,6 +71,9 @@ pub(crate) fn scan_host_key_with(
     let known_hosts = tempfile::NamedTempFile::new()
         .map_err(|_| SshError::LocalIo)?
         .into_temp_path();
+    if !crate::usable_known_hosts_path(&known_hosts) {
+        return Err(SshError::LocalIo);
+    }
     let child = Command::new(program)
         .args(scan_arguments(host, port, timeout, &known_hosts))
         .stdin(Stdio::null())
@@ -100,7 +103,7 @@ fn scan_arguments(host: &str, port: u16, timeout: Duration, known_hosts: &Path) 
         "BatchMode=yes".to_owned(),
         format!("ConnectTimeout={}", timeout.as_secs().max(1)),
         "StrictHostKeyChecking=no".to_owned(),
-        format!("UserKnownHostsFile={}", known_hosts.display()),
+        crate::known_hosts_option(known_hosts),
         "GlobalKnownHostsFile=none".to_owned(),
         "HashKnownHosts=no".to_owned(),
         "CheckHostIP=no".to_owned(),
@@ -270,7 +273,7 @@ mod tests {
             joined.contains("StrictHostKeyChecking=no"),
             "records the key without prompting"
         );
-        assert!(joined.contains("UserKnownHostsFile=C:/scan/known_hosts"));
+        assert!(joined.contains("UserKnownHostsFile=\"C:/scan/known_hosts\""));
         assert!(joined.contains("GlobalKnownHostsFile=none"));
         assert!(joined.contains("ProxyCommand=none"));
         for off in [
