@@ -1,5 +1,5 @@
 use guardian_core::{
-    CredentialId, EnrollVerifiedProfileError, EnrollVerifiedProfileUseCase, HostPin,
+    AuthKind, CredentialId, EnrollVerifiedProfileError, EnrollVerifiedProfileUseCase, HostPin,
     PreflightSshCaptureUseCase, ProfileId, ProfileStorePort, SecretValue, SshEndpoint, VdsProfile,
 };
 use guardian_os_keyring::OsCredentialStore;
@@ -28,7 +28,7 @@ pub struct EnrollSshProfileRequest {
     user: String,
     host_key: String,
     #[serde(default)]
-    auth_kind: AuthKind,
+    auth_kind: LoginMode,
     #[serde(default)]
     key_path: String,
     #[serde(default)]
@@ -37,7 +37,7 @@ pub struct EnrollSshProfileRequest {
 
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum AuthKind {
+enum LoginMode {
     #[default]
     Key,
     Password,
@@ -68,6 +68,7 @@ pub struct ProfileSummary {
     pub host: String,
     pub port: u16,
     pub user: String,
+    pub auth_kind: AuthKind,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,6 +130,8 @@ fn enroll_blocking(
 ) -> Result<ProfileSummary, ProfileCommandFailure> {
     let (algorithm, public_key_base64) = split_host_key(&request.host_key)?;
     let key = credential_secret(&request)?;
+    let auth_kind = SshIdentity::auth_kind_of(key.expose())
+        .map_err(|_| ProfileCommandFailure::invalid_key())?;
     let profile_id =
         ProfileId::parse(random_id("profile")).map_err(|_| ProfileCommandFailure::internal())?;
     let credential_id = CredentialId::parse(random_id("credential"))
@@ -143,6 +146,7 @@ fn enroll_blocking(
             host_pin: HostPin::parse(algorithm, public_key_base64)
                 .map_err(|_| ProfileCommandFailure::invalid_profile())?,
         },
+        auth_kind: Some(auth_kind),
         credential_id: credential_id.clone(),
     };
     profile
@@ -171,13 +175,13 @@ fn credential_secret(
     request: &EnrollSshProfileRequest,
 ) -> Result<SecretValue, ProfileCommandFailure> {
     match request.auth_kind {
-        AuthKind::Key => {
+        LoginMode::Key => {
             let key = read_key(Path::new(&request.key_path))?;
             SshIdentity::credential_from_key_file(key.expose())
                 .map(SecretValue::new)
                 .map_err(|_| ProfileCommandFailure::invalid_key())
         }
-        AuthKind::Password => {
+        LoginMode::Password => {
             if !password_logins_available() {
                 return Err(ProfileCommandFailure::password_unavailable());
             }
@@ -305,6 +309,7 @@ impl From<&VdsProfile> for ProfileSummary {
             host: profile.endpoint.host.clone(),
             port: profile.endpoint.port,
             user: profile.endpoint.user.clone(),
+            auth_kind: profile.auth_kind.unwrap_or(AuthKind::SshKey),
         }
     }
 }
@@ -391,7 +396,7 @@ impl ProfileCommandFailure {
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthKind, EnrollSshProfileRequest, password_secret};
+    use super::{EnrollSshProfileRequest, LoginMode, password_secret};
 
     fn request(json: &str) -> Result<EnrollSshProfileRequest, serde_json::Error> {
         serde_json::from_str(json)
@@ -402,7 +407,7 @@ mod tests {
         let parsed = request(
             r#"{"label":"a","host":"h","port":22,"user":"u","hostKey":"k","keyPath":"/k"}"#,
         )?;
-        assert_eq!(parsed.auth_kind, AuthKind::Key);
+        assert_eq!(parsed.auth_kind, LoginMode::Key);
         Ok(())
     }
 
@@ -411,7 +416,7 @@ mod tests {
         let parsed = request(
             r#"{"label":"a","host":"h","port":22,"user":"root","hostKey":"k","authKind":"password","password":"S3cret-Pass!"}"#,
         )?;
-        assert_eq!(parsed.auth_kind, AuthKind::Password);
+        assert_eq!(parsed.auth_kind, LoginMode::Password);
         let rendered = format!("{parsed:?}");
         assert!(!rendered.contains("S3cret"), "{rendered}");
         assert!(rendered.contains("<redacted>"));

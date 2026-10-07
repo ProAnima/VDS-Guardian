@@ -386,6 +386,7 @@ pub fn drill_profile_as(
     Ok(VdsProfile {
         profile_id,
         label: "Clean-room drill fixture".to_owned(),
+        auth_kind: None,
         credential_id,
         endpoint: SshEndpoint {
             host: "127.0.0.1".to_owned(),

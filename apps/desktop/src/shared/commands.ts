@@ -58,12 +58,15 @@ export interface ScannedHostKey {
   fingerprint: string;
 }
 
+export type AuthKind = "ssh_key" | "ssh_agent" | "password";
+
 export interface SshProfileSummary {
   profileId: string;
   label: string;
   host: string;
   port: number;
   user: string;
+  authKind: AuthKind;
 }
 
 export interface SshProfileFailure {

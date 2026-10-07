@@ -1,6 +1,6 @@
-import { Check, KeyRound, LoaderCircle, Server, Trash2, X } from "lucide-react";
+import { Check, KeyRound, LoaderCircle, LockKeyhole, Server, ShieldCheck, Trash2, X, type LucideIcon } from "lucide-react";
 import type { Translate } from "../../i18n";
-import type { SshProfileSummary } from "../../shared/commands";
+import type { AuthKind, SshProfileSummary } from "../../shared/commands";
 import { tip } from "../../shared/tip";
 import type { ServersModel } from "./useServers";
 
@@ -22,7 +22,7 @@ function ServerRow({ profile, model, t }: { profile: SshProfileSummary; model: S
       <span className="server-row__icon"><Server size={17} aria-hidden="true" /></span>
       <strong>{profile.label}</strong>
       <code>{profile.user}@{profile.host}:{profile.port}</code>
-      <span className="server-row__auth" {...tip(t("serversSshKey"))}><KeyRound size={14} aria-hidden="true" /></span>
+      <AuthBadge kind={profile.authKind} t={t} />
       {confirming ? (
         <span className="server-row__confirm" role="group" aria-label={t("serversDeleteQuestion")}>
           <span>{t("serversDeleteQuestion")}</span>
@@ -36,4 +36,16 @@ function ServerRow({ profile, model, t }: { profile: SshProfileSummary; model: S
       )}
     </li>
   );
+}
+
+const authView: Record<AuthKind, { icon: LucideIcon; label: "setupAuthKey" | "serversAuthAgent" | "setupAuthPassword" }> = {
+  ssh_key: { icon: KeyRound, label: "setupAuthKey" },
+  ssh_agent: { icon: ShieldCheck, label: "serversAuthAgent" },
+  password: { icon: LockKeyhole, label: "setupAuthPassword" },
+};
+
+/** How this server is logged in to; legacy profiles without a recorded kind are key logins. */
+function AuthBadge({ kind, t }: { kind: AuthKind | undefined; t: Translate }) {
+  const { icon: Icon, label } = authView[kind ?? "ssh_key"];
+  return <span className="server-row__auth" data-kind={kind ?? "ssh_key"} {...tip(t(label))}><Icon size={14} aria-hidden="true" /></span>;
 }

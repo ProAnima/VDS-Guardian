@@ -7,7 +7,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness({
       identity: { state: "ready", identity: null },
       repositories: [{ repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: false }],
-      profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" }],
+      profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" }],
     }, createTranslator("ru"));
 
     expect(items.find((item) => item.label === "Хранилище бэкапов")).toMatchObject({ readiness: "attention", detail: "Ключ восстановления готов: 0/1." });
@@ -17,7 +17,7 @@ describe("evaluateSetupReadiness", () => {
     const items = evaluateSetupReadiness({
       identity: { state: "ready", identity: null },
       repositories: [{ repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: true }],
-      profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" }],
+      profiles: [{ profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" }],
     }, createTranslator("en"));
 
     expect(items).toHaveLength(3);

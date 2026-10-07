@@ -580,6 +580,7 @@ mod tests {
         let target_profile = guardian_core::VdsProfile {
             profile_id: target_profile_id.clone(),
             label: "Target".to_owned(),
+            auth_kind: None,
             credential_id: guardian_core::CredentialId::parse("credential-target")?,
             endpoint: guardian_core::SshEndpoint {
                 host: "target.example".to_owned(),

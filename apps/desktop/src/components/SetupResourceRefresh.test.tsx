@@ -38,7 +38,7 @@ describe("setup resource refresh", () => {
       identity: { credentialId: "signing-main", algorithm: "ed25519", keyId: "key-1" },
     });
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "server-1", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+      { profileId: "server-1", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" },
     ]);
     commands.listRepositories.mockResolvedValue([
       { repositoryId: "repo-1", label: "Archive", path: "D:/archive", recoveryReady: true },
@@ -152,8 +152,8 @@ describe("setup resource refresh", () => {
 
   it("preserves valid server and storage choices while resources refresh", async () => {
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "server-1", label: "VDS 1", host: "one.example", port: 22, user: "backup" },
-      { profileId: "server-2", label: "VDS 2", host: "two.example", port: 22, user: "backup" },
+      { profileId: "server-1", label: "VDS 1", host: "one.example", port: 22, user: "backup", authKind: "ssh_key" },
+      { profileId: "server-2", label: "VDS 2", host: "two.example", port: 22, user: "backup", authKind: "ssh_key" },
     ]);
     commands.listRepositories.mockResolvedValue([
       { repositoryId: "repo-1", label: "Archive 1", path: "D:/one", recoveryReady: true },

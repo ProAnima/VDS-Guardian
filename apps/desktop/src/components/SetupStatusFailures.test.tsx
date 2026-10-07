@@ -92,7 +92,7 @@ describe("SetupStatusPanel failures", () => {
       { repositoryId: "repo", label: "Archive", path: "D:/archive", recoveryReady: true },
     ]);
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" },
     ]);
 
     await act(async () => root.render(<SetupStatusPanel resourcesRevision={0} t={createTranslator("ru")} />));

@@ -72,4 +72,5 @@ export const ar = {
   explorerFiles: "الملفات", explorerDocker: "Docker", explorerExpand: "توسيع", explorerCollapse: "طي", dockerNotPersistent: "وحدة مؤقتة وليست بيانات دائمة", dockerUnresolved: "تعذر تحديد مسار المضيف", reviewBack: "العودة إلى التحديد", dismiss: "إغلاق",
   setupAuthKey: "مفتاح SSH", setupAuthPassword: "كلمة مرور الدخول", setupPassword: "كلمة المرور", setupPasswordHint: "تُحفظ في مخزن بيانات اعتماد نظام التشغيل فقط وتُرسل فقط بعد تطابق مفتاح المضيف الموثّق للخادم.", setupPasswordShow: "إظهار كلمة المرور", setupPasswordHide: "إخفاء كلمة المرور", setupRootWarning: "تسجيل الدخول بحساب root وكلمة مرور ممكن، لكن مستخدم نسخ احتياطي مخصص أكثر أماناً.",
   setupFetchHostKey: "جلب مفتاح مضيف الخادم", setupFingerprint: "البصمة", setupFingerprintHint: "قارنها ببصمة لوحة مزوّدك أو بمخرجات ssh-keygen -l قبل التأكيد.", setupVerifyFingerprint: "قارنتُ هذه البصمة ببصمة مزوّدي أو بقناة موثوقة أخرى.", setupFetchFailed: "تعذّرت قراءة مفتاح مضيف الخادم. تحقق من العنوان والمنفذ أو الصق المفتاح يدوياً.",
+  serversAuthAgent: "مفتاح وكيل SSH",
 } satisfies Record<MessageKey, string>;

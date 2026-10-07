@@ -24,7 +24,7 @@ const status: FoundationStatus = {
   liveOperationsEnabled: true,
 };
 
-const profile = { profileId: "p", label: "VDS", host: "h", port: 22, user: "backup" };
+const profile = { profileId: "p", label: "VDS", host: "h", port: 22, user: "backup", authKind: "ssh_key" };
 const repository = { repositoryId: "r", label: "Disk", path: "D:\\b", recoveryReady: true };
 
 describe("Dashboard", () => {

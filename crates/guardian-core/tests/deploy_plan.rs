@@ -53,6 +53,7 @@ fn deploy_plan_allows_a_new_path_on_a_reenrolled_source_host()
     let target = VdsProfile {
         profile_id: ProfileId::parse("profile-different-name")?,
         label: "Re-enrolled source".to_owned(),
+        auth_kind: None,
         credential_id: CredentialId::parse("credential-002")?,
         endpoint: SshEndpoint {
             host: "vds.example".to_owned(),
@@ -144,6 +145,7 @@ fn profile(
     Ok(VdsProfile {
         profile_id: ProfileId::parse(profile_id)?,
         label: "Target VDS".to_owned(),
+        auth_kind: None,
         credential_id: CredentialId::parse(credential_id)?,
         endpoint: SshEndpoint {
             host: "target.example".to_owned(),

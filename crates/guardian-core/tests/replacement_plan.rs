@@ -141,6 +141,7 @@ fn profile() -> Result<VdsProfile, Box<dyn std::error::Error>> {
     Ok(VdsProfile {
         profile_id: ProfileId::parse("profile-source")?,
         label: "Source".to_owned(),
+        auth_kind: None,
         credential_id: CredentialId::parse("credential-source")?,
         endpoint: SshEndpoint {
             host: "vds.example".to_owned(),

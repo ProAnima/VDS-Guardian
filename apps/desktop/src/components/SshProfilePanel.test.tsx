@@ -40,13 +40,28 @@ describe("SSH profile loading", () => {
 
   it("keeps enrollment collapsed when a saved server exists", async () => {
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup" },
+      { profileId: "server", label: "VDS", host: "vds.example", port: 22, user: "backup", authKind: "ssh_key" },
     ]);
     await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
 
     await vi.waitFor(() => expect(container.textContent).toContain("VDS"));
     expect(container.querySelector(".server-form")).toBeNull();
     expect(container.querySelector('[aria-label="serversAdd"]')).not.toBeNull();
+  });
+
+  it("shows how each saved server is logged in to, treating a missing kind as a key", async () => {
+    commands.listSshProfiles.mockResolvedValue([
+      { profileId: "a", label: "Key", host: "a.example", port: 22, user: "backup", authKind: "ssh_key" },
+      { profileId: "b", label: "Agent", host: "b.example", port: 22, user: "backup", authKind: "ssh_agent" },
+      { profileId: "c", label: "Password", host: "c.example", port: 22, user: "root", authKind: "password" },
+      { profileId: "d", label: "Legacy", host: "d.example", port: 22, user: "backup" },
+    ]);
+    await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
+    await vi.waitFor(() => expect(container.querySelectorAll(".server-row")).toHaveLength(4));
+    const kinds = [...container.querySelectorAll<HTMLElement>(".server-row__auth")].map((badge) => [badge.dataset.kind, badge.getAttribute("aria-label")]);
+    expect(kinds).toEqual([
+      ["ssh_key", "setupAuthKey"], ["ssh_agent", "serversAuthAgent"], ["password", "setupAuthPassword"], ["ssh_key", "setupAuthKey"],
+    ]);
   });
 
   it("does not show an empty state or form when the server registry cannot be read", async () => {
@@ -75,7 +90,7 @@ describe("password login enrollment", () => {
   beforeEach(async () => {
     container = document.createElement("div"); document.body.append(container); root = createRoot(container);
     commands.listSshProfiles.mockResolvedValue([]);
-    commands.enrollSshProfile.mockResolvedValue({ profileId: "p", label: "VDS", host: "vds.example", port: 22, user: "root" });
+    commands.enrollSshProfile.mockResolvedValue({ profileId: "p", label: "VDS", host: "vds.example", port: 22, user: "root", authKind: "ssh_key" });
     await act(async () => root.render(<SshProfilePanel onProfilesChanged={vi.fn()} t={(key) => key} />));
     await vi.waitFor(() => expect(container.querySelector(".server-form")).not.toBeNull());
   });

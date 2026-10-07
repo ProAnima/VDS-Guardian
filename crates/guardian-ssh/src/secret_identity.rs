@@ -108,6 +108,15 @@ impl SshIdentity {
         }))
     }
 
+    /// The kind of credential these stored bytes are, without exposing or keeping them.
+    pub fn auth_kind_of(credential: &[u8]) -> Result<guardian_core::AuthKind, SshError> {
+        Ok(match classify_secret(credential)? {
+            Classified::PrivateKey => guardian_core::AuthKind::SshKey,
+            Classified::AgentPublicKey { .. } => guardian_core::AuthKind::SshAgent,
+            Classified::Password(_) => guardian_core::AuthKind::Password,
+        })
+    }
+
     /// Encodes a login password as the marker stored under a `CredentialId`.
     pub fn encode_password(password: &str) -> Result<Vec<u8>, SshError> {
         validate_password(password.as_bytes())?;
@@ -718,6 +727,31 @@ break",
         let identity = SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("helper"))?;
         assert!(identity.is_password());
         assert!(identity.key_path().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn stored_credentials_are_told_apart_by_kind_without_keeping_them()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use guardian_core::AuthKind;
+        let der = [
+            0x30, 0x09, 0x02, 0x01, 0x00, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04,
+        ];
+        let pem = format!(
+            "{PEM_EC_HEADER}
+{}
+{PEM_EC_FOOTER}
+",
+            STANDARD.encode(der)
+        );
+        assert_eq!(SshIdentity::auth_kind_of(pem.as_bytes())?, AuthKind::SshKey);
+        let agent = SshIdentity::encode_agent_identity("ssh-ed25519", &agent_public_key_blob())?;
+        assert_eq!(SshIdentity::auth_kind_of(&agent)?, AuthKind::SshAgent);
+        assert_eq!(
+            SshIdentity::auth_kind_of(&SshIdentity::encode_password("hunter2")?)?,
+            AuthKind::Password
+        );
+        assert!(SshIdentity::auth_kind_of(b"not a credential").is_err());
         Ok(())
     }
 

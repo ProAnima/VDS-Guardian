@@ -61,6 +61,7 @@ export const en = {
   explorerFiles: "Files", explorerDocker: "Docker", explorerExpand: "Expand", explorerCollapse: "Collapse", dockerNotPersistent: "Temporary mount, not persistent data", dockerUnresolved: "Host path could not be resolved", reviewBack: "Back to selection", dismiss: "Close",
   setupAuthKey: "SSH key", setupAuthPassword: "Login password", setupPassword: "Password", setupPasswordHint: "Stored only in the operating-system credential store and sent only after the server's verified host key matches.", setupPasswordShow: "Show password", setupPasswordHide: "Hide password", setupRootWarning: "Logging in as root with a password works, but a dedicated backup user is safer.",
   setupFetchHostKey: "Fetch the server's host key", setupFingerprint: "Fingerprint", setupFingerprintHint: "Compare this with the fingerprint in your provider's panel or the output of ssh-keygen -l before confirming.", setupVerifyFingerprint: "I compared this fingerprint with one from my provider or another trusted channel.", setupFetchFailed: "The server's host key could not be read. Check the address and port, or paste the key manually.",
+  serversAuthAgent: "SSH agent key",
 } as const;
 export type MessageKey = keyof typeof en;
 export type Messages = Partial<Record<MessageKey, string>>;
@@ -130,4 +131,5 @@ export const ru = {
   explorerFiles: "Файлы", explorerDocker: "Docker", explorerExpand: "Развернуть", explorerCollapse: "Свернуть", dockerNotPersistent: "Временный том, постоянных данных нет", dockerUnresolved: "Путь на сервере не определён", reviewBack: "Назад к выбору", dismiss: "Закрыть",
   setupAuthKey: "SSH-ключ", setupAuthPassword: "Пароль для входа", setupPassword: "Пароль", setupPasswordHint: "Хранится только в защищённом хранилище ОС и отправляется только после совпадения проверенного ключа сервера.", setupPasswordShow: "Показать пароль", setupPasswordHide: "Скрыть пароль", setupRootWarning: "Вход под root с паролем работает, но отдельный пользователь для бэкапов безопаснее.",
   setupFetchHostKey: "Получить ключ сервера", setupFingerprint: "Отпечаток", setupFingerprintHint: "Сверьте его с отпечатком в панели провайдера или с выводом ssh-keygen -l, прежде чем подтверждать.", setupVerifyFingerprint: "Я сверил этот отпечаток с данными провайдера или другим доверенным способом.", setupFetchFailed: "Не удалось прочитать ключ сервера. Проверьте адрес и порт или вставьте ключ вручную.",
+  serversAuthAgent: "Ключ из SSH-агента",
 };

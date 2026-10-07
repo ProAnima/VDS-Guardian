@@ -38,7 +38,7 @@ describe("restore cancellation", () => {
       { backupId: "backup-1", sealedAt: "2026-07-17T00:00:00Z", verification: "verified" },
     ]);
     commands.listSshProfiles.mockResolvedValue([
-      { profileId: "profile-1", label: "Source", host: "vds.example", port: 22, user: "root" },
+      { profileId: "profile-1", label: "Source", host: "vds.example", port: 22, user: "root", authKind: "ssh_key" },
     ]);
     commands.inspectRestoreBackup.mockResolvedValue({
       backupId: "backup-1", sourceProfileId: "profile-1", roots: ["/srv/app"],
