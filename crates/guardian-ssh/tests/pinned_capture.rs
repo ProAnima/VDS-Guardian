@@ -1,3 +1,5 @@
+mod common;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use guardian_core::{DatabaseAuthentication, DatabaseConnection, DatabaseEngine, DatabaseId};
 use guardian_ssh::{PinnedHost, RemoteCapturePlan, SshUser, SystemOpenSsh};
@@ -13,7 +15,7 @@ fn pinned_capture_uses_only_strict_noninteractive_openssh_options()
     let arguments = SystemOpenSsh::default().arguments(
         &host,
         &user,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         &plan,
     );
@@ -40,7 +42,7 @@ fn capability_probe_is_pinned_noninteractive_and_read_only()
     let arguments = SystemOpenSsh::default().capability_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = arguments
@@ -61,7 +63,7 @@ fn connection_probe_is_pinned_and_has_no_operator_command_input()
     let arguments = SystemOpenSsh::default().connection_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = arguments
@@ -81,7 +83,7 @@ fn docker_inventory_command_is_fixed_and_never_accepts_remote_input()
     let arguments = SystemOpenSsh::default().docker_inspect_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = arguments
@@ -102,7 +104,7 @@ fn database_tool_probe_uses_only_fixed_read_only_version_commands()
     let arguments = SystemOpenSsh::default().database_tool_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = arguments
@@ -131,7 +133,7 @@ fn database_server_probe_uses_ssh_peer_without_a_database_password()
     let arguments = SystemOpenSsh::default().database_server_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         &connection,
     )?;
@@ -155,7 +157,7 @@ fn snapshot_sqlite_command_uses_only_a_fixed_backup_and_compress_template()
     let arguments = SystemOpenSsh::default().snapshot_sqlite_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app/app.sqlite",
     );
@@ -179,7 +181,7 @@ fn snapshot_sqlite_command_safely_quotes_a_path_containing_a_single_quote()
     let arguments = SystemOpenSsh::default().snapshot_sqlite_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app's data/app.sqlite",
     );
@@ -197,7 +199,7 @@ fn sqlite3_probe_is_pinned_and_read_only() -> Result<(), Box<dyn std::error::Err
     let arguments = SystemOpenSsh::default().sqlite3_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
     );
     let rendered = arguments
@@ -216,7 +218,7 @@ fn database_disk_budget_probe_is_pinned_and_read_only() -> Result<(), Box<dyn st
     let arguments = SystemOpenSsh::default().database_disk_budget_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app/app.sqlite",
     );
@@ -239,7 +241,7 @@ fn database_disk_budget_probe_command_safely_quotes_a_path_containing_a_single_q
     let arguments = SystemOpenSsh::default().database_disk_budget_probe_arguments(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         Path::new("C:/known_hosts"),
         "/srv/app's data/app.sqlite",
     );
@@ -279,7 +281,7 @@ fn failed_launch_removes_the_partial_capture() -> Result<(), Box<dyn std::error:
     let result = SystemOpenSsh::with_binary(directory.path().join("missing-ssh")).capture_to(
         &pinned_host()?,
         &SshUser::parse("backup")?,
-        Path::new("C:/keys/backup.key"),
+        &common::key_identity()?,
         &RemoteCapturePlan::from_roots(["/srv/app".to_owned()])?,
         &destination,
         1_024,

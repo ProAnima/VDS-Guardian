@@ -137,7 +137,7 @@ pub struct PinnedSshCaptureAdapter<'a> {
     pub ssh: &'a SystemOpenSsh,
     pub host: &'a PinnedHost,
     pub user: &'a SshUser,
-    pub identity_file: &'a Path,
+    pub identity: &'a SshIdentity,
     pub maximum_output_bytes: u64,
 }
 
@@ -167,7 +167,7 @@ impl SshCapabilityProbePort for PinnedSshCapabilityProbe<'_> {
             .map_err(|_| SshCapabilityProbeError::Unavailable)?;
         let capabilities = self
             .ssh
-            .probe_tar_zstd(&host, &user, identity.path())
+            .probe_tar_zstd(&host, &user, &identity)
             .map_err(|_| SshCapabilityProbeError::Unavailable)?;
         Ok(SshCaptureCapabilities {
             tar_zstd: capabilities.tar_zstd,
@@ -187,7 +187,7 @@ impl FilesystemCapturePort for PinnedSshCaptureAdapter<'_> {
             .capture_to(
                 self.host,
                 self.user,
-                self.identity_file,
+                self.identity,
                 &plan,
                 destination,
                 self.maximum_output_bytes,
@@ -201,7 +201,7 @@ pub struct PinnedEmbeddedDatabaseCaptureAdapter<'a> {
     pub ssh: &'a SystemOpenSsh,
     pub host: &'a PinnedHost,
     pub user: &'a SshUser,
-    pub identity_file: &'a Path,
+    pub identity: &'a SshIdentity,
     pub maximum_output_bytes: u64,
 }
 
@@ -215,7 +215,7 @@ impl EmbeddedDatabaseCapturePort for PinnedEmbeddedDatabaseCaptureAdapter<'_> {
             .snapshot_sqlite_to(
                 self.host,
                 self.user,
-                self.identity_file,
+                self.identity,
                 &request.database_path,
                 destination,
                 self.maximum_output_bytes,
@@ -290,7 +290,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         plan: &RemoteCapturePlan,
         destination: &Path,
         maximum_output_bytes: u64,
@@ -298,7 +298,7 @@ impl SystemOpenSsh {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             plan.remote_command().into(),
             destination,
             Some(maximum_output_bytes),
@@ -309,14 +309,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         destination: &Path,
         maximum_output_bytes: u64,
     ) -> Result<CaptureResult, SshError> {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             docker_inspect_command().into(),
             destination,
             Some(maximum_output_bytes),
@@ -327,7 +327,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         directory: &guardian_core::RemotePath,
         destination: &Path,
         maximum_output_bytes: u64,
@@ -335,7 +335,7 @@ impl SystemOpenSsh {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             remote_browser::browse_command(directory).into(),
             destination,
             Some(maximum_output_bytes),
@@ -346,14 +346,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         destination: &Path,
         maximum_output_bytes: u64,
     ) -> Result<CaptureResult, SshError> {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             database_tool_probe_command().into(),
             destination,
             Some(maximum_output_bytes),
@@ -364,7 +364,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         database_path: &str,
         destination: &Path,
         maximum_output_bytes: u64,
@@ -372,7 +372,7 @@ impl SystemOpenSsh {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             sqlite_snapshot_command(database_path).into(),
             destination,
             Some(maximum_output_bytes),
@@ -383,7 +383,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         database_path: &str,
         destination: &Path,
         maximum_output_bytes: u64,
@@ -391,7 +391,7 @@ impl SystemOpenSsh {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             database_disk_budget_probe_command(database_path).into(),
             destination,
             Some(maximum_output_bytes),
@@ -402,7 +402,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         connection: &DatabaseConnection,
         destination: &Path,
         maximum_output_bytes: u64,
@@ -411,7 +411,7 @@ impl SystemOpenSsh {
         self.run_to(
             host,
             user,
-            identity_file,
+            identity,
             remote_command.into(),
             destination,
             Some(maximum_output_bytes),
@@ -422,12 +422,12 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
-            .args(self.zstd_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
+            .args(self.zstd_probe_arguments(host, user, identity, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -443,13 +443,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             zstd_probe_command().into(),
         )
@@ -459,7 +459,7 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         remote_command: OsString,
         destination: &Path,
         maximum_output_bytes: Option<u64>,
@@ -469,12 +469,15 @@ impl SystemOpenSsh {
             Ok(output) => output,
             Err(error) => return fail_capture(destination, error),
         };
-        let mut child = match self
-            .new_command()
+        let mut ssh_command = match self.new_command(identity) {
+            Ok(command) => command,
+            Err(error) => return fail_capture(destination, error),
+        };
+        let mut child = match ssh_command
             .args(self.arguments_for_command(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 remote_command,
             ))
@@ -538,14 +541,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         plan: &RemoteCapturePlan,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             plan.remote_command().into(),
         )
@@ -555,12 +558,12 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
     ) -> Result<RemoteCapabilities, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
-            .args(self.capability_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
+            .args(self.capability_probe_arguments(host, user, identity, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -577,12 +580,12 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
     ) -> Result<bool, SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
-            .args(self.sqlite3_probe_arguments(host, user, identity_file, known_hosts.as_ref()))
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
+            .args(self.sqlite3_probe_arguments(host, user, identity, known_hosts.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -597,15 +600,15 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
     ) -> Result<(), SshError> {
         let known_hosts = self.known_hosts_file(host)?;
-        let child = self
-            .new_command()
+        let mut ssh_command = self.new_command(identity)?;
+        let child = ssh_command
             .args(self.arguments_for_command(
                 host,
                 user,
-                identity_file,
+                identity,
                 known_hosts.as_ref(),
                 "true".into(),
             ))
@@ -627,13 +630,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             "LC_ALL=C tar --create --zstd --file=/dev/null --files-from=/dev/null >/dev/null 2>&1"
                 .into(),
@@ -645,10 +648,10 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
-        self.arguments_for_command(host, user, identity_file, known_hosts, "true".into())
+        self.arguments_for_command(host, user, identity, known_hosts, "true".into())
     }
 
     #[must_use]
@@ -656,13 +659,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             docker_inspect_command().into(),
         )
@@ -673,13 +676,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             database_tool_probe_command().into(),
         )
@@ -689,18 +692,12 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         connection: &DatabaseConnection,
     ) -> Result<Vec<OsString>, SshError> {
         let remote_command = database_server_probe_command(connection)?;
-        Ok(self.arguments_for_command(
-            host,
-            user,
-            identity_file,
-            known_hosts,
-            remote_command.into(),
-        ))
+        Ok(self.arguments_for_command(host, user, identity, known_hosts, remote_command.into()))
     }
 
     #[must_use]
@@ -708,14 +705,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         database_path: &str,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             sqlite_snapshot_command(database_path).into(),
         )
@@ -726,14 +723,14 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         database_path: &str,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             database_disk_budget_probe_command(database_path).into(),
         )
@@ -743,13 +740,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
     ) -> Vec<OsString> {
         self.arguments_for_command(
             host,
             user,
-            identity_file,
+            identity,
             known_hosts,
             sqlite3_probe_command().into(),
         )
@@ -769,15 +766,13 @@ impl SystemOpenSsh {
         &self,
         host: &PinnedHost,
         user: &SshUser,
-        identity_file: &Path,
+        identity: &SshIdentity,
         known_hosts: &Path,
         remote_command: OsString,
     ) -> Vec<OsString> {
-        vec![
+        let mut arguments: Vec<OsString> = vec![
             "-F".into(),
             "none".into(),
-            "-o".into(),
-            "BatchMode=yes".into(),
             "-o".into(),
             format!("ConnectTimeout={}", timeout_seconds(self.connect_timeout)).into(),
             "-o".into(),
@@ -786,21 +781,15 @@ impl SystemOpenSsh {
             format!("UserKnownHostsFile={}", known_hosts.display()).into(),
             "-o".into(),
             "GlobalKnownHostsFile=none".into(),
-            "-o".into(),
-            "PasswordAuthentication=no".into(),
-            "-o".into(),
-            "KbdInteractiveAuthentication=no".into(),
-            "-o".into(),
-            "PreferredAuthentications=publickey".into(),
-            "-o".into(),
-            "IdentitiesOnly=yes".into(),
-            "-i".into(),
-            identity_file.as_os_str().to_owned(),
+        ];
+        arguments.extend(authentication_arguments(identity));
+        arguments.extend([
             "-p".into(),
             host.port.to_string().into(),
             host.target(user).into(),
             remote_command,
-        ]
+        ]);
+        arguments
     }
 
     /// A child spawned via `Command` inherits the parent's console/
@@ -810,7 +799,7 @@ impl SystemOpenSsh {
     /// `process::wait_for_exit`/`stream::wait_for_stream`. Spawning into a
     /// new process group (Windows) / new POSIX process group (Unix) makes
     /// the cooperative kill path the only thing that ends this child.
-    fn new_command(&self) -> Command {
+    fn new_command(&self, identity: &SshIdentity) -> Result<SshCommand, SshError> {
         let mut command = Command::new(&self.binary);
         #[cfg(windows)]
         {
@@ -824,8 +813,88 @@ impl SystemOpenSsh {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
-        command
+        let broker = self.attach_password_broker(&mut command, identity)?;
+        Ok(SshCommand {
+            command,
+            _broker: broker,
+        })
     }
+
+    /// For a password login only: start the one-shot broker and point OpenSSH at the helper.
+    /// The environment carries the helper path, a loopback port and a one-time token; the
+    /// password itself never leaves the broker except over that single authenticated connection.
+    fn attach_password_broker(
+        &self,
+        command: &mut Command,
+        identity: &SshIdentity,
+    ) -> Result<Option<guardian_askpass::Broker>, SshError> {
+        let SshIdentity::Password(login) = identity else {
+            return Ok(None);
+        };
+        let lifetime = self.connect_timeout + PASSWORD_BROKER_GRACE;
+        let broker = guardian_askpass::Broker::start(login.password(), lifetime)
+            .map_err(|_| SshError::LaunchFailed)?;
+        command
+            .env("SSH_ASKPASS", login.askpass_program())
+            .env("SSH_ASKPASS_REQUIRE", "force")
+            .env(guardian_askpass::PORT_VARIABLE, broker.port().to_string())
+            .env(guardian_askpass::TOKEN_VARIABLE, broker.token());
+        Ok(Some(broker))
+    }
+}
+
+/// A prepared `ssh` command. For a password login it owns the broker, so it must stay alive
+/// until the child has finished authenticating; dropping it closes the broker.
+pub(crate) struct SshCommand {
+    command: Command,
+    _broker: Option<guardian_askpass::Broker>,
+}
+
+impl std::ops::Deref for SshCommand {
+    type Target = Command;
+    fn deref(&self) -> &Command {
+        &self.command
+    }
+}
+
+impl std::ops::DerefMut for SshCommand {
+    fn deref_mut(&mut self) -> &mut Command {
+        &mut self.command
+    }
+}
+
+const PASSWORD_BROKER_GRACE: Duration = Duration::from_secs(30);
+
+/// Key and agent logins stay non-interactive (`BatchMode`) and key-only; a password login is the
+/// one mode that enables password authentication, with exactly one attempt so a wrong password
+/// can never trigger retries or lock the account.
+fn authentication_arguments(identity: &SshIdentity) -> Vec<OsString> {
+    let options: &[&str] = if identity.is_password() {
+        &[
+            "BatchMode=no",
+            "PasswordAuthentication=yes",
+            "KbdInteractiveAuthentication=no",
+            "PubkeyAuthentication=no",
+            "PreferredAuthentications=password",
+            "NumberOfPasswordPrompts=1",
+        ]
+    } else {
+        &[
+            "BatchMode=yes",
+            "PasswordAuthentication=no",
+            "KbdInteractiveAuthentication=no",
+            "PreferredAuthentications=publickey",
+            "IdentitiesOnly=yes",
+        ]
+    };
+    let mut arguments: Vec<OsString> = options
+        .iter()
+        .flat_map(|option| ["-o".into(), (*option).into()])
+        .collect();
+    if let Some(path) = identity.key_path() {
+        arguments.extend(["-i".into(), path.as_os_str().to_owned()]);
+    }
+    arguments
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -862,10 +931,12 @@ pub enum SshError {
     Cancelled,
     #[error("SSH credential is unavailable")]
     CredentialUnavailable,
-    #[error("SSH credential is not a supported unencrypted SSH private key")]
+    #[error("SSH credential is not a supported SSH key, agent key or login password")]
     InvalidCredential,
     #[error("temporary SSH identity file could not be prepared")]
     TemporaryIdentityFile,
+    #[error("the password helper is missing, so a password login cannot be used safely")]
+    AskpassUnavailable,
     #[error("database connection is invalid")]
     InvalidDatabaseConnection,
     #[error("database authentication mode is not supported over SSH")]
@@ -988,13 +1059,146 @@ fn shell_quote(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{SystemOpenSsh, create_hardened_destination};
+    use super::{SshIdentity, SystemOpenSsh, create_hardened_destination};
+    use std::{path::PathBuf, process::Command};
 
     /// Not a check of the OS-level process-group semantics themselves (that
     /// would need platform-specific introspection this codebase has no
     /// dependency for) -- just a regression guard that the isolation flags
     /// `new_command` applies don't break ordinary spawning, since an invalid
     /// flag value would silently fail every SSH operation this crate makes.
+    fn environment(command: &Command) -> Vec<(String, String)> {
+        command
+            .get_envs()
+            .filter_map(|(key, value)| {
+                Some((
+                    key.to_string_lossy().into_owned(),
+                    value?.to_string_lossy().into_owned(),
+                ))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_password_command_carries_only_the_helper_port_and_token_in_its_environment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let identity =
+            SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("the-helper"))?;
+        let command = SystemOpenSsh::default().new_command(&identity)?;
+        let variables = environment(&command);
+        let value = |name: &str| {
+            variables
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(value("SSH_ASKPASS").as_deref(), Some("the-helper"));
+        assert_eq!(value("SSH_ASKPASS_REQUIRE").as_deref(), Some("force"));
+        assert!(
+            value(guardian_askpass::PORT_VARIABLE)
+                .is_some_and(|port| port.parse::<u16>().is_ok_and(|port| port > 0))
+        );
+        assert!(
+            value(guardian_askpass::TOKEN_VARIABLE)
+                .is_some_and(|token| guardian_askpass::is_valid_token(&token))
+        );
+        assert!(
+            !variables
+                .iter()
+                .any(|(key, value)| key.contains("S3cret") || value.contains("S3cret")),
+            "the password must not be in the environment"
+        );
+        assert_eq!(
+            command.get_args().count(),
+            0,
+            "arguments are added by the caller, never the password"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn every_password_command_gets_its_own_one_time_token() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let identity =
+            SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("the-helper"))?;
+        let ssh = SystemOpenSsh::default();
+        let (first, second) = (ssh.new_command(&identity)?, ssh.new_command(&identity)?);
+        let token = |command: &Command| {
+            environment(command)
+                .into_iter()
+                .find(|(key, _)| key == guardian_askpass::TOKEN_VARIABLE)
+        };
+        assert_ne!(token(&first), token(&second));
+        Ok(())
+    }
+
+    #[test]
+    fn dropping_a_password_command_closes_its_broker() -> Result<(), Box<dyn std::error::Error>> {
+        let identity =
+            SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("the-helper"))?;
+        let command = SystemOpenSsh::default().new_command(&identity)?;
+        let variables = environment(&command);
+        let find = |name: &str| {
+            variables
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone())
+        };
+        let (port, token) = (
+            find(guardian_askpass::PORT_VARIABLE).unwrap_or_default(),
+            find(guardian_askpass::TOKEN_VARIABLE).unwrap_or_default(),
+        );
+        drop(command);
+        assert!(guardian_askpass::request_password("Password:", &port, &token).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn a_key_command_never_touches_the_askpass_environment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let marker = SshIdentity::encode_agent_identity("ssh-ed25519", &agent_blob())?;
+        let identity = SshIdentity::from_store(
+            &FixedStore(marker),
+            &guardian_core::CredentialId::parse("credential-agent")?,
+        )?;
+        let command = SystemOpenSsh::default().new_command(&identity)?;
+        assert!(environment(&command).is_empty());
+        Ok(())
+    }
+
+    fn agent_blob() -> String {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&11_u32.to_be_bytes());
+        blob.extend_from_slice(b"ssh-ed25519");
+        blob.push(1);
+        STANDARD.encode(blob)
+    }
+
+    struct FixedStore(Vec<u8>);
+
+    impl guardian_core::SecretStore for FixedStore {
+        fn load(
+            &self,
+            _: &guardian_core::CredentialId,
+        ) -> Result<Option<guardian_core::SecretValue>, guardian_core::SecretStoreError> {
+            Ok(Some(guardian_core::SecretValue::new(self.0.clone())))
+        }
+        fn store(
+            &self,
+            _: &guardian_core::CredentialId,
+            _: &guardian_core::SecretValue,
+        ) -> Result<(), guardian_core::SecretStoreError> {
+            Ok(())
+        }
+        fn delete(
+            &self,
+            _: &guardian_core::CredentialId,
+        ) -> Result<(), guardian_core::SecretStoreError> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn new_command_applies_process_group_isolation_and_still_spawns()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -1002,7 +1206,12 @@ mod tests {
         let ssh = SystemOpenSsh::with_binary("cmd.exe");
         #[cfg(not(windows))]
         let ssh = SystemOpenSsh::with_binary("sh");
-        let mut command = ssh.new_command();
+        // A password identity exercises the broker path as well; the helper is never run.
+        let identity = crate::SshIdentity::password_with_helper(
+            b"unused",
+            std::path::PathBuf::from("unused-helper"),
+        )?;
+        let mut command = ssh.new_command(&identity)?;
         #[cfg(windows)]
         command.args(["/C", "exit 0"]);
         #[cfg(not(windows))]

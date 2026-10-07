@@ -47,7 +47,7 @@ impl DeploymentComposition<'_> {
             .probe_target_absent(
                 &session.host,
                 &session.user,
-                session.identity.path(),
+                &session.identity,
                 plan.target_path.as_str(),
             )
             .map_err(|_| DeployError::PreflightFailed)?;
@@ -187,7 +187,7 @@ impl DeploymentComposition<'_> {
             .open_deploy_payload_reader(backup_id, payload_path, self.verifier, self.credentials)
             .map_err(|_| DeployError::Storage)?;
         Self::inspect_filesystem_payload(&mut reader, kind)?;
-        let identity_path = session.identity.path();
+        let identity_path = &session.identity;
         let result = match kind {
             PushKind::FilesystemOnly => self.ssh.push_filesystem_to(
                 &session.host,
@@ -248,7 +248,7 @@ impl DeploymentComposition<'_> {
             .finalize_deploy_to(
                 &session.host,
                 &session.user,
-                session.identity.path(),
+                &session.identity,
                 StagingTarget {
                     target_path,
                     run_id,

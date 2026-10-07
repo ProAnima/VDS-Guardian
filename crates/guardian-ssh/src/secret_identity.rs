@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tempfile::{Builder, NamedTempFile, TempPath};
+use zeroize::Zeroizing;
 
 const OPENSSH_HEADER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----";
 const OPENSSH_FOOTER: &str = "-----END OPENSSH PRIVATE KEY-----";
@@ -25,6 +26,11 @@ const MAX_KEY_BYTES: usize = 64 * 1024;
 /// exact public identity" rather than "materialize this private key to a
 /// temporary file." Never a secret by itself — only a public key.
 const AGENT_MARKER_HEADER: &str = "AGENT-IDENTITY-V1";
+
+/// Fixed first line of a marker holding a login password (base64 on the second line).
+/// Unlike the agent marker this one *is* a secret and lives only in the OS credential
+/// store or encrypted vault, never in a profile document or a temporary file.
+const PASSWORD_MARKER_HEADER: &str = "PASSWORD-V1";
 
 const ALLOWED_AGENT_ALGORITHMS: [&str; 4] = [
     "ssh-ed25519",
@@ -46,6 +52,24 @@ pub enum SshIdentity {
         pub_file: TempPath,
         identity_path: PathBuf,
     },
+    /// A login password, delivered to OpenSSH only through the one-shot askpass broker.
+    Password(PasswordLogin),
+}
+
+/// The in-memory password and the helper OpenSSH is told to run; no file holds the secret.
+pub struct PasswordLogin {
+    password: Zeroizing<Vec<u8>>,
+    askpass_program: PathBuf,
+}
+
+impl PasswordLogin {
+    pub(crate) fn password(&self) -> &[u8] {
+        &self.password
+    }
+
+    pub(crate) fn askpass_program(&self) -> &Path {
+        &self.askpass_program
+    }
 }
 
 impl SshIdentity {
@@ -60,7 +84,39 @@ impl SshIdentity {
                 algorithm,
                 public_key_base64,
             } => materialize_agent_identity(&algorithm, &public_key_base64),
+            Classified::Password(password) => Ok(Self::Password(PasswordLogin {
+                password,
+                askpass_program: default_askpass_program()?,
+            })),
         }
+    }
+
+    /// A password identity that runs an explicit helper; applications use [`Self::from_store`],
+    /// which finds the helper beside the running executable.
+    pub fn password_with_helper(
+        password: &[u8],
+        askpass_program: PathBuf,
+    ) -> Result<Self, SshError> {
+        validate_password(password)?;
+        Ok(Self::Password(PasswordLogin {
+            password: Zeroizing::new(password.to_vec()),
+            askpass_program,
+        }))
+    }
+
+    /// Encodes a login password as the marker stored under a `CredentialId`.
+    pub fn encode_password(password: &str) -> Result<Vec<u8>, SshError> {
+        validate_password(password.as_bytes())?;
+        Ok(format!(
+            "{PASSWORD_MARKER_HEADER}\n{}\n",
+            STANDARD.encode(password.as_bytes())
+        )
+        .into_bytes())
+    }
+
+    #[must_use]
+    pub fn is_password(&self) -> bool {
+        matches!(self, Self::Password(_))
     }
 
     pub fn validate(bytes: &[u8]) -> Result<(), SshError> {
@@ -105,17 +161,20 @@ impl SshIdentity {
             .ok_or(SshError::InvalidCredential)
     }
 
+    /// The `-i` path for key and agent identities; a password login has none.
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub(crate) fn key_path(&self) -> Option<&Path> {
         match self {
-            Self::PrivateKey(path) => path.as_ref(),
-            Self::AgentPublicKey { identity_path, .. } => identity_path.as_path(),
+            Self::PrivateKey(path) => Some(path.as_ref()),
+            Self::AgentPublicKey { identity_path, .. } => Some(identity_path.as_path()),
+            Self::Password(_) => None,
         }
     }
 }
 
 enum Classified {
     PrivateKey,
+    Password(Zeroizing<Vec<u8>>),
     AgentPublicKey {
         algorithm: String,
         public_key_base64: String,
@@ -128,6 +187,18 @@ fn classify_secret(bytes: &[u8]) -> Result<Classified, SshError> {
     }
     let text = std::str::from_utf8(bytes).map_err(|_| SshError::InvalidCredential)?;
     let text = text.trim_end_matches(['\r', '\n']);
+    if let Some(encoded) = text
+        .strip_prefix(PASSWORD_MARKER_HEADER)
+        .and_then(|rest| rest.strip_prefix('\n'))
+    {
+        let password = Zeroizing::new(
+            STANDARD
+                .decode(encoded.trim_end().as_bytes())
+                .map_err(|_| SshError::InvalidCredential)?,
+        );
+        validate_password(&password)?;
+        return Ok(Classified::Password(password));
+    }
     if let Some((algorithm, public_key_base64)) = parse_agent_marker(text) {
         return valid_agent_public_key(algorithm, public_key_base64)
             .then(|| Classified::AgentPublicKey {
@@ -272,6 +343,37 @@ fn materialize_agent_identity(
     })
 }
 
+/// 1..=256 bytes of UTF-8 without NUL, CR or LF (the helper hands it to OpenSSH as one line).
+fn validate_password(password: &[u8]) -> Result<(), SshError> {
+    let valid = !password.is_empty()
+        && password.len() <= guardian_askpass::MAX_PASSWORD_BYTES
+        && std::str::from_utf8(password).is_ok()
+        && !password
+            .iter()
+            .any(|byte| matches!(byte, 0 | b'\r' | b'\n'));
+    valid.then_some(()).ok_or(SshError::InvalidCredential)
+}
+
+/// The helper must sit beside the running executable (or one directory up from a cargo
+/// `deps` directory, which is where test binaries live) — never found through `PATH`, and
+/// never a symlink — so a planted program cannot receive the password.
+fn default_askpass_program() -> Result<PathBuf, SshError> {
+    let executable = std::env::current_exe().map_err(|_| SshError::AskpassUnavailable)?;
+    let directory = executable.parent().ok_or(SshError::AskpassUnavailable)?;
+    let name = format!("guardian-askpass{}", std::env::consts::EXE_SUFFIX);
+    let mut candidates = vec![directory.join(&name)];
+    if directory.file_name().is_some_and(|value| value == "deps") {
+        candidates.extend(directory.parent().map(|parent| parent.join(&name)));
+    }
+    candidates
+        .into_iter()
+        .find(|candidate| {
+            std::fs::symlink_metadata(candidate)
+                .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+        })
+        .ok_or(SshError::AskpassUnavailable)
+}
+
 pub(crate) fn restrict_permissions(path: &Path) -> Result<(), SshError> {
     #[cfg(unix)]
     {
@@ -341,11 +443,12 @@ mod tests {
     #[cfg(windows)]
     use super::system32_binary;
     use super::{
-        OPENSSH_FOOTER, OPENSSH_HEADER, PEM_EC_FOOTER, PEM_EC_HEADER, PEM_PKCS8_FOOTER,
+        Classified, OPENSSH_FOOTER, OPENSSH_HEADER, PEM_EC_FOOTER, PEM_EC_HEADER, PEM_PKCS8_FOOTER,
         PEM_PKCS8_HEADER, PEM_RSA_FOOTER, PEM_RSA_HEADER, SshIdentity, classify_secret,
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use guardian_core::{CredentialId, SecretStore, SecretStoreError, SecretValue};
+    use std::path::PathBuf;
 
     #[test]
     fn materialized_identity_is_deleted_on_drop() -> Result<(), Box<dyn std::error::Error>> {
@@ -354,7 +457,10 @@ mod tests {
             secret: Some(SecretValue::new(valid_key())),
         };
         let identity = SshIdentity::from_store(&store, &id)?;
-        let path = identity.path().to_owned();
+        let path = identity
+            .key_path()
+            .ok_or("key identity has a path")?
+            .to_owned();
         assert!(path.is_file());
         drop(identity);
         assert!(!path.exists());
@@ -373,7 +479,7 @@ mod tests {
             &id,
         )?;
         let acl = std::process::Command::new(system32_binary("icacls.exe"))
-            .arg(identity.path())
+            .arg(identity.key_path().ok_or("key identity has a path")?)
             .output()?;
         let rendered = String::from_utf8_lossy(&acl.stdout).into_owned();
         assert!(acl.status.success());
@@ -535,6 +641,55 @@ AAAA
             );
         }
         assert!(SshIdentity::credential_from_key_file(&[0xff, 0xfe, 0xfd]).is_err());
+    }
+
+    #[test]
+    fn password_markers_round_trip_and_reject_corruption() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let stored = SshIdentity::encode_password("pässw0rd")?;
+        match classify_secret(&stored)? {
+            Classified::Password(password) => {
+                assert_eq!(password.as_slice(), "pässw0rd".as_bytes())
+            }
+            _ => return Err("expected a password classification".into()),
+        }
+        let encode = |bytes: &[u8]| {
+            format!(
+                "PASSWORD-V1
+{}
+",
+                STANDARD.encode(bytes)
+            )
+        };
+        for bad in [
+            "PASSWORD-V1
+"
+            .to_owned(),
+            "PASSWORD-V1
+!!!not-base64!!!
+"
+            .to_owned(),
+            encode(b""),
+            encode(
+                b"line
+break",
+            ),
+            encode(b"nul\0"),
+            encode(&[b'x'; 257]),
+            encode(&[0xff, 0xfe]),
+        ] {
+            assert!(classify_secret(bad.as_bytes()).is_err(), "{bad:?}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_password_identity_has_no_key_path_and_nothing_on_disk()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let identity = SshIdentity::password_with_helper(b"S3cret-Pass!", PathBuf::from("helper"))?;
+        assert!(identity.is_password());
+        assert!(identity.key_path().is_none());
+        Ok(())
     }
 
     fn agent_public_key_blob() -> String {

@@ -166,7 +166,7 @@ fn test_blocking(root: PathBuf, profile_id: String) -> Result<(), ProfileCommand
     let identity = SshIdentity::from_store(&OsCredentialStore, &profile.credential_id)
         .map_err(|_| ProfileCommandFailure::credential_store())?;
     SystemOpenSsh::default()
-        .probe_connection(&host, &user, identity.path())
+        .probe_connection(&host, &user, &identity)
         .map_err(|_| ProfileCommandFailure::connection())
 }
 

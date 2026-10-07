@@ -22,7 +22,8 @@ use guardian_core::{
     AuditPort, BackupId, CaptureAuditCode, CredentialId, EmbeddedDatabaseCaptureRequest,
     FilesystemBackupRequest, FilesystemCaptureRequest, HostPin, Manifest, ManifestSigner,
     PayloadPath, PlanId, PlanReference, Producer, ProfileId, RunId, SealedBackup, SecretStore,
-    SigningError, SourceIdentity, SshEndpoint, Timestamp, VdsProfile,
+    SecretStoreError, SecretValue, SigningError, SourceIdentity, SshEndpoint, Timestamp,
+    VdsProfile,
 };
 use guardian_local_repository::LocalRepository;
 use guardian_ssh::{PinnedHost, SshUser, SystemOpenSsh};
@@ -231,6 +232,28 @@ pub fn generate_keypair(directory: &Path) -> Result<(PathBuf, PathBuf), Box<dyn 
 /// host key at boot rather than at image-build time, adding a second
 /// readiness dimension beyond what the existing fixture script's flat
 /// sleep needed to cover.
+struct KeyFileSecret(Vec<u8>);
+
+impl SecretStore for KeyFileSecret {
+    fn load(&self, _: &CredentialId) -> Result<Option<SecretValue>, SecretStoreError> {
+        Ok(Some(SecretValue::new(self.0.clone())))
+    }
+
+    fn store(&self, _: &CredentialId, _: &SecretValue) -> Result<(), SecretStoreError> {
+        Ok(())
+    }
+
+    fn delete(&self, _: &CredentialId) -> Result<(), SecretStoreError> {
+        Ok(())
+    }
+}
+
+/// Wraps a freshly generated key file as the identity the production code resolves.
+pub fn identity_from_key_file(path: &Path) -> Result<guardian_ssh::SshIdentity, Box<dyn Error>> {
+    let secret = KeyFileSecret(std::fs::read(path)?);
+    Ok(guardian_ssh::SshIdentity::from_store(&secret, &CredentialId::parse("drill-key-file")?)?)
+}
+
 pub fn wait_until_ssh_ready(
     ssh: &SystemOpenSsh,
     host: &PinnedHost,
@@ -238,9 +261,10 @@ pub fn wait_until_ssh_ready(
     identity_path: &Path,
     deadline: Duration,
 ) -> Result<(), Box<dyn Error>> {
+    let identity = identity_from_key_file(identity_path)?;
     let start = Instant::now();
     loop {
-        if ssh.probe_connection(host, user, identity_path).is_ok() {
+        if ssh.probe_connection(host, user, &identity).is_ok() {
             return Ok(());
         }
         if start.elapsed() >= deadline {
@@ -253,7 +277,7 @@ pub fn wait_until_ssh_ready(
                 .args(ssh.connection_probe_arguments(
                     host,
                     user,
-                    identity_path,
+                    &identity,
                     known_hosts.as_ref(),
                 ))
                 .output()?;

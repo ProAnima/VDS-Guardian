@@ -1892,10 +1892,12 @@ name = "guardian-ssh"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "guardian-askpass",
  "guardian-core",
  "sha2",
  "tempfile",
  "thiserror 2.0.18",
+ "zeroize",
 ]
 
 [[package]]
