@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CapturePlanPanel } from "./CapturePlanPanel";
+import { BackupWorkspace } from "./backup/BackupWorkspace";
 import { SigningIdentityPanel } from "./SigningIdentityPanel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -9,6 +9,7 @@ import { SigningIdentityPanel } from "./SigningIdentityPanel";
 const commands = vi.hoisted(() => ({
   browseRemoteDirectory: vi.fn(),
   cancelJob: vi.fn(),
+  listDockerContainers: vi.fn(),
   enrollSigningIdentity: vi.fn(),
   getSigningIdentityStatus: vi.fn(),
   listRepositories: vi.fn(),
@@ -42,6 +43,7 @@ describe("setup resource refresh", () => {
     commands.listRepositories.mockResolvedValue([
       { repositoryId: "repo-1", label: "Archive", path: "D:/archive", recoveryReady: true },
     ]);
+    commands.listDockerContainers.mockResolvedValue([]);
     commands.runCaptureSelection.mockResolvedValue({ backupId: "backup-1" });
     commands.cancelJob.mockResolvedValue(true);
     commands.previewCaptureSelection.mockResolvedValue({
@@ -79,7 +81,7 @@ describe("setup resource refresh", () => {
   it("creates a backup directly from a reviewed selection", async () => {
     const changed = vi.fn();
     await act(async () => root.render(
-      <CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />,
+      <Workspace onPlansChanged={changed} resourcesRevision={0} />,
     ));
     const selection = await vi.waitFor(() => {
       const candidate = container.querySelector<HTMLInputElement>('input[aria-label="browserSelect srv"]');
@@ -89,7 +91,7 @@ describe("setup resource refresh", () => {
     await act(async () => selection.click());
     expect(button("backupReview").disabled).toBe(false);
 
-    await act(async () => container.querySelector("form")?.requestSubmit());
+    await act(async () => button("backupReview").click());
     await vi.waitFor(() => expect(button("backupCreate")).toBeDefined());
     await act(async () => button("backupCreate").click());
 
@@ -104,7 +106,7 @@ describe("setup resource refresh", () => {
   it("locks the editor and sends one cancellation request for a running backup", async () => {
     commands.runCaptureSelection.mockReturnValue(new Promise(() => undefined));
     await act(async () => root.render(
-      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+      <Workspace onPlansChanged={vi.fn()} resourcesRevision={0} />,
     ));
     const selection = await vi.waitFor(() => {
       const candidate = container.querySelector<HTMLInputElement>('input[aria-label="browserSelect srv"]');
@@ -112,11 +114,11 @@ describe("setup resource refresh", () => {
       return candidate;
     });
     await act(async () => selection.click());
-    await act(async () => container.querySelector("form")?.requestSubmit());
+    await act(async () => button("backupReview").click());
     await vi.waitFor(() => expect(button("backupCreate")).toBeDefined());
     await act(async () => button("backupCreate").click());
     const cancel = await vi.waitFor(() => button("captureCancel"));
-    expect(container.querySelector(".capture-workspace")).toBeNull();
+    expect(container.querySelector(".backup-workspace__body")?.hasAttribute("inert")).toBe(true);
     await act(async () => cancel.click());
     expect(cancel.disabled).toBe(true);
     await act(async () => cancel.click());
@@ -127,24 +129,24 @@ describe("setup resource refresh", () => {
     commands.listRepositories.mockResolvedValue([]);
     commands.listSshProfiles.mockResolvedValue([]);
     await act(async () => root.render(
-      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+      <Workspace onPlansChanged={vi.fn()} resourcesRevision={0} />,
     ));
 
     await vi.waitFor(() => expect(container.textContent).toContain("backupSetupRequired"));
-    expect(container.querySelector(".capture-workspace")).toBeNull();
+    expect(container.querySelector(".backup-workspace__body")).toBeNull();
   });
 
   it("offers a retry without showing setup-empty copy when backup resources fail", async () => {
     commands.listRepositories.mockRejectedValueOnce(new Error("registry unavailable"));
     await act(async () => root.render(
-      <CapturePlanPanel onPlansChanged={vi.fn()} resourcesRevision={0} t={(key) => key} />,
+      <Workspace onPlansChanged={vi.fn()} resourcesRevision={0} />,
     ));
 
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
     expect(container.textContent).not.toContain("backupSetupRequired");
-    expect(container.querySelector(".capture-workspace")).toBeNull();
+    expect(container.querySelector(".backup-workspace__body")).toBeNull();
     await act(async () => button("readinessRefresh").click());
-    await vi.waitFor(() => expect(container.querySelector(".capture-workspace")).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector(".backup-workspace__body")).not.toBeNull());
     expect(commands.listRepositories).toHaveBeenCalledTimes(2);
   });
 
@@ -158,12 +160,12 @@ describe("setup resource refresh", () => {
       { repositoryId: "repo-2", label: "Archive 2", path: "D:/two", recoveryReady: true },
     ]);
     const changed = vi.fn();
-    await act(async () => root.render(<CapturePlanPanel onPlansChanged={changed} resourcesRevision={0} t={(key) => key} />));
+    await act(async () => root.render(<Workspace onPlansChanged={changed} resourcesRevision={0} />));
     const selects = await vi.waitFor(() => requiredSelects(container));
     await act(async () => selectValue(selects[0], "server-2"));
     await act(async () => selectValue(selects[1], "repo-2"));
 
-    await act(async () => root.render(<CapturePlanPanel onPlansChanged={changed} resourcesRevision={1} t={(key) => key} />));
+    await act(async () => root.render(<Workspace onPlansChanged={changed} resourcesRevision={1} />));
     await vi.waitFor(() => expect(commands.listRepositories).toHaveBeenCalledTimes(2));
     expect(requiredSelects(container).map((select) => select.value)).toEqual(["server-2", "repo-2"]);
   });
@@ -175,6 +177,10 @@ describe("setup resource refresh", () => {
     return match;
   }
 });
+
+function Workspace({ onPlansChanged, resourcesRevision }: { onPlansChanged: () => void; resourcesRevision: number }) {
+  return <BackupWorkspace onPlansChanged={onPlansChanged} resourcesRevision={resourcesRevision} notReady={<p>backupSetupRequired</p>} t={(key) => key} />;
+}
 
 function requiredSelects(container: HTMLElement): [HTMLSelectElement, HTMLSelectElement] {
   const selects = [...container.querySelectorAll("select")];

@@ -3,7 +3,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --sidebar-width: 244px;
+  --sidebar-width: 52px;
   --radius-xs: 7px;
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -28,7 +28,11 @@
   --accent-soft: rgba(113, 217, 182, 0.11);
   --amber: #e1ad58;
   --amber-soft: rgba(225, 173, 88, 0.12);
-  --shadow: 0 22px 60px rgba(0, 0, 0, 0.24);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --danger: #ff8d80;
+  --tone-folder: #e1ad58; --tone-data: #71d9b6; --tone-archive: #b79cf0; --tone-media: #7cb7f2; --tone-config: #8fc4b8;
+  --tone-code: #6fd0e6; --tone-log: #8da39c; --tone-secret: #f08a82; --tone-link: #8da39c; --tone-special: #718c84;
+  --tone-docker: #6aa8f7; --tone-section: #a2b8b1; --tone-file: #a2b8b1;
 }
 
 :root[data-theme="light"] {
@@ -49,12 +53,16 @@
   --accent-soft: rgba(22, 122, 91, 0.09);
   --amber: #a56b12;
   --amber-soft: rgba(165, 107, 18, 0.1);
-  --shadow: 0 22px 60px rgba(28, 62, 51, 0.09);
+  --shadow: 0 10px 30px rgba(28, 62, 51, 0.16);
+  --danger: #c4372b;
+  --tone-folder: #a56b12; --tone-data: #167a5b; --tone-archive: #6c4bc4; --tone-media: #1f6bb8; --tone-config: #3d7a6c;
+  --tone-code: #0f7a93; --tone-log: #5d746d; --tone-secret: #c4372b; --tone-link: #5d746d; --tone-special: #789087;
+  --tone-docker: #1f62c4; --tone-section: #526b63; --tone-file: #526b63;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
-body { min-height: 100vh; color: var(--text); background: var(--bg); }
+body { min-height: 100vh; overflow: hidden; font-size: 13px; color: var(--text); background: var(--bg); }
 * { scrollbar-color: var(--border-strong) transparent; scrollbar-width: thin; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }

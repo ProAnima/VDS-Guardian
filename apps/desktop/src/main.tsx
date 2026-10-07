@@ -5,6 +5,8 @@ import { applyDocumentPreferences, getInitialLocale, readTheme, resolveTheme, st
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/dashboard.css";
+import "./styles/workspace.css";
+import "./styles/tooltip.css";
 
 const root = document.getElementById("root");
 const initialTheme = readTheme(localStorage.getItem(storageKeys.theme));
